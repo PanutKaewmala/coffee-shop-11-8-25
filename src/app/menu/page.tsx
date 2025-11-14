@@ -1,64 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import MenuCard from "@/components/MenuCard";
-
-interface MenuItem {
-    id: number;
-    name: string;
-    price: number;
-    type: string;
-    cat: string;
-    img: string;
-}
-
-const sampleMenu: MenuItem[] = [
-    {
-        id: 1,
-        name: "Espresso",
-        price: 60,
-        type: "Hot",
-        cat: "coffee",
-        img: "https://images.unsplash.com/photo-1511920170033-f8396924c348?q=80&w=800&auto=format&fit=crop",
-    },
-    {
-        id: 2,
-        name: "Latte",
-        price: 85,
-        type: "Hot/Iced",
-        cat: "coffee",
-        img: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?q=80&w=800&auto=format&fit=crop",
-    },
-    {
-        id: 3,
-        name: "Iced Tea",
-        price: 70,
-        type: "Iced",
-        cat: "tea",
-        img: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=800&auto=format&fit=crop",
-    },
-    {
-        id: 4,
-        name: "Matcha Latte",
-        price: 95,
-        type: "Hot/Iced",
-        cat: "milk & chocolate",
-        img: "https://images.unsplash.com/photo-1551024601-bec78aea704b?q=80&w=800&auto=format&fit=crop",
-    },
-];
+import { MenuItem } from "@/lib/types";
 
 export default function MenuSection() {
     const { theme } = useTheme();
-    const [menuItems, setMenuItems] = useState<MenuItem[]>(sampleMenu);
+
+    const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+    const [filteredItems, setFilteredItems] = useState<MenuItem[]>([]);
     const [filter, setFilter] = useState("all");
 
+    /* -----------------------------
+     * Fetch menu
+     * ----------------------------*/
+    useEffect(() => {
+        const loadMenu = async () => {
+            try {
+                const res = await fetch("/api/menu");
+                const data = await res.json();
+
+                setMenuItems(data);
+                setFilteredItems(data);
+            } catch (err) {
+                console.error("Failed to load menu:", err);
+            }
+        };
+
+        loadMenu();
+    }, []);
+
+    /* -----------------------------
+     * Filtering
+     * ----------------------------*/
     const handleFilter = (cat: string) => {
         setFilter(cat);
-        setMenuItems(
-            cat === "all" ? sampleMenu : sampleMenu.filter((i) => i.cat === cat)
-        );
+
+        if (cat === "all") {
+            setFilteredItems(menuItems);
+            return;
+        }
+
+        setFilteredItems(menuItems.filter((item) => item.category === cat));
     };
+
+    // auto-generate categories from DB
+    const categories = [
+        "all",
+        ...Array.from(new Set(menuItems.map((item) => item.category))),
+    ];
 
     return (
         <section
@@ -72,36 +63,49 @@ export default function MenuSection() {
 
             {/* Category Filter */}
             <div className="flex flex-wrap gap-2 mb-6">
-                {["all", "coffee", "tea", "milk & chocolate"].map((cat) => (
-                    <button
-                        key={cat}
-                        onClick={() => handleFilter(cat)}
-                        className={`
-                            px-3 py-1 rounded-full border transition-all duration-300 text-sm font-medium
-                            ${filter === cat
-                                ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
-                                : `
+                {categories.map((cat) => {
+                    const label =
+                        cat === "all"
+                            ? "All"
+                            : cat.charAt(0).toUpperCase() + cat.slice(1);
+
+                    const isActive = filter === cat;
+
+                    return (
+                        <button
+                            key={cat}
+                            onClick={() => handleFilter(cat)}
+                            className={`
+                                px-3 py-1 rounded-full border text-sm font-medium transition-all
+                                ${isActive
+                                    ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
+                                    : `
                                         ${theme === "dark"
-                                    ? "bg-zinc-900/60 text-text-secondary hover:bg-zinc-800"
-                                    : "bg-white/70 text-text-secondary hover:bg-zinc-100"
-                                }
+                                        ? "bg-zinc-900/60 text-text-secondary hover:bg-zinc-800"
+                                        : "bg-white/70 text-text-secondary hover:bg-zinc-100"
+                                    }
                                         border border-[var(--color-text-muted)]
-                                      `
-                            }
-                        `}
-                    >
-                        {cat === "milk & chocolate"
-                            ? "Milk / Chocolate"
-                            : cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </button>
-                ))}
+                                    `
+                                }
+                            `}
+                        >
+                            {label}
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Menu Grid */}
             <div className="menu-grid grid md:grid-cols-3 sm:grid-cols-2 grid-cols-1 gap-4">
-                {menuItems.map((item) => (
-                    <MenuCard key={item.id} item={item} />
-                ))}
+                {filteredItems.length === 0 ? (
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                        No menu items found.
+                    </p>
+                ) : (
+                    filteredItems.map((item) => (
+                        <MenuCard key={item.id} item={item} />
+                    ))
+                )}
             </div>
         </section>
     );

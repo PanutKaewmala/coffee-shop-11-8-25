@@ -1,7 +1,7 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import ClientWrapper from "./ClientWrapper";
 import { ThemeProvider } from "@/context/ThemeContext";
 import "./globals.css";
 
@@ -20,21 +20,14 @@ export const metadata: Metadata = {
   description: "Minimal responsive coffee shop template",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased transition-colors duration-300`}
       >
-        {/* ThemeProvider จะสลับ class dark/light บน <html> */}
         <ThemeProvider>
-          <div className="flex flex-col min-h-screen bg-background text-foreground transition-colors duration-300">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
+          <ClientWrapper>{children}</ClientWrapper>
         </ThemeProvider>
       </body>
     </html>

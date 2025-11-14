@@ -8,7 +8,6 @@ import { Moon, Sun, Menu, X } from "lucide-react";
 export default function Navbar() {
     const { theme, toggleTheme } = useTheme();
     const [open, setOpen] = useState(false);
-    const [isClient] = useState(typeof window !== "undefined"); // ✅ ไม่ต้อง setState ใน effect
 
     const navItems = ["home", "menu", "news", "contact"];
 
@@ -17,9 +16,9 @@ export default function Navbar() {
             <div className="max-w-[1100px] mx-auto relative">
                 <div
                     className="
-                        relative flex items-center justify-between gap-2 sm:gap-3 p-2 rounded-2xl
-                        backdrop-blur-md transition-colors duration-200
-                    "
+            relative flex items-center justify-between gap-2 sm:gap-3 p-2 rounded-2xl
+            backdrop-blur-md transition-colors duration-200
+          "
                     style={{
                         backgroundColor: "var(--color-surface)",
                         color: "var(--color-foreground)",
@@ -71,7 +70,7 @@ export default function Navbar() {
 
                     {/* Right area */}
                     <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0">
-                        {/* ✅ Toggle Theme */}
+                        {/* Toggle Theme */}
                         <button
                             className="p-2 rounded-2xl backdrop-blur-sm transition-colors hover:opacity-80"
                             style={{
@@ -81,18 +80,18 @@ export default function Navbar() {
                             onClick={toggleTheme}
                             aria-label="Toggle theme"
                         >
-                            {isClient && (theme === "dark" ? <Sun size={18} /> : <Moon size={18} />)}
+                            {/* SSR-safe: icon จะ render หลัง ThemeProvider mount */}
+                            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
 
                         <Link
                             href="#menu"
                             className="px-6 py-2 rounded-full font-semibold text-white
-                                        bg-gradient-to-r from-accent to-accent-dark
-                                        text-surface shadow-sm
-                                        transition-all duration-300 hover:brightness-110"
+                        bg-gradient-to-r from-accent to-accent-dark
+                        text-surface shadow-sm
+                        transition-all duration-300 hover:brightness-110"
                             style={{
-                                background:
-                                    "linear-gradient(to right, var(--accent), var(--accent-dark))",
+                                background: "linear-gradient(to right, var(--accent), var(--accent-dark))",
                                 color: "white",
                             }}
                         >
@@ -112,13 +111,9 @@ export default function Navbar() {
 
                     {/* Mobile dropdown */}
                     <div
-                        className={`absolute left-0 right-0 top-full mt-2 md:hidden rounded-2xl backdrop-blur-md shadow-lg transform transition-all duration-200 origin-top z-40 ${open
-                            ? "scale-y-100 opacity-100"
-                            : "scale-y-0 opacity-0 pointer-events-none"
+                        className={`absolute left-0 right-0 top-full mt-2 md:hidden rounded-2xl backdrop-blur-md shadow-lg transform transition-all duration-200 origin-top z-40 ${open ? "scale-y-100 opacity-100" : "scale-y-0 opacity-0 pointer-events-none"
                             }`}
-                        style={{
-                            backgroundColor: "var(--color-surface)",
-                        }}
+                        style={{ backgroundColor: "var(--color-surface)" }}
                     >
                         <nav className="px-4 py-3">
                             <ul className="flex flex-col gap-2">
