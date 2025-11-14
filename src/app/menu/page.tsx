@@ -13,7 +13,7 @@ export default function MenuSection() {
     const [filter, setFilter] = useState("all");
 
     /* -----------------------------
-     * Fetch menu
+     * Fetch menu (แก้ map error)
      * ----------------------------*/
     useEffect(() => {
         const loadMenu = async () => {
@@ -21,10 +21,19 @@ export default function MenuSection() {
                 const res = await fetch("/api/menu");
                 const data = await res.json();
 
-                setMenuItems(data);
-                setFilteredItems(data);
+                // ⭐ รองรับทั้งฟอร์แมต array และ {menu: [...]}
+                const list = Array.isArray(data)
+                    ? data
+                    : Array.isArray(data.menu)
+                        ? data.menu
+                        : [];
+
+                setMenuItems(list);
+                setFilteredItems(list);
             } catch (err) {
                 console.error("Failed to load menu:", err);
+                setMenuItems([]);
+                setFilteredItems([]);
             }
         };
 
@@ -45,10 +54,16 @@ export default function MenuSection() {
         setFilteredItems(menuItems.filter((item) => item.category === cat));
     };
 
-    // auto-generate categories from DB
+    /* -----------------------------
+     * Categories (ปลอดภัย)
+     * ----------------------------*/
     const categories = [
         "all",
-        ...Array.from(new Set(menuItems.map((item) => item.category))),
+        ...Array.from(
+            new Set(
+                (menuItems ?? []).map((item) => item.category)
+            )
+        ),
     ];
 
     return (
@@ -64,10 +79,9 @@ export default function MenuSection() {
             {/* Category Filter */}
             <div className="flex flex-wrap gap-2 mb-6">
                 {categories.map((cat) => {
-                    const label =
-                        cat === "all"
-                            ? "All"
-                            : cat.charAt(0).toUpperCase() + cat.slice(1);
+                    const label = cat === "all"
+                        ? "All"
+                        : cat.charAt(0).toUpperCase() + cat.slice(1);
 
                     const isActive = filter === cat;
 
@@ -80,12 +94,12 @@ export default function MenuSection() {
                                 ${isActive
                                     ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
                                     : `
-                                        ${theme === "dark"
+                                            ${theme === "dark"
                                         ? "bg-zinc-900/60 text-text-secondary hover:bg-zinc-800"
                                         : "bg-white/70 text-text-secondary hover:bg-zinc-100"
                                     }
-                                        border border-[var(--color-text-muted)]
-                                    `
+                                            border border-[var(--color-text-muted)]
+                                        `
                                 }
                             `}
                         >

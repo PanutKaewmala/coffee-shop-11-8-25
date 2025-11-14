@@ -28,7 +28,7 @@ export async function GET() {
         createdAt: item.created_at,
     }));
 
-    return NextResponse.json(mapped);
+    return NextResponse.json({ menu: mapped });
 }
 
 /** -----------------------

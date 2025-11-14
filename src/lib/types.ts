@@ -58,6 +58,36 @@ export interface Branch {
   phone?: string | null;
   map_url?: string | null;
   opening_hours?: string | null;
-  is_primary?: boolean;   // ⭐ เพิ่มฟิลด์นี้ สำคัญมาก!
+  is_primary?: boolean;
   created_at?: string | null;
+}
+
+/** -------------------------
+ * POS Order Items
+ * ------------------------- */
+export type OrderItem = {
+  id: string;
+  name: string;
+  price: number;
+  qty: number;
+};
+
+/** -------------------------
+ * Order (สำหรับ POS / API ฝั่ง client)
+ * ------------------------- */
+export type Order = {
+  id: string;
+  items: OrderItem[];
+  total: number;
+  created_at: string;
+};
+
+/** -------------------------
+ * Order Detail (หน้า admin ดูออเดอร์)
+ * ------------------------- */
+export interface OrderDetail {
+  id: string;
+  total: number;
+  created_at: string;
+  items: OrderItem[];
 }

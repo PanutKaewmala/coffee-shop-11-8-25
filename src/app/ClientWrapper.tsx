@@ -8,9 +8,11 @@ import Footer from "@/components/Footer";
 export default function ClientWrapper({ children }: { children: ReactNode }) {
     const pathname = usePathname();
 
-    // ซ่อน Navbar / Footer ในหน้า admin และ login
+    // ซ่อน Navbar / Footer ในหน้า admin, login และ pos
     const hideNavAndFooter =
-        pathname.startsWith("/admin") || pathname.startsWith("/login");
+        pathname.startsWith("/admin") ||
+        pathname.startsWith("/login") ||
+        pathname.startsWith("/pos");
 
     return (
         <div className="flex flex-col min-h-screen bg-background text-foreground transition-colors duration-300">
@@ -20,4 +22,3 @@ export default function ClientWrapper({ children }: { children: ReactNode }) {
         </div>
     );
 }
-    

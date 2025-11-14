@@ -17,23 +17,32 @@ export default function MenuAdminPage() {
     const [name, setName] = useState("");
     const [price, setPrice] = useState<number | string>("");
     const [category, setCategory] = useState("");
-    const [serveTypes, setServeTypes] = useState<string[]>([]); // ⭐ array
+    const [serveTypes, setServeTypes] = useState<string[]>([]);
     const [description, setDescription] = useState("");
     const [image, setImage] = useState<File | null>(null);
 
     const SERVE_OPTIONS = ["Hot", "Iced", "Frappe"];
 
-    /** -----------------------------------
-     * Fetch Menu
+    /* -----------------------------------
+     * Fetch Menu (แก้ให้ถูก 100%)
      * ----------------------------------*/
     const fetchMenu = async () => {
         try {
             setLoading(true);
             const res = await fetch("/api/menu");
             const data = await res.json();
-            setMenuItems(data);
+
+            // ⭐ รองรับทั้งแบบ array และแบบ {menu: [...]}
+            const list = Array.isArray(data)
+                ? data
+                : Array.isArray(data.menu)
+                    ? data.menu
+                    : [];
+
+            setMenuItems(list);
         } catch (err) {
             console.error("fetchMenu error →", err);
+            setMenuItems([]);
         } finally {
             setLoading(false);
         }
@@ -43,7 +52,7 @@ export default function MenuAdminPage() {
         fetchMenu();
     }, []);
 
-    /** -----------------------------------
+    /* -----------------------------------
      * Open Modal (Add/Edit)
      * ----------------------------------*/
     const openModal = (item?: MenuItem) => {
@@ -52,14 +61,14 @@ export default function MenuAdminPage() {
             setName(item.name);
             setPrice(item.price);
             setCategory(item.category);
-            setServeTypes(item.serveTypes ?? []); // ⭐ load array
+            setServeTypes(item.serveTypes ?? []);
             setDescription(item.description ?? "");
         } else {
             setEditingItem(null);
             setName("");
             setPrice("");
             setCategory("");
-            setServeTypes([]); // ⭐ reset array
+            setServeTypes([]);
             setDescription("");
             setImage(null);
         }
@@ -68,7 +77,7 @@ export default function MenuAdminPage() {
 
     const closeModal = () => setShowModal(false);
 
-    /** -----------------------------------
+    /* -----------------------------------
      * Save Menu (POST / PUT)
      * ----------------------------------*/
     const saveMenu = async () => {
@@ -83,7 +92,7 @@ export default function MenuAdminPage() {
 
         let imageUrl = editingItem?.image || "";
 
-        // Upload image if new file selected
+        // Upload image
         if (image) {
             const fd = new FormData();
             fd.append("files", image);
@@ -103,7 +112,7 @@ export default function MenuAdminPage() {
             name,
             price: parsedPrice,
             category,
-            serveTypes, // ⭐ array
+            serveTypes,
             description,
             image: imageUrl,
         };
@@ -125,7 +134,7 @@ export default function MenuAdminPage() {
         }
     };
 
-    /** -----------------------------------
+    /* -----------------------------------
      * Delete Menu
      * ----------------------------------*/
     const deleteMenu = async (id: string) => {
@@ -137,6 +146,9 @@ export default function MenuAdminPage() {
 
     const headers = ["Name", "Category", "Serve", "Price", "Image", "Actions"];
 
+    /* -----------------------------------
+     * Render UI
+     * ----------------------------------*/
     return (
         <div className="p-6 space-y-6">
             <Card title="Menu Management">
@@ -153,7 +165,7 @@ export default function MenuAdminPage() {
                             data={menuItems.map((item) => [
                                 item.name,
                                 item.category,
-                                item.serveTypes?.join(", ") || "—", // ⭐ array join
+                                item.serveTypes?.join(", ") || "—",
                                 `${item.price}฿`,
                                 item.image ? (
                                     <img
@@ -183,7 +195,6 @@ export default function MenuAdminPage() {
             {showModal && (
                 <Modal isOpen={showModal} onClose={closeModal} title={editingItem ? "Edit Menu" : "Add Menu"}>
                     <div className="space-y-4">
-
                         {/* Name */}
                         <input
                             type="text"
@@ -223,7 +234,7 @@ export default function MenuAdminPage() {
                             <option value="milk-choco">Milk / Chocolate</option>
                         </select>
 
-                        {/* ⭐ Serve Types (checkbox multi-select) */}
+                        {/* ⭐ Serve Types */}
                         <div className="space-y-2">
                             <p className="text-sm text-[var(--text-secondary)]">Serve Types</p>
 
@@ -232,13 +243,13 @@ export default function MenuAdminPage() {
                                     <input
                                         type="checkbox"
                                         checked={serveTypes.includes(opt)}
-                                        onChange={() => {
-                                            if (serveTypes.includes(opt)) {
-                                                setServeTypes(serveTypes.filter((v) => v !== opt));
-                                            } else {
-                                                setServeTypes([...serveTypes, opt]);
-                                            }
-                                        }}
+                                        onChange={() =>
+                                            setServeTypes((prev) =>
+                                                prev.includes(opt)
+                                                    ? prev.filter((v) => v !== opt)
+                                                    : [...prev, opt]
+                                            )
+                                        }
                                     />
                                     <span>{opt}</span>
                                 </label>
@@ -254,14 +265,13 @@ export default function MenuAdminPage() {
                         />
 
                         {/* Image */}
-                        <input
-                            type="file"
-                            onChange={(e) => setImage(e.target.files?.[0] || null)}
-                        />
+                        <input type="file" onChange={(e) => setImage(e.target.files?.[0] || null)} />
 
                         {/* Buttons */}
                         <div className="flex justify-end gap-2 pt-2">
-                            <Button variant="outline" onClick={closeModal}>Cancel</Button>
+                            <Button variant="outline" onClick={closeModal}>
+                                Cancel
+                            </Button>
                             <Button onClick={saveMenu}>{editingItem ? "Update" : "Add"}</Button>
                         </div>
                     </div>
