@@ -29,7 +29,7 @@ export interface MenuItem {
 }
 
 /** -------------------------
- * Contact (snake_case ตาม Supabase)
+ * Contact
  * ------------------------- */
 export interface ContactMessage {
   id: string;
@@ -51,6 +51,9 @@ export interface NewsItem {
   created_at: string;
 }
 
+/** -------------------------
+ * Branch
+ * ------------------------- */
 export interface Branch {
   id: string;
   name: string;
@@ -73,7 +76,7 @@ export type OrderItem = {
 };
 
 /** -------------------------
- * Order (สำหรับ POS / API ฝั่ง client)
+ * Order
  * ------------------------- */
 export type Order = {
   id: string;
@@ -83,11 +86,50 @@ export type Order = {
 };
 
 /** -------------------------
- * Order Detail (หน้า admin ดูออเดอร์)
+ * Order Detail
  * ------------------------- */
 export interface OrderDetail {
   id: string;
   total: number;
   created_at: string;
   items: OrderItem[];
+}
+
+/** -------------------------
+ * Revenue Summary
+ * ------------------------- */
+export interface RevenueTopItem {
+  name: string;
+  qty: number;
+}
+
+export interface RevenueChartPoint {
+  label: string;
+  value: number;
+}
+
+export interface RevenueSummary {
+  range: string;
+  totalRevenue: number;
+  totalOrders: number;
+  avgOrder: number;
+  topItems: RevenueTopItem[];
+  orders: Order[];
+  chart: RevenueChartPoint[];
+}
+
+/**
+ * ใช้ใน Dashboard ตอน fetch ยังไม่เสร็จ
+ * เพื่อให้ TS ไม่บ่น summary null
+ */
+export type RevenueSummaryNullable = RevenueSummary | null;
+
+/** -------------------------
+ * CountData
+ * ------------------------- */
+export interface CountData {
+  menu: number;
+  branch: number;
+  news: number;
+  contact: number;
 }
