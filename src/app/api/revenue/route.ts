@@ -7,23 +7,57 @@ function pad(n: number) {
     return String(n).padStart(2, "0");
 }
 
-/** format Date (local) => 'YYYY-MM-DD' */
+/** format Date (local Bangkok) => 'YYYY-MM-DD'
+ *  (ใช้ local time แท้ — ไม่ใช้ UTC)
+ */
 function formatLocalDate(d: Date) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Convert a local Date's start-of-day (midnight local) -> UTC ISO (instant)
- *  Example: local 2025-11-15 00:00 (Asia/Bangkok) -> "2025-11-14T17:00:00.000Z" (UTC)
- */
-function localStartToUTCISO(local: Date) {
-    const localStart = new Date(local.getFullYear(), local.getMonth(), local.getDate(), 0, 0, 0);
-    return localStart.toISOString(); // gives the UTC instant of local midnight
+/** Robust normalizer for timestamps coming from Postgres/Supabase. */
+function normalizePgTimestampToUTCISO(ts: string): string {
+    if (!ts) return new Date().toISOString();
+
+    let s = ts.trim();
+
+    const quick = Date.parse(s);
+    if (!isNaN(quick)) return new Date(quick).toISOString();
+
+    s = s.replace(/^(\d{4}-\d{2}-\d{2})\s+/, "$1T");
+    s = s.replace(/(\.\d{3})\d+\b/, "$1");
+
+    const tzMatch = s.match(/([+-]\d{2})(\d{2})?$/);
+    if (tzMatch) {
+        const hh = tzMatch[1];
+        const mm = tzMatch[2] || "00";
+        s = s.replace(/([+-]\d{2})(\d{2})?$/, `${hh}:${mm}`);
+    } else if (!/[Zz]$/.test(s) && !/[+-]\d{2}:\d{2}$/.test(s)) {
+        s = `${s}Z`;
+    }
+
+    const parsed = Date.parse(s);
+    if (!isNaN(parsed)) return new Date(parsed).toISOString();
+
+    try {
+        const coerced = new Date(String(ts));
+        if (!isNaN(coerced.getTime())) return coerced.toISOString();
+    } catch {
+        // ignore
+    }
+
+    return new Date().toISOString();
 }
 
-/** Convert any timestamp/ISO (UTC) -> local 'YYYY-MM-DD' */
+/** Convert UTC ISO string → local date YYYY-MM-DD */
 function utcIsoToLocalDate(iso: string) {
-    const d = new Date(iso);
+    const d = new Date(iso); // auto local timezone
     return formatLocalDate(d);
+}
+
+/** Convert local-midnight → UTC ISO */
+function localStartToUTCISO(local: Date) {
+    const localStart = new Date(local.getFullYear(), local.getMonth(), local.getDate(), 0, 0, 0);
+    return localStart.toISOString();
 }
 
 type RangeType = "today" | "week" | "month" | "year" | "5year" | "all";
@@ -44,132 +78,164 @@ export async function GET(req: Request) {
     };
 
     // -------------------------
-    // Compute local start date (may be null for 'all')
+    // Compute startLocal (Bangkok local)
     // -------------------------
     let startLocal: Date | null = null;
+
     if (range === "today") {
         startLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     } else if (range !== "all") {
         const days = RANGE_DAYS[range];
         const d = new Date(now);
-        d.setDate(now.getDate() - (days - 1)); // include today
+        d.setDate(now.getDate() - (days - 1));
         d.setHours(0, 0, 0, 0);
         startLocal = d;
     }
 
     // -------------------------
-    // Query DB (if startLocal present, filter using UTC ISO instant of local midnight)
+    // Query DB
     // -------------------------
-    const query = supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: true });
+    let query = supabase
+        .from("orders")
+        .select("id, total, created_at, order_items(*)")
+        .order("created_at", { ascending: false })
+        .range(0, 99999);
 
     if (startLocal) {
         const utcISO = localStartToUTCISO(startLocal);
-        query.gte("created_at", utcISO);
+        query = query.gte("created_at", utcISO);
     }
+
     const { data: rawData, error } = await query;
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = Array.isArray(rawData) ? rawData as unknown[] : [];
+    const rows = Array.isArray(rawData) ? rawData : [];
 
     // -------------------------
-    // Parse rows into typed objects
+    // Parse rows -> formattedOrders
     // -------------------------
     type FormattedOrder = {
         id: string;
-        created_at: string; // ISO (UTC)
+        created_at: string; // normalized ISO UTC
         total: number;
         items: OrderItem[];
+        raw_created_at?: string;
     };
 
     const formattedOrders: FormattedOrder[] = rows.map((r) => {
+        // narrow the incoming row shape safely
         const row = r as Record<string, unknown>;
-        const id = typeof row.id === "string" ? row.id : String(row.id ?? "");
-        // created_at in DB is timestamptz -> usually string ISO; fallback to Date.now
-        const created_at = typeof row.created_at === "string"
-            ? row.created_at
-            : new Date(String(row.created_at ?? Date.now())).toISOString();
-        const total = typeof row.total === "number" ? row.total : Number(row.total ?? 0);
 
-        const rawItems = Array.isArray(row.order_items) ? row.order_items as unknown[] : [];
+        const rawCreated = row.created_at ? String(row.created_at) : "";
+        const createdISO = rawCreated ? normalizePgTimestampToUTCISO(rawCreated) : new Date().toISOString();
+
+        const total = (() => {
+            const t = row.total;
+            if (typeof t === "number") return t;
+            if (typeof t === "string") {
+                const n = Number(t);
+                return isNaN(n) ? 0 : n;
+            }
+            return 0;
+        })();
+
+        const rawItems = Array.isArray(row.order_items) ? (row.order_items as unknown[]) : [];
         const items: OrderItem[] = rawItems.map((it) => {
             const o = it as Record<string, unknown>;
-            return {
-                id: typeof o.id === "string" ? o.id : String(o.id ?? ""),
-                name: typeof o.name === "string" ? o.name : String(o.name ?? ""),
-                price: typeof o.price === "number" ? o.price : Number(o.price ?? 0),
-                qty: typeof o.qty === "number" ? o.qty : Number(o.qty ?? 0),
-            };
+            const id = o.id !== undefined ? String(o.id) : "";
+            const name = o.name !== undefined ? String(o.name) : "";
+            const price = (() => {
+                const p = o.price;
+                if (typeof p === "number") return p;
+                if (typeof p === "string") {
+                    const n = Number(p);
+                    return isNaN(n) ? 0 : n;
+                }
+                return 0;
+            })();
+            const qty = (() => {
+                const q = o.qty;
+                if (typeof q === "number") return q;
+                if (typeof q === "string") {
+                    const n = Number(q);
+                    return isNaN(n) ? 0 : n;
+                }
+                return 0;
+            })();
+
+            return { id, name, price, qty };
         });
 
-        return { id, created_at, total, items };
+        return {
+            id: row.id !== undefined ? String(row.id) : "",
+            total,
+            created_at: createdISO,
+            items,
+            raw_created_at: rawCreated || undefined,
+        };
     });
 
-    // If range === 'all' and we didn't filter, set startLocal from earliest order
+    // If "all" and startLocal not set, derive from earliest order
     if (range === "all" && formattedOrders.length > 0 && !startLocal) {
-        const earliest = new Date(formattedOrders[0].created_at); // this is correct because ordered asc
-        startLocal = new Date(earliest.getFullYear(), earliest.getMonth(), earliest.getDate());
+        // note: query ordered descending, earliest at the end
+        const last = formattedOrders[formattedOrders.length - 1];
+        const first = new Date(last.created_at);
+        startLocal = new Date(first.getFullYear(), first.getMonth(), first.getDate());
     }
 
     // -------------------------
-    // Summary numbers
+    // Summary
     // -------------------------
-    const totalRevenue = formattedOrders.reduce((s, o) => s + (o.total || 0), 0);
+    const totalRevenue = formattedOrders.reduce((s, o) => s + o.total, 0);
     const totalOrders = formattedOrders.length;
-    const avgOrder = totalOrders === 0 ? 0 : Math.round(totalRevenue / totalOrders);
+    const avgOrder = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
 
-    // -------------------------
-    // Top items
-    // -------------------------
     const itemCount: Record<string, number> = {};
     formattedOrders.forEach((o) => {
         o.items.forEach((it) => {
             itemCount[it.name] = (itemCount[it.name] || 0) + (it.qty ?? 0);
         });
     });
+
     const topItems = Object.entries(itemCount)
         .map(([name, qty]) => ({ name, qty }))
         .sort((a, b) => b.qty - a.qty)
         .slice(0, 5);
 
     // -------------------------
-    // Build bucket keys (local date strings) or hourly for today
+    // Build bucket
     // -------------------------
     const bucket: Record<string, number> = {};
 
     if (range === "today") {
-        for (let h = 0; h < 24; h++) {
-            bucket[`${pad(h)}:00`] = 0;
-        }
-    } else {
-        // if startLocal exists, iterate local days from startLocal -> today (local)
-        if (startLocal) {
-            const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            for (let d = new Date(startLocal); d <= endLocal; d.setDate(d.getDate() + 1)) {
-                // formatLocalDate uses local timezone values
-                bucket[formatLocalDate(new Date(d))] = 0;
-            }
+        for (let h = 0; h < 24; h++) bucket[`${pad(h)}:00`] = 0;
+    } else if (startLocal) {
+
+        const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // iterate from startLocal to endLocal (inclusive)
+        for (let d = new Date(startLocal); d <= endLocal; d.setDate(d.getDate() + 1)) {
+            bucket[formatLocalDate(new Date(d))] = 0;
         }
     }
 
     // -------------------------
-    // Fill bucket totals: convert each order's UTC created_at -> local day key
+    // Fill bucket totals
     // -------------------------
     for (const o of formattedOrders) {
-        const localKey = utcIsoToLocalDate(o.created_at);
         if (range === "today") {
-            const dt = new Date(o.created_at);
+            const dt = new Date(o.created_at); // JS Date will convert to local timezone
             const hourKey = `${pad(dt.getHours())}:00`;
             if (bucket[hourKey] !== undefined) bucket[hourKey] += o.total;
         } else {
+            const localKey = utcIsoToLocalDate(o.created_at);
             if (bucket[localKey] !== undefined) bucket[localKey] += o.total;
         }
     }
 
-    // Convert bucket -> array (ascending)
-    const chart = Object.entries(bucket)
-        .map(([label, value]) => ({ label, value }));
+    const chart = Object.entries(bucket).map(([label, value]) => ({ label, value }));
 
     return NextResponse.json({
         range,

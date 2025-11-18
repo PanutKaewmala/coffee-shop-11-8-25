@@ -9,13 +9,32 @@ interface SidebarProps {
     onClose?: () => void;
 }
 
-const navItems = [
-    { label: "Dashboard", path: "/admin" },
-    { label: "Menu", path: "/admin/menu" },
-    { label: "News", path: "/admin/news" },
-    { label: "Branches", path: "/admin/branch" },
-    { label: "Contact", path: "/admin/contact" },
-    { label: "Orders", path: "/admin/orders" },
+// จัดกลุ่มเมนูเป็น section
+const navSections = [
+    {
+        title: "Overview",
+        items: [
+            { label: "Dashboard", path: "/admin" },
+        ],
+    },
+    {
+        title: "Product Management",
+        items: [
+            { label: "Menu", path: "/admin/menu" },
+            { label: "Ingredients", path: "/admin/ingredients" },
+            { label: "Recipes", path: "/admin/recipes" },
+            { label: "Stock History", path: "/admin/stock" },
+        ],
+    },
+    {
+        title: "Business Operations",
+        items: [
+            { label: "Orders", path: "/admin/orders" },
+            { label: "News", path: "/admin/news" },
+            { label: "Branches", path: "/admin/branch" },
+            { label: "Contact", path: "/admin/contact" },
+        ],
+    },
 ];
 
 export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
@@ -25,17 +44,23 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         <>
             {/* Backdrop for mobile */}
             <div
-                className={`fixed inset-0 bg-black/40 z-30 md:hidden transition-opacity duration-300 ${isOpen
-                        ? "opacity-100 pointer-events-auto"
-                        : "opacity-0 pointer-events-none"
-                    }`}
+                className={`
+                    fixed inset-0 bg-black/40 z-30 md:hidden transition-opacity duration-300 
+                    ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
+                `}
                 onClick={onClose}
             />
 
             {/* Sidebar */}
             <aside
-                className={`fixed top-0 left-0 bottom-0 z-40 w-64 bg-[var(--surface)] text-[var(--text-primary)] border-r border-[var(--text-muted)]/20 transform transition-transform duration-300 ${isOpen ? "translate-x-0" : "-translate-x-full"
-                    } md:translate-x-0 md:static`}
+                className={`
+                    fixed top-0 left-0 bottom-0 z-40 w-64 
+                    bg-[var(--surface)] text-[var(--text-primary)]
+                    border-r border-[var(--text-muted)]/20
+                    transform transition-transform duration-300
+                    ${isOpen ? "translate-x-0" : "-translate-x-full"}
+                    md:translate-x-0 md:static
+                `}
             >
                 {/* Mobile header */}
                 <div className="flex items-center justify-between mb-6 md:hidden px-4">
@@ -48,35 +73,47 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                     </button>
                 </div>
 
-                {/* Navigation */}
-                <nav className="flex flex-col gap-1 px-2">
-                    {navItems.map((item) => {
-                        const active =
-                            item.path === "/admin"
-                                ? pathname === "/admin"
-                                : pathname.startsWith(item.path);
+                {/* Navigation Sections */}
+                <nav className="flex flex-col gap-6 px-3 mt-4">
+                    {navSections.map((section) => (
+                        <div key={section.title}>
+                            {/* Section header */}
+                            <div className="text-xs uppercase tracking-wide text-[var(--text-muted)] px-2 mb-2">
+                                {section.title}
+                            </div>
 
-                        return (
-                            <Link
-                                key={item.path}
-                                href={item.path}
-                                onClick={() => onClose?.()}
-                                className={`
-                                    block px-4 py-2.5 rounded-lg font-medium transition-colors duration-200
-                                    ${active
-                                        ? "bg-[var(--accent)] text-white shadow-sm"
-                                        : "text-[var(--text-secondary)] hover:bg-[var(--accent)]/10 hover:text-[var(--text-primary)]"
-                                    }
-                                `}
-                            >
-                                {item.label}
-                            </Link>
-                        );
-                    })}
+                            {/* Items */}
+                            <div className="flex flex-col gap-1">
+                                {section.items.map((item) => {
+                                    const active =
+                                        item.path === "/admin"
+                                            ? pathname === "/admin"
+                                            : pathname.startsWith(item.path);
+
+                                    return (
+                                        <Link
+                                            key={item.path}
+                                            href={item.path}
+                                            onClick={() => onClose?.()}
+                                            className={`
+                                                block px-4 py-2.5 rounded-lg font-medium transition-colors duration-200
+                                                ${active
+                                                    ? "bg-[var(--accent)] text-white shadow-sm"
+                                                    : "text-[var(--text-secondary)] hover:bg-[var(--accent)]/10 hover:text-[var(--text-primary)]"
+                                                }
+                                            `}
+                                        >
+                                            {item.label}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
                 </nav>
 
                 {/* Footer */}
-                <div className="mt-8 text-xs text-[var(--text-muted)] border-t border-[var(--text-muted)]/20 pt-4 text-center">
+                <div className="mt-10 text-xs text-[var(--text-muted)] border-t border-[var(--text-muted)]/20 pt-4 text-center">
                     © {new Date().getFullYear()} Coffee Admin
                 </div>
             </aside>

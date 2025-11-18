@@ -133,3 +133,92 @@ export interface CountData {
   news: number;
   contact: number;
 }
+
+/** -------------------------
+ * Stock: Ingredients
+ * ------------------------- */
+export interface Ingredient {
+  id: string;
+  name: string;
+  stock: number;      // จำนวนคงเหลือ
+  unit: string;       // เช่น ml, g, ชิ้น
+  updated_at?: string;
+}
+
+/** -------------------------
+ * Stock Log (ใช้ตอนหักสต๊อก)
+ * ------------------------- */
+export interface StockLog {
+  id: string;
+  orderId: string;
+  ingredientId: string;
+  amount: number;     // ที่ใช้จริง
+  created_at: string;
+}
+
+/** -------------------------
+ * Stock: Ingredient Update Payload
+ * ------------------------- */
+export interface IngredientUpdatePayload {
+  name?: string;
+  stock?: number;
+  unit?: string;
+  updated_at?: string;
+}
+
+/** -------------------------
+ * Stock: Recipes
+ * ------------------------- */
+export interface Recipe {
+  id: string;
+  menu_id: string;
+  ingredient_id: string;
+  quantity: number;
+}
+
+/** -------------------------
+ * Stock History Row (JOIN จาก stock_logs + ingredients)
+ * ------------------------- */
+export interface StockRow {
+  id: string;
+  ingredient_id: string;
+  amount: number;
+  type: string;
+  note: string | null;
+  order_id: string | null;
+  created_at: string;
+
+  // ฟิลด์ใหม่
+  before_stock: number | null;
+  after_stock: number | null;
+
+  ingredients?: {
+    id: string;
+    name: string;
+    unit: string;
+  };
+}
+
+/** -------------------------
+ * Stock: Deduct (POS triggers)
+ * ------------------------- */
+
+export interface DeductStockItem {
+  ingredient_id: string;
+  quantity: number; // ใช้งานต่อ 1 แก้วจากสูตร
+}
+export interface DeductStockInput {
+  order_id: string | null;
+  items: {
+    ingredient_id: string;
+    quantity: number;  // ใช้ต่อแก้ว
+    amount: number;    // จำนวนแก้ว
+  }[];
+  note?: string | null;
+}
+export interface DeductResult {
+  ingredient_id: string;
+  before_stock: number;
+  deduct: number;
+  after_stock: number;
+}

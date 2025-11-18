@@ -87,14 +87,24 @@ export default function CalendarPNL({ orders, range }: Props) {
             return s;
         }
 
+        // For 'year' and '5year' we must subtract calendar years (so startLocal matches backend)
+        if (range === "year" || range === "5year") {
+            const yearsBack = range === "year" ? 1 : 5;
+            const start = new Date(localToday.getFullYear() - yearsBack, localToday.getMonth(), localToday.getDate());
+            for (let d = new Date(start); d <= localToday; d.setDate(d.getDate() + 1)) {
+                s.add(toLocalISO(new Date(d)));
+            }
+            return s;
+        }
+
+        // For other ranges (week, month, etc.) use day-count but compute start from local midnight
         const days = RANGE_DAYS[range as Exclude<RangeType, "all">];
-        for (let i = 0; i < days; i++) {
-            const d = new Date(localToday);
-            d.setDate(localToday.getDate() - i);
-            s.add(toLocalISO(d));
+        const start = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate() - (days - 1));
+        for (let d = new Date(start); d <= localToday; d.setDate(d.getDate() + 1)) {
+            s.add(toLocalISO(new Date(d)));
         }
         return s;
-    }, [orders, range]);
+    }, [orders, range]);    
 
     // 3) Month list
     const monthList = React.useMemo(() => {

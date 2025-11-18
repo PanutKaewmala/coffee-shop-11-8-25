@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { OrderItem, MenuItem } from "@/lib/types";
+import type { OrderItem, MenuItem } from "@/lib/types";
+
+type MenuApiResponse =
+    | MenuItem[]
+    | { menu: MenuItem[] }
+    | Record<string, unknown>;
+
+type OrderApiResponse = {
+    success?: boolean;
+    error?: string;
+    order?: unknown;
+};
 
 export default function POSPage() {
     /* -------------------- STATE -------------------- */
@@ -14,10 +25,34 @@ export default function POSPage() {
         async function fetchMenu() {
             try {
                 const res = await fetch("/api/menu");
-                const data = await res.json();
-                setMenu(data.menu || []);
-            } catch (error) {
-                console.error("โหลดเมนูล้มเหลว:", error);
+                const text = await res.text();
+
+                let parsed: unknown;
+
+                try {
+                    parsed = JSON.parse(text);
+                } catch {
+                    console.error("❌ /api/menu ส่ง HTML หรือ invalid JSON:", text);
+                    return;
+                }
+
+                const data = parsed as MenuApiResponse;
+
+                let menuList: MenuItem[] = [];
+
+                if (Array.isArray(data)) {
+                    menuList = data;
+                } else if (
+                    typeof data === "object" &&
+                    data !== null &&
+                    Array.isArray((data as { menu?: unknown }).menu)
+                ) {
+                    menuList = (data as { menu: MenuItem[] }).menu;
+                }
+
+                setMenu(menuList);
+            } catch (err) {
+                console.error("โหลดเมนูล้มเหลว:", err);
             }
         }
 
@@ -26,6 +61,11 @@ export default function POSPage() {
 
     /* -------------------- ADD TO CART -------------------- */
     function addToCart(item: MenuItem) {
+        if (item.price == null) {
+            console.error("เมนูนี้ไม่มีราคา:", item);
+            return;
+        }
+
         setCart((prev) => {
             const exists = prev.find((c) => c.id === item.id);
 
@@ -47,14 +87,12 @@ export default function POSPage() {
         });
     }
 
-    /* -------------------- UPDATE QTY -------------------- */
     function increaseQty(id: string) {
         setCart((prev) =>
             prev.map((c) => (c.id === id ? { ...c, qty: c.qty + 1 } : c))
         );
     }
 
-    // ⭐️ ลดจำนวน - ถ้าเหลือ 0 ก็ลบออกเลย
     function decreaseQty(id: string) {
         setCart((prev) =>
             prev
@@ -65,23 +103,20 @@ export default function POSPage() {
         );
     }
 
-    // ⭐️ ลบเฉพาะรายการ
     function removeItem(id: string) {
         setCart((prev) => prev.filter((c) => c.id !== id));
     }
 
-    // ⭐️ ลบทั้งหมด
     function clearCart() {
         setCart([]);
     }
 
-    /* -------------------- CALCULATE TOTAL -------------------- */
+    /* -------------------- TOTAL -------------------- */
     const total = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
     /* -------------------- CHECKOUT -------------------- */
     async function checkout() {
         if (cart.length === 0) return;
-
         setLoading(true);
 
         try {
@@ -94,13 +129,30 @@ export default function POSPage() {
                 }),
             });
 
-            const data = await res.json();
+            const text = await res.text();
+
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(text);
+            } catch {
+                alert("⚠️ เซิร์ฟเวอร์ส่ง HTML แทน JSON (ดู console)");
+                console.error("RAW RESPONSE:", text);
+                return;
+            }
+
+            const data = parsed as OrderApiResponse;
+
+            if (!res.ok) {
+                alert(data.error ?? "ปิดบิลล้มเหลว");
+                return;
+            }
 
             if (data.success) {
                 setCart([]);
             }
-        } catch (error) {
-            console.error("ปิดบิลผิดพลาด:", error);
+        } catch (err) {
+            console.error("ปิดบิลผิดพลาด:", err);
+            alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
         }
 
         setLoading(false);
@@ -164,7 +216,6 @@ export default function POSPage() {
                                 </div>
                             </div>
 
-                            {/* Qty control + Remove */}
                             <div className="mt-2 flex gap-2">
                                 <button
                                     onClick={() => decreaseQty(item.id)}
@@ -194,14 +245,12 @@ export default function POSPage() {
                     ))}
                 </div>
 
-                {/* Summary */}
                 <div className="mt-4 border-t border-[var(--text-muted)]/20 pt-4">
                     <div className="flex justify-between text-lg font-bold text-text-primary">
                         <span>ยอดรวมทั้งหมด</span>
                         <span>{total} บาท</span>
                     </div>
 
-                    {/* ⭐ ปุ่มลบตะกร้าทั้งหมด */}
                     <button
                         onClick={clearCart}
                         disabled={cart.length === 0}

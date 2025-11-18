@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { OrderDetail, OrderItem } from "@/lib/types";
 import { ArrowLeft } from "lucide-react";
+import Card from "@/components/admin/Card";
+import Table from "@/components/admin/Table";
+import { OrderDetail, OrderItem } from "@/lib/types";
 
 export default function OrderDetailPage() {
     const { id } = useParams();
@@ -37,76 +39,65 @@ export default function OrderDetailPage() {
     if (loading) return <div className="p-6">กำลังโหลด...</div>;
     if (!order) return <div className="p-6">ไม่พบข้อมูลออเดอร์</div>;
 
+    /* -------------------------------------
+     * Table Data
+     * ----------------------------------- */
+    const itemHeaders = ["สินค้า", "จำนวน", "ราคา"];
+
+    const itemRows =
+        order.items.length === 0
+            ? []
+            : order.items.map((item: OrderItem) => [
+                item.name,
+                item.qty,
+                `${item.price * item.qty} บาท`,
+            ]);
+
     return (
-        <div className="p-6 text-text-primary">
-            {/* 🔙 กลับไปหน้า Orders */}
+        <div className="p-6 space-y-6 text-text-primary">
+            {/* กลับไป Orders */}
             <Link
                 href="/admin/orders"
                 className="
-                    inline-flex items-center gap-2 mb-6 
-                    text-[var(--text-secondary)]
-                    hover:text-[var(--text-primary)]
-                    transition
+                    inline-flex items-center gap-2 
+                    text-text-secondary hover:text-text-primary
+                    transition mb-4
                 "
             >
                 <ArrowLeft size={18} />
                 กลับไปหน้า Orders
             </Link>
 
-            <h1 className="text-3xl font-bold mb-6">รายละเอียดออเดอร์</h1>
-
             {/* Order Summary */}
-            <div className="mb-6 p-4 rounded-xl bg-surface border border-[var(--text-muted)]/20">
-                <div className="text-text-secondary">Order ID</div>
-                <div className="font-mono text-lg">{order.id}</div>
+            <Card title="รายละเอียดออเดอร์">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
+                    <div>
+                        <p className="text-text-secondary mb-1">Order ID</p>
+                        <p className="font-mono">{order.id}</p>
+                    </div>
 
-                <div className="mt-3 text-text-secondary">วันที่</div>
-                <div>{new Date(order.created_at).toLocaleString("th-TH")}</div>
+                    <div>
+                        <p className="text-text-secondary mb-1">วันที่</p>
+                        <p>{new Date(order.created_at).toLocaleString("th-TH")}</p>
+                    </div>
 
-                <div className="mt-3 text-text-secondary">ยอดรวม</div>
-                <div className="text-2xl font-bold">{order.total} บาท</div>
-            </div>
+                    <div>
+                        <p className="text-text-secondary mb-1">ยอดรวม</p>
+                        <p className="text-xl font-bold">{order.total} บาท</p>
+                    </div>
+                </div>
+            </Card>
 
-            {/* Items Table */}
-            <h2 className="text-xl font-bold mb-3">รายการสินค้า</h2>
-
-            <div className="rounded-xl overflow-hidden border border-[var(--text-muted)]/20 bg-surface">
-                <table className="w-full text-left">
-                    <thead className="bg-accent/10">
-                        <tr>
-                            <th className="p-4">สินค้า</th>
-                            <th className="p-4">จำนวน</th>
-                            <th className="p-4">ราคา</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        {order.items.length === 0 ? (
-                            <tr>
-                                <td
-                                    className="p-4 text-center text-text-secondary"
-                                    colSpan={3}
-                                >
-                                    ไม่มีสินค้าในออเดอร์นี้
-                                </td>
-                            </tr>
-                        ) : (
-                            order.items.map((item: OrderItem) => (
-                                <tr
-                                    key={item.id}
-                                    className="border-t border-[var(--text-muted)]/20"
-                                >
-                                    <td className="p-4">{item.name}</td>
-                                    <td className="p-4">{item.qty}</td>
-                                    <td className="p-4">
-                                        {item.price * item.qty} บาท
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
-            </div>
+            {/* Items */}
+            <Card title="รายการสินค้า">
+                {order.items.length === 0 ? (
+                    <div className="p-6 text-center text-text-secondary">
+                        ไม่มีสินค้าในออเดอร์นี้
+                    </div>
+                ) : (
+                    <Table headers={itemHeaders} data={itemRows} />
+                )}
+            </Card>
         </div>
     );
 }
