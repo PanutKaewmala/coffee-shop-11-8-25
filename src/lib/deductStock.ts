@@ -1,78 +1,33 @@
-// lib/deductStock.ts
-import { getSupabaseServer } from "./supabaseClient";
-import type {
-    DeductStockInput,
-    DeductResult,
-} from "./types";
+// src/lib/deductStock.ts
+import { getSupabaseServer } from "@/lib/supabaseClient";
+import type { Database } from "@/lib/database.types";
 
-/**
- * ตัดสต๊อกตามสูตรแบบ multi-ingredient
- */
-export async function deductStock(input: DeductStockInput) {
+type DeductRow =
+    Database["public"]["Functions"]["deduct_stock_atomic"]["Returns"][number];
+
+type DeductInput = {
+    order_id: string;
+    note: string;
+    items: { variant_id: string; qty: number }[];
+};
+
+type DeductResult =
+    | { success: true; error: ""; items: DeductRow[] }
+    | { success: false; error: string; items: DeductRow[] };
+
+export async function deductStock(input: DeductInput): Promise<DeductResult> {
     const supabase = getSupabaseServer();
-    const { order_id, items, note } = input;
 
-    const results: DeductResult[] = [];
+    // ✅ สำคัญ: ทำให้ชื่อ function เป็น literal type (แก้ TS union error)
+    const FN = "deduct_stock_atomic" as const;
 
-    for (const item of items) {
-        const ingredientId = item.ingredient_id;
+    const { data, error } = await supabase.rpc(FN, {
+        p_order_id: input.order_id,
+        p_note: input.note ?? "",
+        p_items: input.items,
+    });
 
-        // โหลด stock ปัจจุบัน
-        const { data: ing, error: ingErr } = await supabase
-            .from("ingredients")
-            .select("*")
-            .eq("id", ingredientId)
-            .single();
+    if (error) return { success: false, error: error.message, items: [] };
 
-        if (ingErr || !ing) {
-            throw new Error(`Ingredient not found: ${ingredientId}`);
-        }
-
-        const before = Number(ing.stock);
-        const deductAmount = item.quantity * item.amount; // ← ใช้อันนี้
-        const after = before - deductAmount;
-
-        if (after < 0) {
-            throw new Error(
-                `วัตถุดิบ "${ing.name}" ไม่พอ (ต้องใช้ ${deductAmount}, คงเหลือ ${before})`
-            );
-        }
-
-        // อัปเดตสต๊อก
-        const { error: upErr } = await supabase
-            .from("ingredients")
-            .update({ stock: after })
-            .eq("id", ingredientId);
-
-        if (upErr) {
-            throw new Error(`Update failed: ${upErr.message}`);
-        }
-
-        // บันทึก log
-        const { error: logErr } = await supabase.from("stock_logs").insert({
-            ingredient_id: ingredientId,
-            order_id,
-            amount: deductAmount,
-            type: "deduct",
-            note: note ?? null,
-            before_stock: before,
-            after_stock: after,
-        });
-
-        if (logErr) {
-            throw new Error(`Insert log failed: ${logErr.message}`);
-        }
-
-        results.push({
-            ingredient_id: ingredientId,
-            before_stock: before,
-            deduct: deductAmount,
-            after_stock: after,
-        });
-    }
-
-    return {
-        success: true,
-        items: results,
-    };
+    return { success: true, error: "", items: (data ?? []) as DeductRow[] };
 }
