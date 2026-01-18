@@ -5,12 +5,19 @@ import { useEffect, useMemo, useState } from "react";
 import Card from "@/components/admin/Card";
 import Chart from "@/components/admin/Chart";
 import CalendarPNL from "@/components/admin/CalendarPNL";
-import type { RevenueSummary, CountData, Order } from "@/lib/types";
+import type { RevenueSummary, Order } from "@/lib/types";
 
 const RANGES = ["today", "week", "month", "year", "5year", "all"] as const;
 type RangeType = (typeof RANGES)[number];
 
 export default function AdminDashboard() {
+    type CountData = {
+        menu: number;
+        branch: number;
+        news: number;
+        contact: number;
+    };
+    
     const [counts, setCounts] = useState<CountData>({ menu: 0, branch: 0, news: 0, contact: 0 });
     const [range, setRange] = useState<RangeType>("today");
     const [summary, setSummary] = useState<RevenueSummary | null>(null);

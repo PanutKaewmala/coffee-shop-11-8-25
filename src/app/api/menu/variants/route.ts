@@ -1,0 +1,435 @@
+// app/api/menu/variants/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseServer } from "@/lib/supabaseClient";
+
+export const dynamic = "force-dynamic";
+
+/* =========================
+   Types
+========================= */
+type UUID = string;
+
+type ServeTypeJoined = { id: UUID; name: string };
+
+type MenuVariantRow = {
+    id: UUID;
+    menu_id: UUID;
+    serve_type_id: UUID;
+    size: string; // NOT NULL
+    price_override: number | null;
+    image_url: string | null;
+    is_default: boolean;
+    created_at: string;
+};
+
+type MenuVariantJoinedRow = MenuVariantRow & {
+    serve_type: ServeTypeJoined | null; // many-to-one join -> object|null
+};
+
+type VariantView = {
+    id: UUID;
+    menu_id: UUID;
+    serve_type_id: UUID;
+    serve_type: ServeTypeJoined | null;
+    serve_type_name: string | null;
+    size: string;
+    price_override: number | null;
+    image_url: string | null;
+    is_default: boolean;
+    created_at: string;
+};
+
+type MenuVariantInsert = {
+    menu_id: UUID;
+    serve_type_id: UUID;
+    size: string;
+    price_override: number | null;
+    image_url: string | null;
+    is_default: boolean;
+};
+
+type MenuVariantUpdate = Partial<
+    Pick<MenuVariantRow, "size" | "price_override" | "image_url" | "is_default">
+>;
+
+/* =========================
+   Utils
+========================= */
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+
+function toStringOrNull(v: unknown): string | null {
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function toBool(v: unknown, fallback = false): boolean {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") {
+        const s = v.toLowerCase().trim();
+        if (s === "true" || s === "1") return true;
+        if (s === "false" || s === "0") return false;
+    }
+    if (typeof v === "number") return v === 1;
+    return fallback;
+}
+
+function toNumberOrNull(v: unknown): number | null {
+    if (v === null || v === undefined || v === "") return null;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+function toView(row: MenuVariantJoinedRow): VariantView {
+    return {
+        id: row.id,
+        menu_id: row.menu_id,
+        serve_type_id: row.serve_type_id,
+        serve_type: row.serve_type ?? null,
+        serve_type_name: row.serve_type?.name ?? null,
+        size: row.size,
+        price_override: row.price_override ?? null,
+        image_url: row.image_url ?? null,
+        is_default: Boolean(row.is_default),
+        created_at: row.created_at,
+    };
+}
+
+/**
+ * FK name ใน join ต้องตรงกับของจริงใน DB
+ * ของคุณ: menu_variants_serve_type_id_fkey
+ */
+const SELECT_JOIN = `
+  id,
+  menu_id,
+  serve_type_id,
+  size,
+  price_override,
+  image_url,
+  is_default,
+  created_at,
+  serve_type:menu_serve_types!menu_variants_serve_type_id_fkey (
+    id, name
+  )
+`;
+
+/**
+ * หา "ตัวแทน default" ในกลุ่มเดียวกัน (menu_id, serve_type_id) โดยไม่เอาตัวเดิม
+ * - ถ้าไม่มี => null
+ */
+async function findReplacementVariantId(args: {
+    supabase: ReturnType<typeof getSupabaseServer>;
+    menu_id: UUID;
+    serve_type_id: UUID;
+    exclude_id: UUID;
+}): Promise<UUID | null> {
+    const { supabase, menu_id, serve_type_id, exclude_id } = args;
+
+    const { data, error } = await supabase
+        .from("menu_variants")
+        .select("id")
+        .eq("menu_id", menu_id)
+        .eq("serve_type_id", serve_type_id)
+        .neq("id", exclude_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+    if (error) return null;
+    const first = (data ?? [])[0] as { id?: UUID } | undefined;
+    return first?.id ?? null;
+}
+
+/* =========================================================
+   GET /api/menu/variants
+========================================================= */
+export async function GET(req: NextRequest) {
+    try {
+        const supabase = getSupabaseServer();
+        const url = new URL(req.url);
+
+        const id = url.searchParams.get("id");
+        const menu_id = url.searchParams.get("menu_id");
+        const serve_type_id = url.searchParams.get("serve_type_id");
+        const is_default_q = url.searchParams.get("is_default");
+
+        if (id) {
+            const { data, error } = await supabase
+                .from("menu_variants")
+                .select(SELECT_JOIN)
+                .eq("id", id)
+                .single();
+
+            if (error || !data) {
+                return NextResponse.json(
+                    { error: error?.message ?? "Variant not found" },
+                    { status: 404 }
+                );
+            }
+
+            return NextResponse.json({
+                variant: toView(data as unknown as MenuVariantJoinedRow),
+            });
+        }
+
+        let q = supabase
+            .from("menu_variants")
+            .select(SELECT_JOIN)
+            .order("created_at", { ascending: false });
+
+        if (menu_id) q = q.eq("menu_id", menu_id);
+        if (serve_type_id) q = q.eq("serve_type_id", serve_type_id);
+        if (is_default_q !== null) q = q.eq("is_default", toBool(is_default_q));
+
+        const { data, error } = await q;
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+        const list = (data ?? []) as unknown as MenuVariantJoinedRow[];
+        return NextResponse.json({ variants: list.map(toView) });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Server error";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+}
+
+/* =========================================================
+   POST /api/menu/variants
+========================================================= */
+export async function POST(req: NextRequest) {
+    try {
+        const supabase = getSupabaseServer();
+        const raw = (await req.json().catch(() => null)) as unknown;
+
+        if (!isRecord(raw)) {
+            return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+
+        const menu_id = toStringOrNull(raw.menu_id);
+        const serve_type_id = toStringOrNull(raw.serve_type_id);
+        if (!menu_id || !serve_type_id) {
+            return NextResponse.json(
+                { error: "menu_id and serve_type_id are required" },
+                { status: 400 }
+            );
+        }
+
+        const size = toStringOrNull(raw.size) ?? "default"; // NOT NULL
+        const price_override = toNumberOrNull(raw.price_override);
+        const image_url = toStringOrNull(raw.image_url);
+        const is_default = toBool(raw.is_default, false);
+
+        if (is_default) {
+            const { error: unsetErr } = await supabase
+                .from("menu_variants")
+                .update({ is_default: false })
+                .eq("menu_id", menu_id)
+                .eq("serve_type_id", serve_type_id)
+                .eq("is_default", true);
+
+            if (unsetErr) return NextResponse.json({ error: unsetErr.message }, { status: 500 });
+        }
+
+        const payload: MenuVariantInsert = {
+            menu_id,
+            serve_type_id,
+            size,
+            price_override,
+            image_url: image_url ?? null,
+            is_default,
+        };
+
+        const { data, error } = await supabase
+            .from("menu_variants")
+            .insert(payload)
+            .select(SELECT_JOIN)
+            .single();
+
+        if (error || !data) {
+            return NextResponse.json(
+                { error: error?.message ?? "Failed to create variant" },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json(
+            { variant: toView(data as unknown as MenuVariantJoinedRow) },
+            { status: 201 }
+        );
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Server error";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+}
+
+/* =========================================================
+   PUT /api/menu/variants
+========================================================= */
+export async function PUT(req: NextRequest) {
+    try {
+        const supabase = getSupabaseServer();
+        const raw = (await req.json().catch(() => null)) as unknown;
+
+        if (!isRecord(raw)) {
+            return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+
+        const id = toStringOrNull(raw.id);
+        if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+        const { data: current, error: curErr } = await supabase
+            .from("menu_variants")
+            .select("id, menu_id, serve_type_id, is_default")
+            .eq("id", id)
+            .single();
+
+        if (curErr || !current) {
+            return NextResponse.json(
+                { error: curErr?.message ?? "Variant not found" },
+                { status: 404 }
+            );
+        }
+
+        const cur = current as { menu_id: UUID; serve_type_id: UUID; is_default: boolean };
+        const update: MenuVariantUpdate = {};
+
+        if ("size" in raw) update.size = toStringOrNull(raw.size) ?? "default";
+        if ("image_url" in raw) update.image_url = toStringOrNull(raw.image_url);
+        if ("price_override" in raw) update.price_override = toNumberOrNull(raw.price_override);
+
+        let requestedDefault: boolean | null = null;
+        if ("is_default" in raw) requestedDefault = toBool(raw.is_default);
+
+        if (requestedDefault === true) {
+            const { error: unsetErr } = await supabase
+                .from("menu_variants")
+                .update({ is_default: false })
+                .eq("menu_id", cur.menu_id)
+                .eq("serve_type_id", cur.serve_type_id)
+                .eq("is_default", true);
+
+            if (unsetErr) return NextResponse.json({ error: unsetErr.message }, { status: 500 });
+            update.is_default = true;
+        } else if (requestedDefault === false) {
+            // ✅ กัน “no default” ในกลุ่มเดียวกัน
+            if (cur.is_default) {
+                const replacementId = await findReplacementVariantId({
+                    supabase,
+                    menu_id: cur.menu_id,
+                    serve_type_id: cur.serve_type_id,
+                    exclude_id: id,
+                });
+
+                if (!replacementId) {
+                    return NextResponse.json(
+                        {
+                            error:
+                                "Cannot unset default: this is the last variant for this serve type. Create another variant first.",
+                        },
+                        { status: 400 }
+                    );
+                }
+
+                // promote ตัวอื่นให้เป็น default ก่อน
+                const { error: promoteErr } = await supabase
+                    .from("menu_variants")
+                    .update({ is_default: true })
+                    .eq("id", replacementId);
+
+                if (promoteErr) {
+                    return NextResponse.json({ error: promoteErr.message }, { status: 500 });
+                }
+            }
+
+            update.is_default = false;
+        }
+
+        if (Object.keys(update).length === 0) {
+            return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+        }
+
+        const { data, error } = await supabase
+            .from("menu_variants")
+            .update(update)
+            .eq("id", id)
+            .select(SELECT_JOIN)
+            .single();
+
+        if (error || !data) {
+            return NextResponse.json(
+                { error: error?.message ?? "Failed to update variant" },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({
+            variant: toView(data as unknown as MenuVariantJoinedRow),
+        });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Server error";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+}
+
+/* =========================================================
+   DELETE /api/menu/variants?id=...
+   ✅ FIX: if deleting default -> promote another variant first
+========================================================= */
+export async function DELETE(req: NextRequest) {
+    try {
+        const supabase = getSupabaseServer();
+        const id = new URL(req.url).searchParams.get("id");
+
+        if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+        // 1) read current row (need menu_id, serve_type_id, is_default)
+        const { data: current, error: curErr } = await supabase
+            .from("menu_variants")
+            .select("id, menu_id, serve_type_id, is_default")
+            .eq("id", id)
+            .single();
+
+        if (curErr || !current) {
+            return NextResponse.json(
+                { error: curErr?.message ?? "Variant not found" },
+                { status: 404 }
+            );
+        }
+
+        const cur = current as { menu_id: UUID; serve_type_id: UUID; is_default: boolean };
+
+        // 2) If deleting default, ensure a replacement default exists
+        if (cur.is_default) {
+            const replacementId = await findReplacementVariantId({
+                supabase,
+                menu_id: cur.menu_id,
+                serve_type_id: cur.serve_type_id,
+                exclude_id: id,
+            });
+
+            if (!replacementId) {
+                return NextResponse.json(
+                    {
+                        error:
+                            "Cannot delete the last default variant for this serve type. Create another variant first.",
+                    },
+                    { status: 400 }
+                );
+            }
+
+            const { error: promoteErr } = await supabase
+                .from("menu_variants")
+                .update({ is_default: true })
+                .eq("id", replacementId);
+
+            if (promoteErr) return NextResponse.json({ error: promoteErr.message }, { status: 500 });
+        }
+
+        // 3) delete
+        const { error } = await supabase.from("menu_variants").delete().eq("id", id);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+        return NextResponse.json({ success: true });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Server error";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+}

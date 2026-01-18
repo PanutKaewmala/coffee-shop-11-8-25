@@ -11,6 +11,7 @@ export default function ContactForm() {
         name: "",
         email: "",
         message: "",
+        category: "other", // ★ default category
     });
 
     const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export default function ContactForm() {
     const [error, setError] = useState<string | null>(null);
 
     const handleChange = (
-        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+        e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
     ) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -36,7 +37,6 @@ export default function ContactForm() {
                 body: JSON.stringify(formData),
             });
 
-            // response error type-safe
             const data = (await res.json()) as ApiError;
 
             if (!res.ok) {
@@ -44,7 +44,12 @@ export default function ContactForm() {
             }
 
             setSuccess("Message sent successfully!");
-            setFormData({ name: "", email: "", message: "" });
+            setFormData({
+                name: "",
+                email: "",
+                message: "",
+                category: "other",
+            });
         } catch (err: unknown) {
             if (err instanceof Error) {
                 setError(err.message);
@@ -106,7 +111,6 @@ export default function ContactForm() {
                 required
             />
 
-            {/* status message */}
             {success && <p className="text-green-400 text-sm">{success}</p>}
             {error && <p className="text-red-400 text-sm">{error}</p>}
 

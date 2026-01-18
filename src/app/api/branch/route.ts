@@ -3,29 +3,83 @@ import { getSupabaseServer } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 
 /* ---------------------------------------
-   GET - ดึงข้อมูลสาขาทั้งหมด
+   GET - ดึงข้อมูลสาขา (รองรับ search + primary + pagination)
 ---------------------------------------- */
 export async function GET(req: NextRequest) {
     const supabase = getSupabaseServer();
     const searchParams = req.nextUrl.searchParams;
+
+    // Query params
     const all = searchParams.get("all");
+    const search = searchParams.get("search")?.trim().toLowerCase() || "";
+    const primary = searchParams.get("primary") === "true";
 
-    let data, error;
+    const page = Number(searchParams.get("page")) || null;
+    const limit = Number(searchParams.get("limit")) || null;
 
-    if (all) {
-        // Admin: ดึงทั้งหมด
-        ({ data, error } = await supabase
+    /* -----------------------------------------
+     * 1) PAGINATED MODE (Admin table with filters)
+     * ----------------------------------------- */
+    if (page && limit) {
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+
+        // baseQuery = const (ไม่ต้อง reassignment)
+        const baseQuery = supabase
             .from("branch")
-            .select("*")
-            .order("created_at", { ascending: false }));
-    } else {
-        // Frontend: ดึง primary branch
-        ({ data, error } = await supabase
-            .from("branch")
-            .select("*")
-            .eq("is_primary", true)
-            .single());
+            .select("*", { count: "exact" });
+
+        const searchQuery = search
+            ? baseQuery.or(
+                `name.ilike.%${search}%,address.ilike.%${search}%`
+            )
+            : baseQuery;
+
+        const finalQuery = primary
+            ? searchQuery.eq("is_primary", true)
+            : searchQuery;
+
+        const { data, count, error } = await finalQuery
+            .order("created_at", { ascending: false })
+            .range(from, to);
+
+        if (error) {
+            console.error("Branch GET (paginated) →", error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({
+            data,
+            total: count,
+            page,
+            totalPages: Math.ceil((count || 0) / limit),
+        });
     }
+
+    /* -----------------------------------------
+     * 2) Admin: ดึงทั้งหมด (ไม่มี pagination)
+     * ----------------------------------------- */
+    if (all) {
+        const { data, error } = await supabase
+            .from("branch")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json(data);
+    }
+
+    /* -----------------------------------------
+     * 3) Frontend: ดึง primary branch เดียว
+     * ----------------------------------------- */
+    const { data, error } = await supabase
+        .from("branch")
+        .select("*")
+        .eq("is_primary", true)
+        .single();
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
