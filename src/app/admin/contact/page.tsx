@@ -1,118 +1,155 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+
 import Card from "@/components/admin/Card";
-import Table from "@/components/admin/Table";
+import Table from "@/components/admin/table/Table";
 import Modal from "@/components/admin/Modal";
+import Pagination from "@/components/admin/Pagination";
 import { Button } from "@/components/ui/button";
-import { ContactMessage } from "@/lib/types";
+
+import ContactFilter from "@/components/admin/ContactFilter";
+import SearchBox from "@/components/admin/search/SearchBox";
+import useContactSearch from "@/hooks/useContactSearch";
+
+import type { ContactRow, ContactCategory } from "@/lib/types";
+
+// badge style (ครอบคลุม enum ทั้งหมด + fallback)
+const categoryColor: Record<string, string> = {
+    praise: "bg-emerald-600 text-white",
+    issue: "bg-amber-600 text-white",
+    question: "bg-blue-600 text-white",
+    other: "bg-gray-600 text-white",
+    business: "bg-purple-600 text-white",
+    complaint: "bg-red-600 text-white",
+    feedback: "bg-green-600 text-white",
+};
+
+function safeCategory(c: ContactRow): ContactCategory | "other" {
+    // schema: category ไม่ null แต่กันไว้ให้ชัวร์
+    return (c.category ?? "other") as ContactCategory | "other";
+}
 
 export default function ContactAdminPage() {
-    const [contacts, setContacts] = useState<ContactMessage[]>([]);
-    const [loading, setLoading] = useState(true);
+    const {
+        loading,
+        contacts, // filtered + paginated
+        totalPages,
+        page,
+        setPage,
+        inputPage,
+        setInputPage,
+
+        filter,
+        setFilter,
+
+        reloadList,
+    } = useContactSearch({ rowsPerPage: 10 });
+
+    /* -------------------------
+       Modal State
+    ------------------------- */
     const [showModal, setShowModal] = useState(false);
-    const [selectedContact, setSelectedContact] = useState<ContactMessage | null>(null);
+    const [selectedContact, setSelectedContact] = useState<ContactRow | null>(null);
 
-    /* --------------------------
-         Fetch Contacts
-      ---------------------------*/
-    const fetchContacts = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch("/api/contact");
-            const json = await res.json();
-
-            if (!Array.isArray(json)) {
-                console.error("Unexpected response:", json);
-                setContacts([]);
-                return;
-            }
-
-            // ใช้ raw ตรง ๆ จาก DB
-            setContacts(json as ContactMessage[]);
-        } catch (err) {
-            console.error("fetchContacts error →", err);
-            setContacts([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchContacts();
-    }, []);
-
-    /* --------------------------
-         View Contact
-      ---------------------------*/
-    const handleView = (contact: ContactMessage) => {
-        setSelectedContact(contact);
+    const handleView = (c: ContactRow) => {
+        setSelectedContact(c);
         setShowModal(true);
     };
 
-    /* --------------------------
-         Delete Contact
-      ---------------------------*/
     const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this contact?")) return;
+        if (!confirm("Delete this message?")) return;
 
         try {
             const res = await fetch(`/api/contact?id=${id}`, { method: "DELETE" });
-            if (!res.ok) throw new Error("Delete failed");
-            await fetchContacts();
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                alert(j?.error || "Delete failed");
+                return;
+            }
+            await reloadList();
         } catch (err) {
-            console.error("delete error →", err);
+            console.error(err);
             alert("Failed to delete contact");
         }
     };
 
-    const headers = ["Name", "Email", "Message", "Date", "Actions"];
+    const headers = ["Name", "Email", "Message", "Category", "Date", "Actions"];
 
     return (
         <div className="p-6 space-y-6">
             <Card title="Customer Contacts">
+                {/* SEARCH */}
+                <SearchBox
+                    value={filter.search}
+                    setValue={(v) => setFilter({ ...filter, search: v })}
+                    placeholder="ค้นหา ชื่อ / อีเมล / ข้อความ"
+                />
+
+                {/* FILTER BAR */}
+                <ContactFilter filter={filter} setFilter={setFilter} />
+
+                {/* TABLE */}
                 {loading ? (
                     <p>Loading...</p>
                 ) : contacts.length === 0 ? (
-                    <p className="text-gray-400">No messages received yet.</p>
+                    <p className="text-gray-400">No messages found.</p>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <Table
-                            headers={headers}
-                            data={contacts.map((contact) => [
-                                contact.name,
-                                contact.email,
-                                contact.message.length > 50
-                                    ? contact.message.slice(0, 50) + "..."
-                                    : contact.message,
+                    <>
+                        <div className="overflow-x-auto">
+                            <Table
+                                headers={headers}
+                                data={contacts.map((c) => {
+                                    const email = c.email ?? "-";
+                                    const message = c.message ?? "-";
+                                    const cat = safeCategory(c);
 
-                                contact.created_at
-                                    ? new Date(contact.created_at).toLocaleString()
-                                    : "-",
+                                    return [
+                                        c.name,
+                                        email,
+                                        message.length > 50 ? message.slice(0, 50) + "..." : message,
 
-                                <div key={contact.id} className="flex flex-wrap gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleView(contact)}
-                                    >
-                                        View
-                                    </Button>
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        onClick={() => handleDelete(contact.id)}
-                                    >
-                                        Delete
-                                    </Button>
-                                </div>,
-                            ])}
+                                        <span
+                                            key={c.id + "-cat"}
+                                            className={`px-2 py-1 text-xs rounded-lg ${categoryColor[cat] ?? categoryColor.other
+                                                }`}
+                                        >
+                                            {cat}
+                                        </span>,
+
+                                        c.created_at ? new Date(c.created_at).toLocaleString() : "-",
+
+                                        <div key={c.id + "-act"} className="flex flex-wrap gap-2">
+                                            <Button variant="outline" size="sm" onClick={() => handleView(c)}>
+                                                View
+                                            </Button>
+
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => handleDelete(c.id)}
+                                            >
+                                                Delete
+                                            </Button>
+                                        </div>,
+                                    ];
+                                })}
+                            />
+                        </div>
+
+                        {/* PAGINATION */}
+                        <Pagination
+                            page={page}
+                            setPage={setPage}
+                            totalPages={totalPages}
+                            inputPage={inputPage}
+                            setInputPage={setInputPage}
                         />
-                    </div>
+                    </>
                 )}
             </Card>
 
-            {/* View Modal */}
+            {/* MODAL */}
             {showModal && selectedContact && (
                 <Modal
                     isOpen={showModal}
@@ -130,13 +167,28 @@ export default function ContactAdminPage() {
 
                         <div>
                             <p className="font-semibold">Email:</p>
-                            <p className="opacity-80">{selectedContact.email}</p>
+                            <p className="opacity-80">{selectedContact.email ?? "-"}</p>
+                        </div>
+
+                        <div>
+                            <p className="font-semibold">Category:</p>
+                            {(() => {
+                                const cat = safeCategory(selectedContact);
+                                return (
+                                    <span
+                                        className={`px-2 py-1 text-xs rounded-lg ${categoryColor[cat] ?? categoryColor.other
+                                            }`}
+                                    >
+                                        {cat}
+                                    </span>
+                                );
+                            })()}
                         </div>
 
                         <div>
                             <p className="font-semibold">Message:</p>
                             <p className="whitespace-pre-line opacity-80">
-                                {selectedContact.message}
+                                {selectedContact.message ?? "-"}
                             </p>
                         </div>
 
