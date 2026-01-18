@@ -7,7 +7,55 @@ interface TableProps {
     data: React.ReactNode[][];
     rowClassName?: (rowIndex: number) => string | undefined;
     cellClassName?: (rowIndex: number, colIndex: number) => string | undefined;
-    onRowClick?: (rowIndex: number) => void; // ⭐ เพิ่มใหม่
+    onRowClick?: (rowIndex: number) => void;
+}
+
+function isReactElement(x: unknown): x is React.ReactElement {
+    return React.isValidElement(x);
+}
+
+function safeStringify(value: unknown, max = 120) {
+    try {
+        const s = JSON.stringify(value);
+        if (!s) return "-";
+        return s.length > max ? s.slice(0, max) + "…" : s;
+    } catch {
+        return "[unserializable]";
+    }
+}
+
+function renderCell(cell: React.ReactNode) {
+    if (cell === null || cell === undefined || cell === false) return "-";
+
+    // React element (e.g. <img/>, <div/>)
+    if (isReactElement(cell)) return cell;
+
+    // primitive
+    if (typeof cell === "string" || typeof cell === "number") return cell;
+
+    // array of nodes
+    if (Array.isArray(cell)) {
+        // if it's array of primitives/elements, render them
+        return (
+            <span className="inline-flex flex-wrap gap-1">
+                {cell.map((c, i) => (
+                    <span key={i}>{renderCell(c)}</span>
+                ))}
+            </span>
+        );
+    }
+
+    // object / everything else -> stringify (prevents [object Object])
+    if (typeof cell === "object") {
+        return (
+            <span className="font-mono text-xs text-[var(--text-muted)]">
+                {safeStringify(cell)}
+            </span>
+        );
+    }
+
+    // fallback
+    return String(cell);
 }
 
 const Table: React.FC<TableProps> = ({
@@ -15,14 +63,21 @@ const Table: React.FC<TableProps> = ({
     data,
     rowClassName,
     cellClassName,
-    onRowClick, // ⭐ รับ prop ใหม่
+    onRowClick,
 }) => {
     return (
         <div className="w-full">
-
             {/* Desktop */}
-            <div className="hidden sm:block overflow-x-auto">
-                <table className="min-w-full border border-[var(--text-muted)]/20 divide-y divide-[var(--text-muted)]/20 rounded-xl overflow-hidden">
+            <div className="hidden sm:block overflow-visible">
+                <table
+                    className="
+            min-w-full
+            border border-[var(--text-muted)]/20
+            divide-y divide-[var(--text-muted)]/20
+            rounded-xl
+            overflow-visible
+          "
+                >
                     <thead className="bg-[var(--surface)]/80 backdrop-blur-sm">
                         <tr>
                             {headers.map((header) => (
@@ -50,22 +105,24 @@ const Table: React.FC<TableProps> = ({
                             data.map((row, rowIndex) => (
                                 <tr
                                     key={rowIndex}
-                                    onClick={() => onRowClick?.(rowIndex)} // ⭐ event click
+                                    onClick={() => onRowClick?.(rowIndex)}
                                     className={`
-                                        hover:bg-[var(--accent)]/10 transition-colors
-                                        ${onRowClick ? "cursor-pointer" : ""}
-                                        ${rowClassName ? rowClassName(rowIndex) : ""}
-                                    `}
+                    group relative
+                    hover:bg-[var(--accent)]/10 transition-colors
+                    ${onRowClick ? "cursor-pointer" : ""}
+                    ${rowClassName ? rowClassName(rowIndex) : ""}
+                  `}
                                 >
                                     {row.map((cell, colIndex) => (
                                         <td
                                             key={colIndex}
                                             className={`
-                                                px-4 py-2.5 text-sm text-[var(--text-secondary)]
-                                                ${cellClassName ? cellClassName(rowIndex, colIndex) : ""}
-                                            `}
+                        px-4 py-2.5 text-sm text-[var(--text-secondary)]
+                        relative
+                        ${cellClassName ? cellClassName(rowIndex, colIndex) : ""}
+                      `}
                                         >
-                                            {cell}
+                                            {renderCell(cell)}
                                         </td>
                                     ))}
                                 </tr>
@@ -75,7 +132,7 @@ const Table: React.FC<TableProps> = ({
                 </table>
             </div>
 
-            {/* Mobile (Card view) */}
+            {/* Mobile */}
             <div className="sm:hidden space-y-4">
                 {data.length === 0 ? (
                     <div className="text-center text-[var(--text-muted)]">
@@ -85,29 +142,27 @@ const Table: React.FC<TableProps> = ({
                     data.map((row, rowIndex) => (
                         <div
                             key={rowIndex}
-                            onClick={() => onRowClick?.(rowIndex)} // ⭐ event click
+                            onClick={() => onRowClick?.(rowIndex)}
                             className={`
-                                border border-[var(--text-muted)]/20 rounded-xl p-4 bg-[var(--surface)] shadow-sm
-                                ${onRowClick ? "cursor-pointer" : ""}
-                                ${rowClassName ? rowClassName(rowIndex) : ""}
-                            `}
+                border border-[var(--text-muted)]/20 rounded-xl p-4 bg-[var(--surface)] shadow-sm
+                ${onRowClick ? "cursor-pointer" : ""}
+                ${rowClassName ? rowClassName(rowIndex) : ""}
+              `}
                         >
                             {row.map((cell, colIndex) => (
                                 <div
                                     key={colIndex}
-                                    className="flex justify-between py-1 text-sm text-[var(--text-secondary)]"
+                                    className="flex justify-between gap-3 py-1 text-sm text-[var(--text-secondary)]"
                                 >
                                     <span className="font-medium text-[var(--text-primary)]/80">
                                         {headers[colIndex]}
                                     </span>
                                     <span
                                         className={
-                                            cellClassName
-                                                ? cellClassName(rowIndex, colIndex)
-                                                : ""
+                                            cellClassName ? cellClassName(rowIndex, colIndex) : ""
                                         }
                                     >
-                                        {cell}
+                                        {renderCell(cell)}
                                     </span>
                                 </div>
                             ))}

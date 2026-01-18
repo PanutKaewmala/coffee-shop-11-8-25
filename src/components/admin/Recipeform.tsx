@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Recipe, Ingredient, MenuItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+
+import {
+    Select,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+    SelectItem,
+} from "@/components/ui/select";
 
 interface Props {
     menuItems: MenuItem[];
@@ -12,6 +20,24 @@ interface Props {
     onClose: () => void;
 }
 
+function normalizeQtyString(raw: string): string {
+    const s = raw.trim();
+    if (s === "" || s === ".") return "";
+    // strip leading zeros (keep "0.x" safe)
+    // e.g. "01" -> "1", "00012" -> "12", "01.5" -> "1.5"
+    if (/^0+\d/.test(s)) return String(Number(s));
+    return s;
+}
+
+function parsePositiveQty(raw: string): { ok: true; value: number } | { ok: false; reason: string } {
+    const s = raw.trim();
+    if (s === "" || s === ".") return { ok: false, reason: "กรุณากรอกจำนวน" };
+    const n = Number(s);
+    if (!Number.isFinite(n)) return { ok: false, reason: "จำนวนไม่ถูกต้อง" };
+    if (n <= 0) return { ok: false, reason: "ต้องมากกว่า 0" };
+    return { ok: true, value: n };
+}
+
 export default function RecipeForm({
     menuItems,
     ingredients,
@@ -19,10 +45,22 @@ export default function RecipeForm({
     onSave,
     onClose,
 }: Props) {
-
     const [menuId, setMenuId] = useState(initialData?.menu_id ?? "");
     const [ingredientId, setIngredientId] = useState(initialData?.ingredient_id ?? "");
-    const [quantity, setQuantity] = useState<number>(initialData?.quantity ?? 0);
+
+    // ✅ P1: quantity as string (allow "")
+    const [quantity, setQuantity] = useState<string>(
+        initialData?.quantity ? String(initialData.quantity) : ""
+    );
+
+    // simple inline error for UX
+    const [error, setError] = useState<string | null>(null);
+
+    // label for unit/helper
+    const unitLabel = useMemo(() => {
+        const ing = ingredients.find((i) => i.id === ingredientId);
+        return ing?.unit ? String(ing.unit) : null;
+    }, [ingredients, ingredientId]);
 
     // Auto-select default values when adding
     useEffect(() => {
@@ -35,13 +73,23 @@ export default function RecipeForm({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, menuItems, ingredients]);
 
+    // clear error when user changes fields
+    useEffect(() => {
+        if (error) setError(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [menuId, ingredientId, quantity]);
+
     const handleSubmit = () => {
-        if (!menuId || !ingredientId || quantity <= 0) return;
+        if (!menuId) return setError("กรุณาเลือกเมนู");
+        if (!ingredientId) return setError("กรุณาเลือกวัตถุดิบ");
+
+        const parsed = parsePositiveQty(quantity);
+        if (!parsed.ok) return setError(parsed.reason);
 
         onSave({
             menu_id: menuId,
             ingredient_id: ingredientId,
-            quantity,
+            quantity: parsed.value,
         });
     };
 
@@ -53,67 +101,61 @@ export default function RecipeForm({
                 </h2>
 
                 <div className="space-y-4">
-
                     {/* Menu */}
                     <div>
-                        <label htmlFor="menu" className="block mb-1 font-medium text-text-secondary">
+                        <label className="block mb-1 font-medium text-text-secondary">
                             Menu
                         </label>
 
-                        <select
-                            id="menu"
-                            value={menuId}
-                            onChange={(e) => setMenuId(e.target.value)}
-                            className="
-                                w-full p-2 rounded-lg 
-                                bg-background
-                                border border-text-muted/40
-                                text-text-primary
-                                focus:outline-none focus:border-accent
-                            "
-                        >
-                            {menuItems.map((m) => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                        </select>
+                        <Select value={menuId} onValueChange={setMenuId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select menu" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                                {menuItems.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Ingredient */}
                     <div>
-                        <label htmlFor="ingredient" className="block mb-1 font-medium text-text-secondary">
+                        <label className="block mb-1 font-medium text-text-secondary">
                             Ingredient
                         </label>
 
-                        <select
-                            id="ingredient"
-                            value={ingredientId}
-                            onChange={(e) => setIngredientId(e.target.value)}
-                            className="
-                                w-full p-2 rounded-lg 
-                                bg-background
-                                border border-text-muted/40
-                                text-text-primary
-                                focus:outline-none focus:border-accent
-                            "
-                        >
-                            {ingredients.map((i) => (
-                                <option key={i.id} value={i.id}>
-                                    {i.name} ({i.unit})
-                                </option>
-                            ))}
-                        </select>
+                        <Select value={ingredientId} onValueChange={setIngredientId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select ingredient" />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                                {ingredients.map((i) => (
+                                    <SelectItem key={i.id} value={i.id}>
+                                        {i.name} {i.unit ? `(${i.unit})` : ""}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Quantity */}
                     <div>
-                        <label htmlFor="quantity" className="block mb-1 font-medium text-text-secondary">
+                        <label className="block mb-1 font-medium text-text-secondary">
                             Quantity (per drink)
                         </label>
+
                         <input
-                            id="quantity"
-                            type="number"
                             value={quantity}
-                            onChange={(e) => setQuantity(Number(e.target.value))}
+                            onChange={(e) => setQuantity(e.target.value)}
+                            onBlur={() => setQuantity((prev) => normalizeQtyString(prev))}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            placeholder="เช่น 30"
                             className="
                                 w-full p-2 rounded-lg
                                 bg-background
@@ -122,6 +164,16 @@ export default function RecipeForm({
                                 focus:outline-none focus:border-accent
                             "
                         />
+
+                        <div className="mt-1 text-xs text-text-secondary">
+                            ต้องมากกว่า 0{unitLabel ? ` • หน่วย: ${unitLabel}` : ""}
+                        </div>
+
+                        {error ? (
+                            <div className="mt-2 text-sm text-red-400">
+                                {error}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
 
