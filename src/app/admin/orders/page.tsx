@@ -1,205 +1,224 @@
+// app/admin/orders/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { Order, OrderItem } from "@/lib/types";
+import { useMemo } from "react";
+
 import Card from "@/components/admin/Card";
-import Table from "@/components/admin/Table";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import Table from "@/components/admin/table/Table";
+import Pagination from "@/components/admin/Pagination";
+import OrderItemsTooltip from "@/components/admin/OrderItemsTooltip";
+import SearchBox from "@/components/admin/search/SearchBox";
+import QuickDateFilter from "@/components/admin/QuickDateFilter";
+import useOrdersSearch from "@/hooks/useOrdersSearch";
+
+import type { OrderItem } from "@/lib/types";
+
+type DateFilter = "all" | "today" | "yesterday" | "7days" | "month";
+
+type OrderRow = {
+    id: string;
+    total: number;
+    created_at: string;
+    items?: OrderItem[];
+};
+
+function formatMoneyTHB(n: number) {
+    return new Intl.NumberFormat("th-TH").format(n);
+}
+
+function safeDateTH(dateStr: string) {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toLocaleString("th-TH");
+}
+
+function shortId(id: string) {
+    return id?.length > 10 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+}
 
 export default function AdminOrdersPage() {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [loading, setLoading] = useState(true);
+    const {
+        loading,
+        search,
+        setSearch,
+        dateFilter,
+        setDateFilter,
+        filteredOrders,
+        paginatedOrders,
+        totalSales,
+        page,
+        setPage,
+        inputPage,
+        setInputPage,
+        totalPages,
+    } = useOrdersSearch({ rowsPerPage: 20, initialFilter: "today" });
 
-    /* -------------------- PAGINATION -------------------- */
-    const [page, setPage] = useState(1);
-    const [inputPage, setInputPage] = useState(String(1)); // controlled string input
-    const rowsPerPage = 20;
+    const paidCount = filteredOrders.length; // ตอนนี้ถือว่า paid-only
+    const avgOrder = useMemo(() => {
+        if (paidCount <= 0) return 0;
+        return totalSales / paidCount;
+    }, [totalSales, paidCount]);
 
-    const totalPages = useMemo(() => {
-        return Math.max(1, Math.ceil(orders.length / rowsPerPage));
-    }, [orders.length]);
+    const headers = ["#", "Order ID", "Items", "Total", "Date"];
 
-    // keep inputPage in sync when page changes programmatically
-    useEffect(() => {
-        setInputPage(String(page));
-    }, [page]);
+    const rows = useMemo(() => {
+        const list = paginatedOrders as unknown as OrderRow[];
 
-    const paginatedOrders = useMemo(() => {
-        const start = (page - 1) * rowsPerPage;
-        const end = start + rowsPerPage;
-        return orders.slice(start, end);
-    }, [orders, page]);
-
-    /* -------------------- LOAD ORDERS -------------------- */
-    useEffect(() => {
-        async function fetchOrders() {
-            try {
-                const res = await fetch("/api/orders");
-                const data = await res.json();
-                setOrders(Array.isArray(data.orders) ? data.orders : []);
-            } catch (err) {
-                console.error("โหลดออเดอร์ผิดพลาด:", err);
-            }
-            setLoading(false);
-        }
-        fetchOrders();
-    }, []);
-
-    /* -------------------- TOTAL SALES -------------------- */
-    const totalSales = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-
-    /* -------------------- TABLE HEADERS -------------------- */
-    const headers = ["Order ID", "Items", "Total", "Date"];
-
-    /* -------------------- TABLE ROWS -------------------- */
-    const rows = paginatedOrders
-        .slice()
-        .sort(
-            (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime()
-        )
-        .map((order) => {
-            const count = Array.isArray(order.items)
-                ? order.items.reduce((sum, i: OrderItem) => sum + i.qty, 0)
-                : 0;
+        return list.map((order, idx) => {
+            const items = Array.isArray(order.items) ? order.items : [];
 
             return [
+                <span key={`idx-${order.id}`} className="text-text-secondary">
+                    {(page - 1) * 20 + (idx + 1)}
+                </span>,
+
                 <Link
-                    key={order.id}
+                    key={`id-${order.id}`}
                     href={`/admin/orders/${order.id}`}
                     className="text-accent hover:underline font-mono"
+                    title={order.id}
                 >
-                    {order.id}
+                    {shortId(order.id)}
                 </Link>,
 
-                `${count} รายการ`,
+                <OrderItemsTooltip key={`items-${order.id}`} items={items} />,
 
-                `${order.total} บาท`,
+                <span key={`total-${order.id}`} className="tabular-nums text-right block">
+                    {formatMoneyTHB(order.total)} บาท
+                </span>,
 
-                new Date(order.created_at).toLocaleString("th-TH"),
+                <span key={`date-${order.id}`} className="text-text-secondary">
+                    {safeDateTH(order.created_at)}
+                </span>,
             ];
         });
+    }, [paginatedOrders, page]);
 
-    /* -------------------- HANDLE PAGE CHANGE -------------------- */
-    const nextPage = () => {
-        if (page < totalPages) setPage((p) => {
-            const np = p + 1;
-            return np;
-        });
-    };
-
-    const prevPage = () => {
-        if (page > 1) setPage((p) => {
-            const np = p - 1;
-            return np;
-        });
-    };
-
-    const commitInputPage = () => {
-        // if input is empty, do nothing (stay on current page)
-        if (inputPage.trim() === "") {
-            setInputPage(String(page)); // reset UI to current page
-            return;
-        }
-
-        const val = Number(inputPage);
-        if (!Number.isFinite(val) || val < 1 || val > totalPages) {
-            // invalid -> reset display to current page
-            setInputPage(String(page));
-            return;
-        }
-
-        // valid
-        setPage(val);
-    };
+    const isEmpty = !loading && filteredOrders.length === 0;
+    const showReset = search.trim().length > 0 || dateFilter !== "today";
 
     return (
-        <div className="p-6 space-y-6">
-            <Card title="รายการออเดอร์ทั้งหมด">
-                {loading ? (
-                    <p className="p-4">Loading...</p>
-                ) : (
-                    <>
-                        {/* Summary Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div className="p-4 rounded-xl bg-card border border-border/40">
-                                <div className="text-text-secondary">ยอดขายรวม</div>
-                                <div className="text-3xl font-bold mt-1">
-                                    {totalSales} บาท
-                                </div>
-                            </div>
+        <div className="p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+                <Card title="รายการออเดอร์ทั้งหมด">
+                    {/* FILTER + SEARCH */}
+                    <div className="space-y-3">
+                        <QuickDateFilter
+                            dateFilter={dateFilter as DateFilter}
+                            setDateFilter={(v) => {
+                                setDateFilter(v as DateFilter);
+                                setPage(1);
+                                setInputPage("1");
+                            }}
+                        />
 
-                            <div className="p-4 rounded-xl bg-card border border-border/40">
-                                <div className="text-text-secondary">จำนวนออเดอร์</div>
-                                <div className="text-3xl font-bold mt-1">
-                                    {orders.length} รายการ
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Orders Table */}
-                        <Table headers={headers} data={rows} />
-
-                        {/* Pagination */}
-                        <div className="flex flex-col md:flex-row items-center justify-center gap-3 mt-6">
-
-                            {/* Page input */}
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    placeholder="หน้า"
-                                    value={inputPage}
-                                    onChange={(e) => {
-                                        // allow empty string or numeric characters only
-                                        const v = e.target.value;
-                                        if (v === "" || /^[0-9]*$/.test(v)) {
-                                            setInputPage(v);
-                                        }
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1">
+                                <SearchBox
+                                    value={search}
+                                    setValue={(v) => {
+                                        setSearch(v);
+                                        setPage(1);
+                                        setInputPage("1");
                                     }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            commitInputPage();
-                                        }
-                                    }}
-                                    onBlur={() => commitInputPage()}
-                                    className="
-                                        w-20 px-2 py-1 text-center rounded-lg 
-                                        bg-card border border-border/40 
-                                        focus:outline-none focus:ring-1 focus:ring-accent
-                                    "
+                                    placeholder="ค้นหา Order ID / วันที่ / เวลา"
                                 />
                             </div>
 
-                            {/* Prev */}
-                            <button
-                                onClick={prevPage}
-                                disabled={page === 1}
-                                className="p-2 rounded-lg border border-border/40 hover:bg-border/10 disabled:opacity-30"
-                            >
-                                <ChevronLeft size={18} />
-                            </button>
-
-                            {/* Page indicator */}
-                            <span className="text-sm text-text-secondary">
-                                {page} / {totalPages}
-                            </span>
-
-                            {/* Next */}
-                            <button
-                                onClick={nextPage}
-                                disabled={page === totalPages}
-                                className="p-2 rounded-lg border border-border/40 hover:bg-border/10 disabled:opacity-30"
-                            >
-                                <ChevronRight size={18} />
-                            </button>
+                            {showReset && (
+                                <button
+                                    type="button"
+                                    className="text-sm text-accent hover:underline whitespace-nowrap"
+                                    onClick={() => {
+                                        setSearch("");
+                                        setDateFilter("today" as DateFilter);
+                                        setPage(1);
+                                        setInputPage("1");
+                                    }}
+                                >
+                                    รีเซ็ต
+                                </button>
+                            )}
                         </div>
-                    </>
-                )}
-            </Card>
+                    </div>
+
+                    {loading ? (
+                        <div className="mt-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
+                                    <div className="h-4 w-28 bg-border/40 rounded" />
+                                    <div className="h-8 w-44 bg-border/40 rounded mt-3" />
+                                </div>
+                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
+                                    <div className="h-4 w-28 bg-border/40 rounded" />
+                                    <div className="h-8 w-28 bg-border/40 rounded mt-3" />
+                                </div>
+                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
+                                    <div className="h-4 w-24 bg-border/40 rounded" />
+                                    <div className="h-8 w-36 bg-border/40 rounded mt-3" />
+                                </div>
+                            </div>
+
+                            <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
+                                <div className="h-10 w-full bg-border/30 rounded" />
+                                <div className="h-10 w-full bg-border/20 rounded mt-3" />
+                                <div className="h-10 w-full bg-border/10 rounded mt-3" />
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* SUMMARY */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 mb-6">
+                                <div className="p-4 rounded-xl bg-card border border-border/40">
+                                    <div className="text-text-secondary">ยอดขายรวม</div>
+                                    <div className="text-3xl font-bold mt-1 tabular-nums">
+                                        {formatMoneyTHB(totalSales)} บาท
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl bg-card border border-border/40">
+                                    <div className="text-text-secondary">จำนวนออเดอร์</div>
+                                    <div className="text-3xl font-bold mt-1 tabular-nums">
+                                        {filteredOrders.length} รายการ
+                                    </div>
+                                </div>
+
+                                <div className="p-4 rounded-xl bg-card border border-border/40">
+                                    <div className="text-text-secondary">บิลเฉลี่ย (AOV)</div>
+                                    <div className="text-3xl font-bold mt-1 tabular-nums">
+                                        {formatMoneyTHB(avgOrder)} บาท
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* EMPTY */}
+                            {isEmpty ? (
+                                <div className="p-6 rounded-xl bg-card border border-border/40 text-center">
+                                    <div className="text-lg font-semibold">ไม่เจอออเดอร์</div>
+                                    <div className="text-text-secondary mt-1">
+                                        ลองเปลี่ยนช่วงเวลา หรือเคลียร์คำค้นหา
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {/* TABLE */}
+                                    <Table headers={headers} data={rows} />
+
+                                    {/* PAGINATION */}
+                                    <Pagination
+                                        page={page}
+                                        setPage={setPage}
+                                        totalPages={totalPages}
+                                        inputPage={inputPage}
+                                        setInputPage={setInputPage}
+                                    />
+                                </>
+                            )}
+                        </>
+                    )}
+                </Card>
+            </div>
         </div>
     );
 }
