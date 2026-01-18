@@ -1,369 +1,585 @@
+// app/admin/stock/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import Link from "next/link";
+
 import Card from "@/components/admin/Card";
-import Table from "@/components/admin/Table";
-import Modal from "@/components/admin/Modal";          // ⭐ เพิ่ม
-import { StockRow, Ingredient } from "@/lib/types";
+import QuickDateFilter from "@/components/admin/QuickDateFilter";
+import SearchBox from "@/components/admin/search/SearchBox";
+import Table from "@/components/admin/table/Table";
+import Modal from "@/components/admin/Modal";
+import Pagination from "@/components/admin/Pagination";
 
+import useStockSearch, { StockEvent, CriticalItem } from "@/hooks/useStockSearch";
+
+/* =========================
+   Helpers
+========================= */
+function fmtTimeShortTH(iso: string) {
+    const d = new Date(iso);
+    return d.toLocaleString("th-TH", {
+        year: "2-digit",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+}
+
+function fmtTimeFullTH(iso: string) {
+    return new Date(iso).toLocaleString("th-TH");
+}
+
+function fmtSignedImpactCompact(ev: StockEvent) {
+    const parts: string[] = [];
+    const addPart = (n: number, unit: string) => {
+        if (!n) return;
+        const sign = n > 0 ? "+" : "−";
+        parts.push(`${sign}${Math.abs(n)} ${unit}`);
+    };
+
+    addPart(ev.impact_by_unit.g || 0, "g");
+    addPart(ev.impact_by_unit.ml || 0, "ml");
+    addPart(ev.impact_by_unit.piece || 0, "ชิ้น");
+
+    if (!parts.length) return "-";
+    if (parts.length <= 2) return parts.join(" • ");
+    return `${parts[0]} • ${parts[1]} (+${parts.length - 2})`;
+}
+
+function fmtSignedImpactFull(ev: StockEvent) {
+    const parts: string[] = [];
+    const addPart = (n: number, unit: string) => {
+        if (!n) return;
+        const sign = n > 0 ? "+" : "−";
+        parts.push(`${sign}${Math.abs(n)} ${unit}`);
+    };
+    addPart(ev.impact_by_unit.g || 0, "g");
+    addPart(ev.impact_by_unit.ml || 0, "ml");
+    addPart(ev.impact_by_unit.piece || 0, "ชิ้น");
+    return parts.length ? parts.join(" • ") : "-";
+}
+
+function rowFlags(ev: StockEvent) {
+    const flags: string[] = [];
+    if (ev.flags?.has_big_amount) flags.push("⚠");
+    if (ev.flags?.manual_adjust) flags.push("🛠");
+    return flags.length ? flags.join(" ") : "";
+}
+
+function fmtAbs(n: number) {
+    return Math.round(Math.abs(n));
+}
+
+function fmtUnitBlock(label: string, val: number, unit: string) {
+    const n = fmtAbs(val);
+    if (!n) return null;
+    return (
+        <div className="text-xs text-[var(--text-muted)]">
+            {label ? (
+                <span className="text-[var(--text-muted)] mr-2">{label}</span>
+            ) : null}
+            <span className="text-sm font-semibold text-[var(--text)]">{n}</span>{" "}
+            <span className="text-[var(--text-muted)]">{unit}</span>
+        </div>
+    );
+}
+
+function criticalChip(c: CriticalItem) {
+    const danger = c.status === "out";
+    const txt = danger ? "หมด" : "ใกล้หมด";
+    const badge = danger ? "🔴" : "🟡";
+    return `${badge} ${txt}`;
+}
+
+function criticalNumberText(c: CriticalItem) {
+    const s = Math.round(c.current_stock);
+    const m = Math.round(c.min_stock);
+    return `${s}/${m} ${c.base_unit}`;
+}
+
+type OrderHintLine = {
+    menu_name: string;
+    serve_type: string | null;
+    size: string | null;
+    qty: number;
+};
+
+function buildOrderMenuHint(lines?: OrderHintLine[]) {
+    if (!lines || lines.length === 0) return null;
+
+    const sorted = [...lines].sort((a, b) => b.qty - a.qty || a.menu_name.localeCompare(b.menu_name));
+    const top = sorted[0];
+
+    const meta: string[] = [];
+    if (top.serve_type) meta.push(top.serve_type);
+    if (top.size && top.size !== "default") meta.push(top.size);
+
+    const metaText = meta.length ? ` (${meta.join(" / ")})` : "";
+    const more = sorted.length > 1 ? ` +อีก ${sorted.length - 1}` : "";
+
+    return `ขาย: ${top.menu_name}${metaText} x${top.qty}${more}`;
+}
+
+function hintForReference(ev: StockEvent) {
+    const orderHint = buildOrderMenuHint(ev.order_menu_lines as unknown as OrderHintLine[] | undefined);
+    if (ev.order_id && orderHint) return orderHint;
+    if (ev.subtitle) return ev.subtitle;
+    if (ev.note) return ev.note;
+    return "-";
+}
+
+/* =========================
+   Page
+========================= */
 export default function StockHistoryPage() {
-    const [logs, setLogs] = useState<StockRow[]>([]);
-    const [ingredients, setIngredients] = useState<Ingredient[]>([]);
-    const [loading, setLoading] = useState(true);
+    const {
+        loading,
+        loadingKpi,
+        loadingCritical,
 
-    // FILTER STATES
-    const [filterIngredient, setFilterIngredient] = useState<string>("");
-    const [filterType, setFilterType] = useState<string>("");
-    const [filterDate, setFilterDate] = useState<string>("");
+        // events
+        events,
+        paginatedEvents,
+        page,
+        setPage,
+        inputPage,
+        setInputPage,
+        totalPages,
 
-    // --------------------------------------------------------------
-    // Fetch stock logs
-    // --------------------------------------------------------------
-    async function fetchStock() {
-        try {
-            setLoading(true);
-            const res = await fetch("/api/stock");
-            const data = await res.json();
-            setLogs(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error("fetchStock error:", err);
-        } finally {
-            setLoading(false);
-        }
-    }
+        // filters
+        dateFilter,
+        setDateFilter,
+        search,
+        setSearch,
 
-    // --------------------------------------------------------------
-    // Fetch ingredients
-    // --------------------------------------------------------------
-    async function fetchIngredients() {
-        try {
-            const res = await fetch("/api/ingredients");
-            const data = await res.json();
-            setIngredients(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error("fetchIngredients error:", err);
-        }
-    }
+        // decision area
+        kpi,
+        criticalItems,
+        criticalCount,
+    } = useStockSearch({ rowsPerPage: 20, initialFilter: "7days" });
 
-    useEffect(() => {
-        fetchStock();
-        fetchIngredients();
-    }, []);
-
-    // --------------------------------------------------------------
-    // Filtering
-    // --------------------------------------------------------------
-    const filteredLogs = useMemo(() => {
-        let result = logs;
-
-        if (filterIngredient) {
-            result = result.filter(
-                (row) => row.ingredient_id === filterIngredient
-            );
-        }
-
-        if (filterType) {
-            result = result.filter((row) => row.type === filterType);
-        }
-
-        if (filterDate) {
-            const now = new Date();
-
-            result = result.filter((row) => {
-                const created = new Date(row.created_at);
-
-                if (filterDate === "today") {
-                    return created.toDateString() === now.toDateString();
-                }
-
-                if (filterDate === "yesterday") {
-                    const y = new Date();
-                    y.setDate(now.getDate() - 1);
-                    return created.toDateString() === y.toDateString();
-                }
-
-                if (filterDate === "7") {
-                    const d = new Date();
-                    d.setDate(now.getDate() - 7);
-                    return created >= d;
-                }
-
-                if (filterDate === "30") {
-                    const d = new Date();
-                    d.setDate(now.getDate() - 30);
-                    return created >= d;
-                }
-
-                return true;
-            });
-        }
-
-        return result;
-    }, [logs, filterIngredient, filterType, filterDate]);
-
-    // --------------------------------------------------------------
-    // Badge
-    // --------------------------------------------------------------
-    const renderTypeBadge = (t: string) => {
-        let label = "";
-        let classes =
-            "px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ";
-
-        switch (t) {
-            case "increase":
-                label = "เพิ่มสต๊อก";
-                classes += "bg-green-500/15 text-green-700";
-                break;
-
-            case "decrease":
-                label = "ลดสต๊อก";
-                classes += "bg-red-500/15 text-red-700";
-                break;
-
-            case "set":
-                label = "ตั้งค่าใหม่";
-                classes += "bg-yellow-500/20 text-yellow-800";
-                break;
-
-            case "deduct":
-                label = "ตัดตามออเดอร์";
-                classes += "bg-blue-500/15 text-blue-700";
-                break;
-
-            default:
-                label = t;
-                classes += "bg-gray-500/10 text-gray-700";
-        }
-
-        return <span className={classes}>{label}</span>;
-    };
-
-    // --------------------------------------------------------------
-    // Group Logs by Date
-    // --------------------------------------------------------------
-    const groupedLogs = useMemo(() => {
-        const groups: Record<string, StockRow[]> = {};
-
-        filteredLogs.forEach((log) => {
-            const d = new Date(log.created_at);
-            const key = d.toISOString().split("T")[0];
-
-            if (!groups[key]) groups[key] = [];
-            groups[key].push(log);
-        });
-
-        return Object.entries(groups)
-            .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-            .map(([date, items]) => ({ date, items }));
-    }, [filteredLogs]);
-
-    const formatDateTH = (isoDate: string) => {
-        const d = new Date(isoDate);
-        return d.toLocaleDateString("th-TH", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-        });
-    };
-
-    // --------------------------------------------------------------
-    // Collapse State
-    // --------------------------------------------------------------
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-    const toggleDay = (date: string) => {
-        setCollapsed((prev) => ({
-            ...prev,
-            [date]: !prev[date],
-        }));
-    };
-
-    // --------------------------------------------------------------
-    // Modal State (⭐⭐ เพิ่ม)
-    // --------------------------------------------------------------
-    const [selectedLog, setSelectedLog] = useState<StockRow | null>(null);
+    /* Modal */
+    const [selectedEvent, setSelectedEvent] = useState<StockEvent | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const openModal = (groupDate: string, rowIndex: number) => {
-        const log = groupedLogs
-            .find((g) => g.date === groupDate)
-            ?.items[rowIndex];
-
-        if (!log) return;
-
-        setSelectedLog(log);
+    const openEvent = (ev: StockEvent) => {
+        setSelectedEvent(ev);
         setIsModalOpen(true);
     };
-
-    const closeModal = () => {
-        setSelectedLog(null);
+    const closeEvent = () => {
+        setSelectedEvent(null);
         setIsModalOpen(false);
     };
 
-    // --------------------------------------------------------------
-    // RENDER UI
-    // --------------------------------------------------------------
-    const headers = [
-        "วันที่",
-        "วัตถุดิบ",
-        "จำนวน",
-        "ประเภท",
-        "Order ID",
-        "หมายเหตุ",
-    ];
+    // ✅ ใหม่: 3 columns แบบร้านจริง
+    const headers = ["เวลา", "ขายอะไร / เหตุการณ์", "ตัด/เพิ่มอะไร"];
+
+    const rows = useMemo(() => {
+        return paginatedEvents.map((ev) => {
+            const timeText = fmtTimeShortTH(ev.happened_at);
+            const flags = rowFlags(ev);
+
+            const ref = hintForReference(ev);
+            const impact = fmtSignedImpactCompact(ev);
+
+            const actionLabel =
+                ev.type === "deduct" ? "ตัดสต็อก" : ev.type === "add" ? "เพิ่มสต็อก" : "ปรับสต็อก";
+
+            return [
+                <div key={`${ev.event_id}-time`} className="whitespace-nowrap">
+                    <div className="font-medium tabular-nums">{timeText}</div>
+                    <div className="text-xs text-[var(--text-muted)]">{actionLabel}</div>
+                </div>,
+
+                <div key={`${ev.event_id}-what`} className="min-w-0">
+                    <div className="font-medium truncate flex items-center gap-2">
+                        <span className="truncate">{ev.title}</span>
+                        {flags ? (
+                            <span className="text-xs text-[var(--text-muted)]">{flags}</span>
+                        ) : null}
+                    </div>
+
+                    <div className="text-sm truncate mt-0.5">{ref}</div>
+
+                    {ev.order_id ? (
+                        <div className="text-xs text-[var(--text-muted)] truncate mt-0.5">
+                            Order #{String(ev.order_id).slice(0, 10)}…
+                        </div>
+                    ) : null}
+                </div>,
+
+                <div key={`${ev.event_id}-impact`} className="whitespace-nowrap">
+                    <div className="text-sm font-semibold">{impact}</div>
+                    <div className="text-xs text-[var(--text-muted)]">
+                        {actionLabel}: {ev.items_count} รายการ
+                    </div>
+                </div>,
+            ];
+        });
+    }, [paginatedEvents]);
+
+    // Top items in modal
+    const topItems = useMemo(() => {
+        if (!selectedEvent) return [];
+        const items = selectedEvent.items ?? [];
+        const sorted = [...items].sort((a, b) => {
+            const aScore = a.delta != null ? Math.abs(a.delta) : Math.abs(Number(a.amount ?? 0));
+            const bScore = b.delta != null ? Math.abs(b.delta) : Math.abs(Number(b.amount ?? 0));
+            return bScore - aScore;
+        });
+        return sorted.slice(0, 3);
+    }, [selectedEvent]);
+
+    const criticalTop = useMemo(() => {
+        const out = criticalItems.filter((x) => x.status === "out");
+        const low = criticalItems.filter((x) => x.status === "low");
+        return [...out, ...low].slice(0, 8);
+    }, [criticalItems]);
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="ประวัติสต๊อก (Stock History)">
-
-                {/* FILTER BAR */}
-                <div className="flex flex-wrap items-center gap-3 mb-4">
-
-                    {/* FILTER INGREDIENT */}
-                    <select
-                        className="bg-background border border-[var(--text-muted)]/20 p-2 rounded-lg"
-                        value={filterIngredient}
-                        onChange={(e) => setFilterIngredient(e.target.value)}
-                    >
-                        <option value="">วัตถุดิบทั้งหมด</option>
-                        {ingredients.map((ing) => (
-                            <option key={ing.id} value={ing.id}>
-                                {ing.name}
-                            </option>
-                        ))}
-                    </select>
-
-                    {/* FILTER TYPE */}
-                    <select
-                        className="bg-background border border-[var(--text-muted)]/20 p-2 rounded-lg"
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
-                    >
-                        <option value="">ประเภททั้งหมด</option>
-                        <option value="increase">เพิ่มสต๊อก</option>
-                        <option value="decrease">ลดสต๊อก</option>
-                        <option value="set">ตั้งค่ายอดใหม่</option>
-                        <option value="deduct">ตัดสต๊อกจากออเดอร์</option>
-                    </select>
-
-                    {/* FILTER DATE */}
-                    <select
-                        className="bg-background border border-[var(--text-muted)]/20 p-2 rounded-lg"
-                        value={filterDate}
-                        onChange={(e) => setFilterDate(e.target.value)}
-                    >
-                        <option value="">ทุกช่วงเวลา</option>
-                        <option value="today">วันนี้</option>
-                        <option value="yesterday">เมื่อวาน</option>
-                        <option value="7">7 วันล่าสุด</option>
-                        <option value="30">30 วันล่าสุด</option>
-                    </select>
-                </div>
-
-                {/* TABLE */}
-                {loading ? (
-                    <p>กำลังโหลด...</p>
-                ) : groupedLogs.length === 0 ? (
-                    <p className="text-[var(--text-muted)]">ไม่พบข้อมูล</p>
-                ) : (
-                    groupedLogs.map((group) => (
-                        <div key={group.date} className="mb-8">
-
-                            {/* Day Header */}
-                            <div
-                                className="text-lg font-semibold text-text-primary mb-2 flex items-center justify-between cursor-pointer select-none"
-                                onClick={() => toggleDay(group.date)}
-                            >
-                                <span>{formatDateTH(group.date)}</span>
-                                <span className="text-base text-text-secondary">
-                                    {collapsed[group.date] ? "▸" : "▾"}
-                                </span>
+            {/* =========================
+               KPI + Critical (Decision Area)
+            ========================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* KPI */}
+                <Card title="สรุปช่วงเวลา">
+                    <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="text-sm">
+                                <div className="text-[var(--text-muted)]">สถานะคลัง</div>
+                                <div className="text-2xl font-semibold leading-tight">
+                                    {loadingKpi ? "…" : String(criticalCount || kpi.critical_count || 0)}
+                                    <span className="text-sm text-[var(--text-muted)] ml-2">รายการวิกฤต</span>
+                                </div>
                             </div>
 
-                            {/* Table For Each Group */}
-                            {!collapsed[group.date] && (
-                                <Table
-                                    headers={headers}
-                                    data={group.items.map((row) => [
-                                        new Date(row.created_at).toLocaleString("th-TH"),
-                                        row.ingredients?.name ?? "-",
-                                        `${row.amount} ${row.ingredients?.unit ?? ""}`,
-                                        renderTypeBadge(row.type),
-                                        row.order_id ?? "-",
-                                        row.note ?? "-",
-                                    ])}
-                                    onRowClick={(i) => openModal(group.date, i)}   // ⭐ NEW
-                                />
-                            )}
+                            <Link
+                                href="/admin/ingredients"
+                                className="text-sm px-3 py-2 rounded-lg border border-white/10 hover:bg-white/5"
+                            >
+                                ไปหน้าวัตถุดิบ →
+                            </Link>
                         </div>
-                    ))
+
+                        <div className="rounded-xl border border-white/10 p-3 bg-white/5">
+                            <div className="text-xs text-[var(--text-muted)] mb-2">เข้า / ออก (ตาม base unit)</div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-lg border border-white/10 p-3 bg-black/20">
+                                    <div className="text-xs text-[var(--text-muted)] mb-2">เข้า (Add)</div>
+                                    {loadingKpi ? (
+                                        <div className="text-sm text-[var(--text-muted)]">กำลังโหลด…</div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {fmtUnitBlock("", kpi.inflow.g, "g")}
+                                            {fmtUnitBlock("", kpi.inflow.ml, "ml")}
+                                            {fmtUnitBlock("", kpi.inflow.piece, "ชิ้น")}
+                                            {!fmtAbs(kpi.inflow.g) &&
+                                                !fmtAbs(kpi.inflow.ml) &&
+                                                !fmtAbs(kpi.inflow.piece) ? (
+                                                <div className="text-sm text-[var(--text-muted)]">-</div>
+                                            ) : null}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-lg border border-white/10 p-3 bg-black/20">
+                                    <div className="text-xs text-[var(--text-muted)] mb-2">ออก (Deduct)</div>
+                                    {loadingKpi ? (
+                                        <div className="text-sm text-[var(--text-muted)]">กำลังโหลด…</div>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {fmtUnitBlock("", kpi.outflow.g, "g")}
+                                            {fmtUnitBlock("", kpi.outflow.ml, "ml")}
+                                            {fmtUnitBlock("", kpi.outflow.piece, "ชิ้น")}
+                                            {!fmtAbs(kpi.outflow.g) &&
+                                                !fmtAbs(kpi.outflow.ml) &&
+                                                !fmtAbs(kpi.outflow.piece) ? (
+                                                <div className="text-sm text-[var(--text-muted)]">-</div>
+                                            ) : null}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="text-xs text-[var(--text-muted)]">
+                            * ตัวเลขนี้ช่วย “จับความผิดปกติ” ได้ไว (ของเข้าเยอะแต่ขายไม่ขึ้น / ของออกแรงผิดปกติ)
+                        </div>
+                    </div>
+                </Card>
+
+                {/* Critical list */}
+                <div className="lg:col-span-2">
+                    <Card title="ใกล้หมด / หมดแล้ว (ต้องจัดการก่อน)">
+                        {loadingCritical ? (
+                            <p>กำลังโหลด...</p>
+                        ) : criticalTop.length === 0 ? (
+                            <div className="rounded-xl border border-white/10 p-4 bg-white/5">
+                                <div className="text-sm font-semibold">✅ วันนี้สบาย</div>
+                                <div className="text-xs text-[var(--text-muted)]">
+                                    ไม่มีวัตถุดิบต่ำกว่า min_stock
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {criticalTop.map((c) => (
+                                    <div
+                                        key={c.ingredient_id}
+                                        className="rounded-xl border border-white/10 p-3 bg-white/5 flex items-start justify-between gap-3"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="font-semibold truncate">{c.name}</div>
+                                            <div className="text-xs text-[var(--text-muted)] mt-1 flex items-center gap-2">
+                                                <span className="px-2 py-0.5 rounded-full border border-white/10 bg-black/20">
+                                                    {criticalChip(c)}
+                                                </span>
+                                                <span className="truncate">{criticalNumberText(c)}</span>
+                                            </div>
+                                        </div>
+
+                                        <Link
+                                            href="/admin/ingredients"
+                                            className="text-xs px-3 py-2 rounded-lg border border-white/10 hover:bg-white/5 whitespace-nowrap"
+                                        >
+                                            ปรับสต็อก →
+                                        </Link>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-3 text-xs text-[var(--text-muted)]">
+                            Tip: ตั้ง min_stock ให้ของ “พังร้าน” (นม/กาแฟ/น้ำแข็ง) สูงไว้ก่อน แล้วค่อยไล่ปรับ
+                        </div>
+                    </Card>
+                </div>
+            </div>
+
+            {/* =========================
+               Timeline (Logs / Events)
+            ========================= */}
+            <Card title="ประวัติสต็อก">
+                <QuickDateFilter dateFilter={dateFilter} setDateFilter={setDateFilter} />
+
+                <SearchBox
+                    value={search}
+                    setValue={setSearch}
+                    placeholder="ค้นหา: วัตถุดิบ / เมนู / Order / หมายเหตุ"
+                />
+
+                {loading ? (
+                    <p>กำลังโหลด...</p>
+                ) : events.length === 0 ? (
+                    <p className="text-[var(--text-muted)]">ไม่พบข้อมูล</p>
+                ) : (
+                    <>
+                        <Table
+                            headers={headers}
+                            data={rows}
+                            onRowClick={(i) => {
+                                const ev = paginatedEvents[i];
+                                if (ev) openEvent(ev);
+                            }}
+                        />
+
+                        <div className="mt-4">
+                            <Pagination
+                                page={page}
+                                setPage={setPage}
+                                inputPage={inputPage}
+                                setInputPage={setInputPage}
+                                totalPages={totalPages}
+                            />
+                            <div className="mt-2 text-xs text-[var(--text-muted)]">
+                                แสดง {paginatedEvents.length} จาก {events.length} รายการ
+                            </div>
+                        </div>
+                    </>
                 )}
             </Card>
 
-            {/* Modal Detail */}
-            {isModalOpen && selectedLog && (
-                <Modal
-                    isOpen={isModalOpen}
-                    onClose={closeModal}
-                    title="รายละเอียดสต๊อก"
-                >
-                    <div className="space-y-4">
-
-                        {/* วันที่ */}
-                        <div className="text-sm">
-                            <strong>วันที่:</strong>{" "}
-                            {new Date(selectedLog.created_at).toLocaleString("th-TH")}
-                        </div>
-
-                        {/* วัตถุดิบ */}
-                        <div className="text-sm">
-                            <strong>วัตถุดิบ:</strong>{" "}
-                            {selectedLog.ingredients?.name ?? "-"}
-                        </div>
-
-                        {/* Before / After */}
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <strong>ก่อนปรับ:</strong>{" "}
-                                {selectedLog.before_stock ?? "-"}{" "}
-                                {selectedLog.ingredients?.unit ?? ""}
+            {/* =========================
+               Detail modal (เหมือนเดิม)
+            ========================= */}
+            {isModalOpen && selectedEvent ? (
+                <Modal isOpen={isModalOpen} onClose={closeEvent} title="รายละเอียดเหตุการณ์">
+                    <div className="space-y-4 text-sm">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-base font-semibold truncate flex items-center gap-2">
+                                    <span className="truncate">{selectedEvent.title}</span>
+                                    {rowFlags(selectedEvent) ? (
+                                        <span className="text-xs text-[var(--text-muted)]">
+                                            {rowFlags(selectedEvent)}
+                                        </span>
+                                    ) : null}
+                                </div>
+                                {selectedEvent.order_id ? (
+                                    <div className="text-xs text-[var(--text-muted)] truncate">
+                                        Order #{String(selectedEvent.order_id).slice(0, 18)}…
+                                    </div>
+                                ) : selectedEvent.subtitle ? (
+                                    <div className="text-xs text-[var(--text-muted)] truncate">
+                                        {selectedEvent.subtitle}
+                                    </div>
+                                ) : null}
                             </div>
-                            <div>
-                                <strong>หลังปรับ:</strong>{" "}
-                                {selectedLog.after_stock ?? "-"}{" "}
-                                {selectedLog.ingredients?.unit ?? ""}
+                            <div className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                                {fmtTimeFullTH(selectedEvent.happened_at)}
                             </div>
                         </div>
 
-                        {/* จำนวนที่ปรับ */}
-                        <div className="text-sm">
-                            <strong>จำนวนที่ปรับ:</strong>{" "}
-                            {selectedLog.amount ?? "-"}{" "}
-                            {selectedLog.ingredients?.unit ?? ""}
+                        {/* Context / Reference */}
+                        <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-xs text-[var(--text-muted)]">อ้างอิง</div>
+                                <div className="font-semibold">{fmtSignedImpactFull(selectedEvent)}</div>
+                            </div>
+
+                            {selectedEvent.order_id && selectedEvent.order_menu_lines?.length ? (
+                                <div className="mt-2">
+                                    <div className="text-xs text-[var(--text-muted)] mb-2">
+                                        เมนูในออเดอร์ ({selectedEvent.order_menu_lines.length})
+                                    </div>
+                                    <div className="space-y-2">
+                                        {selectedEvent.order_menu_lines.map((l) => {
+                                            const meta: string[] = [];
+                                            if (l.serve_type) meta.push(l.serve_type);
+                                            if (l.size && l.size !== "default") meta.push(l.size);
+                                            const metaText = meta.length ? ` (${meta.join(" / ")})` : "";
+                                            return (
+                                                <div
+                                                    key={l.order_item_id}
+                                                    className="rounded-lg border border-white/10 px-3 py-2 bg-black/20 flex items-center justify-between gap-3"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <div className="truncate font-medium">
+                                                            {l.menu_name}
+                                                            <span className="text-xs text-[var(--text-muted)]">
+                                                                {metaText}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs text-[var(--text-muted)]">
+                                                            x{l.qty} • {l.price} บาท
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-sm">{hintForReference(selectedEvent)}</div>
+                            )}
+
+                            {selectedEvent.note ? (
+                                <div className="text-xs text-[var(--text-muted)]">หมายเหตุ: {selectedEvent.note}</div>
+                            ) : null}
                         </div>
 
-                        {/* ประเภท */}
-                        <div className="text-sm">
-                            <strong>ประเภท:</strong>{" "}
-                            {renderTypeBadge(selectedLog.type)}
-                        </div>
+                        {/* Top 3 impact */}
+                        {topItems.length ? (
+                            <div className="rounded-xl border border-white/10 p-3">
+                                <div className="text-xs text-[var(--text-muted)] mb-2">กระทบหนักสุด (Top 3)</div>
+                                <div className="space-y-2">
+                                    {topItems.map((it) => {
+                                        const delta = it.delta ?? null;
+                                        const dSign = delta == null ? "" : delta > 0 ? "+" : "−";
+                                        const dAbs = delta == null ? 0 : Math.abs(delta);
 
-                        {/* Order ID */}
-                        <div className="text-sm">
-                            <strong>Order ID:</strong>{" "}
-                            {selectedLog.order_id ?? "-"}
-                        </div>
+                                        return (
+                                            <div
+                                                key={`top-${it.id}`}
+                                                className="rounded-lg border border-white/10 px-3 py-2 flex items-center justify-between gap-3 bg-white/5"
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="truncate font-medium">
+                                                        {it.ingredient_name ?? "-"}
+                                                        {it.flags.big_amount ? (
+                                                            <span className="ml-2 text-xs text-red-500">⚠</span>
+                                                        ) : null}
+                                                    </div>
+                                                    {delta != null ? (
+                                                        <div className="text-xs text-[var(--text-muted)]">
+                                                            Δ {dSign}
+                                                            {dAbs} {it.unit ?? ""}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-xs text-[var(--text-muted)]">
+                                                            ปริมาณ {it.amount} {it.unit ?? ""}
+                                                        </div>
+                                                    )}
+                                                </div>
 
-                        {/* หมายเหตุ */}
-                        <div className="text-sm">
-                            <strong>หมายเหตุ:</strong>{" "}
-                            {selectedLog.note || "-"}
+                                                <div className="text-right whitespace-nowrap">
+                                                    <div className="font-semibold">
+                                                        {it.amount} {it.unit ?? ""}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {/* All ingredient impacts */}
+                        <div className="rounded-xl border border-white/10 p-3">
+                            <div className="text-xs text-[var(--text-muted)] mb-2">
+                                ผลกระทบวัตถุดิบ ({selectedEvent.items_count})
+                            </div>
+
+                            <div className="space-y-2">
+                                {selectedEvent.items.map((it) => {
+                                    const delta = it.delta ?? null;
+                                    const dSign = delta == null ? "" : delta > 0 ? "+" : "−";
+                                    const dAbs = delta == null ? 0 : Math.abs(delta);
+
+                                    return (
+                                        <div
+                                            key={it.id}
+                                            className="rounded-lg border border-white/10 px-3 py-2 flex items-center justify-between gap-3"
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="truncate font-medium">
+                                                    {it.ingredient_name ?? "-"}
+                                                    {it.flags.big_amount ? (
+                                                        <span className="ml-2 text-xs text-red-500">⚠</span>
+                                                    ) : null}
+                                                </div>
+
+                                                {delta != null ? (
+                                                    <div className="text-xs">
+                                                        <span className="text-[var(--text-muted)]">Δ</span>{" "}
+                                                        <span className="font-semibold">
+                                                            {dSign}
+                                                            {dAbs}
+                                                        </span>{" "}
+                                                        <span className="text-[var(--text-muted)]">{it.unit ?? ""}</span>
+                                                    </div>
+                                                ) : null}
+
+                                                <div className="text-xs text-[var(--text-muted)]">
+                                                    ก่อน {it.before_stock ?? "-"} → หลัง {it.after_stock ?? "-"}
+                                                </div>
+                                            </div>
+
+                                            <div className="font-semibold whitespace-nowrap">
+                                                {it.amount} {it.unit ?? ""}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 </Modal>
-            )}
-
+            ) : null}
         </div>
     );
 }
