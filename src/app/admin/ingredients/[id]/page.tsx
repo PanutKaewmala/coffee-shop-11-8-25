@@ -1,0 +1,738 @@
+// app/admin/ingredients/[id]/page.tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+
+import Card from "@/components/admin/Card";
+import { Button } from "@/components/ui/button";
+import AdjustStockForm from "@/components/admin/AdjustStockForm";
+
+import { BASE_UNIT_LABEL } from "@/lib/units";
+
+type UUID = string;
+
+type BaseUnit = "ml" | "g" | "piece";
+type StockStatus = "ok" | "low" | "out";
+type StockLogType = "deduct" | "add" | "adjust";
+
+type IngredientLite = {
+    id: UUID;
+    name: string;
+    stock: number;
+    base_unit: BaseUnit;
+    unit: string | null;
+    min_stock: number;
+    updated_at: string | null;
+};
+
+type StockLogItem = {
+    id: UUID;
+    ingredient_id: UUID;
+    order_id: string | null;
+    amount: number;
+    type: StockLogType;
+    note: string | null;
+    before_stock: number | null;
+    after_stock: number | null;
+    created_at: string;
+};
+
+type AnalyticsTopMenu = {
+    menu_id: UUID;
+    menu_name: string;
+    total_used: number;
+};
+
+type AnalyticsResponse = {
+    ingredient: {
+        id: UUID;
+        name: string;
+        stock: number;
+        base_unit: BaseUnit | string;
+        unit: string | null;
+        min_stock?: number;
+        updated_at?: string | null;
+    };
+    avgDailyUsage7?: number;
+    totalUsage7?: number;
+    todayUsage?: number;
+    daysLeft?: number | null;
+    daysLeftLabel?: string;
+    abnormalToday?: boolean;
+    abnormalLabel?: string;
+    topMenus?: AnalyticsTopMenu[];
+};
+
+type StockEventItemFromApi = {
+    id?: unknown;
+    ingredient_id?: unknown;
+    amount?: unknown;
+    before_stock?: unknown;
+    after_stock?: unknown;
+};
+
+type StockEventFromApi = {
+    type?: unknown;
+    note?: unknown;
+    order_id?: unknown;
+    happened_at?: unknown;
+    items?: unknown;
+};
+
+type StockEventsResponse = {
+    events?: unknown;
+};
+
+/* =========================
+   Small utils (no any)
+========================= */
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+function toStringOrNull(v: unknown): string | null {
+    if (typeof v !== "string") return null;
+    const s = v.trim();
+    return s ? s : null;
+}
+function toNumber(v: unknown, fallback = 0): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+function normalizeBaseUnitFromLegacyUnit(u: unknown): BaseUnit {
+    const s = typeof u === "string" ? u.trim().toLowerCase() : "";
+    if (["ml", "มล.", "มล", "milliliter"].includes(s)) return "ml";
+    if (["g", "กรัม", "กร", "gram"].includes(s)) return "g";
+    return "piece";
+}
+function pickBaseUnit(v: unknown, fallback: BaseUnit): BaseUnit {
+    if (v === "ml" || v === "g" || v === "piece") return v;
+    return fallback;
+}
+function formatDT(v: unknown): string {
+    const s = toStringOrNull(v);
+    if (!s) return "-";
+    const d = new Date(s);
+    if (!Number.isFinite(d.getTime())) return "-";
+    return d.toLocaleString("th-TH");
+}
+function shortId(id: string, n = 10) {
+    const s = (id ?? "").trim();
+    if (!s) return "-";
+    return s.length <= n ? s : `${s.slice(0, n)}…`;
+}
+
+function startOfDay(d: Date) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+function inLastNDays(iso: string, days: number): boolean {
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return false;
+    const now = new Date();
+    const from = startOfDay(now).getTime() - (days - 1) * 24 * 60 * 60 * 1000;
+    return t >= from && t <= now.getTime();
+}
+function isSameLocalDay(iso: string, base: Date): boolean {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return false;
+    return (
+        d.getFullYear() === base.getFullYear() &&
+        d.getMonth() === base.getMonth() &&
+        d.getDate() === base.getDate()
+    );
+}
+
+function getStockStatus(stock: number, minStock: number): StockStatus {
+    if (stock <= 0) return "out";
+    if (stock <= minStock) return "low";
+    return "ok";
+}
+
+function StatusBadge({ status }: { status: StockStatus }) {
+    if (status === "out") {
+        return (
+            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/20">
+                หมด
+            </span>
+        );
+    }
+    if (status === "low") {
+        return (
+            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-300 border border-yellow-500/20">
+                ใกล้หมด
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/20">
+            ปกติ
+        </span>
+    );
+}
+
+function TypeBadge({ type }: { type: StockLogType }) {
+    const base =
+        "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium border border-white/10";
+    if (type === "add") return <span className={`${base} bg-green-500/10 text-green-200`}>เพิ่ม</span>;
+    if (type === "deduct") return <span className={`${base} bg-white/10 text-[var(--text-secondary)]`}>ตัดออก</span>;
+    return <span className={`${base} bg-blue-500/10 text-blue-200`}>ปรับยอด</span>;
+}
+
+function parseStockLogType(v: unknown): StockLogType {
+    const s = toStringOrNull(v);
+    if (s === "add" || s === "deduct" || s === "adjust") return s;
+    return "adjust";
+}
+
+// ✅ แปลง /api/stock (events) -> logs flat list + filter เฉพาะ ingredientId
+function extractLogsFromStockEvents(data: unknown, ingredientId: string): StockLogItem[] {
+    if (!isRecord(data)) return [];
+    const eventsRaw = (data as StockEventsResponse).events;
+    if (!Array.isArray(eventsRaw)) return [];
+
+    const out: StockLogItem[] = [];
+
+    for (const evRaw of eventsRaw) {
+        if (!isRecord(evRaw)) continue;
+        const ev = evRaw as StockEventFromApi;
+
+        const itemsRaw = ev.items;
+        if (!Array.isArray(itemsRaw)) continue;
+
+        const type = parseStockLogType(ev.type);
+        const note = toStringOrNull(ev.note);
+        const order_id = toStringOrNull(ev.order_id);
+        const created_at = toStringOrNull(ev.happened_at) ?? "";
+
+        for (const itRaw of itemsRaw) {
+            if (!isRecord(itRaw)) continue;
+            const it = itRaw as StockEventItemFromApi;
+
+            const id = toStringOrNull(it.id) ?? "";
+            const ingId = toStringOrNull(it.ingredient_id) ?? "";
+            if (!id || !ingId) continue;
+            if (ingId !== ingredientId) continue;
+
+            const amount = toNumber(it.amount, 0);
+            const before_stock = it.before_stock == null ? null : toNumber(it.before_stock, 0);
+            const after_stock = it.after_stock == null ? null : toNumber(it.after_stock, 0);
+
+            out.push({
+                id,
+                ingredient_id: ingId,
+                order_id,
+                amount,
+                type,
+                note,
+                before_stock,
+                after_stock,
+                created_at,
+            });
+        }
+    }
+
+    out.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    return out;
+}
+
+function parseAnalytics(data: unknown): { ingredient: IngredientLite | null; meta: Omit<AnalyticsResponse, "ingredient"> } {
+    if (!isRecord(data)) return { ingredient: null, meta: {} };
+
+    const ingRaw = (data as AnalyticsResponse).ingredient;
+    if (!isRecord(ingRaw)) return { ingredient: null, meta: {} };
+
+    const id = toStringOrNull(ingRaw.id) ?? "";
+    const name = toStringOrNull(ingRaw.name) ?? "-";
+    const stock = toNumber(ingRaw.stock, 0);
+    const unit = toStringOrNull(ingRaw.unit);
+    const min_stock = toNumber((ingRaw as { min_stock?: unknown }).min_stock, 0);
+    const updated_at = (ingRaw as { updated_at?: unknown }).updated_at ?? null;
+
+    const fallbackUnit: BaseUnit = normalizeBaseUnitFromLegacyUnit(unit ?? "");
+    const base_unit = pickBaseUnit(ingRaw.base_unit, fallbackUnit);
+
+    if (!id) return { ingredient: null, meta: {} };
+
+    const ingredient: IngredientLite = {
+        id,
+        name,
+        stock,
+        base_unit,
+        unit,
+        min_stock,
+        updated_at: typeof updated_at === "string" ? updated_at : null,
+    };
+
+    const meta: Omit<AnalyticsResponse, "ingredient"> = {
+        avgDailyUsage7: toNumber((data as AnalyticsResponse).avgDailyUsage7, 0),
+        totalUsage7: toNumber((data as AnalyticsResponse).totalUsage7, 0),
+        todayUsage: toNumber((data as AnalyticsResponse).todayUsage, 0),
+        daysLeft: (data as AnalyticsResponse).daysLeft ?? null,
+        daysLeftLabel: toStringOrNull((data as AnalyticsResponse).daysLeftLabel) ?? "",
+        abnormalToday: !!(data as AnalyticsResponse).abnormalToday,
+        abnormalLabel: toStringOrNull((data as AnalyticsResponse).abnormalLabel) ?? "",
+        topMenus: Array.isArray((data as AnalyticsResponse).topMenus)
+            ? ((data as AnalyticsResponse).topMenus as AnalyticsTopMenu[]).filter(
+                (x) => isRecord(x) && !!toStringOrNull((x as AnalyticsTopMenu).menu_id)
+            )
+            : [],
+    };
+
+    return { ingredient, meta };
+}
+
+type LogRange = "today" | "7d" | "all";
+
+export default function IngredientDetailPage() {
+    const params = useParams();
+    const idParam = params?.id;
+    const ingredientId = Array.isArray(idParam) ? idParam[0] : idParam;
+
+    const [loading, setLoading] = useState(true);
+    const [loadingLogs, setLoadingLogs] = useState(true);
+
+    const [ingredient, setIngredient] = useState<IngredientLite | null>(null);
+    const [logs, setLogs] = useState<StockLogItem[]>([]);
+
+    // analytics
+    const [avgDailyUsage7, setAvgDailyUsage7] = useState(0);
+    const [todayUsage, setTodayUsage] = useState(0);
+    const [daysLeft, setDaysLeft] = useState<number | null>(null);
+    const [daysLeftLabel, setDaysLeftLabel] = useState<string>("");
+    const [abnormalToday, setAbnormalToday] = useState(false);
+    const [abnormalLabel, setAbnormalLabel] = useState<string>("");
+    const [topMenus, setTopMenus] = useState<AnalyticsTopMenu[]>([]);
+
+    const [adjustItem, setAdjustItem] = useState<IngredientLite | null>(null);
+
+    // decision-first controls
+    const [logRange, setLogRange] = useState<LogRange>("today");
+    const [logLimit, setLogLimit] = useState<number>(10);
+
+    const baseUnit = useMemo(() => ingredient?.base_unit ?? ("piece" as BaseUnit), [ingredient]);
+    const unitLabel = BASE_UNIT_LABEL[baseUnit];
+
+    const status = useMemo(() => {
+        if (!ingredient) return "ok" as StockStatus;
+        return getStockStatus(toNumber(ingredient.stock, 0), toNumber(ingredient.min_stock, 0));
+    }, [ingredient]);
+
+    async function fetchAnalytics(targetId: string) {
+        await Promise.resolve(); // guard for effect timing
+
+        setLoading(true);
+        try {
+            const res = await fetch(
+                `/api/ingredients/analytics?ingredient_id=${encodeURIComponent(targetId)}`,
+                { cache: "no-store" }
+            );
+            const data: unknown = await res.json();
+
+            const parsed = parseAnalytics(data);
+            setIngredient(parsed.ingredient);
+
+            setAvgDailyUsage7(toNumber(parsed.meta.avgDailyUsage7, 0));
+            setTodayUsage(toNumber(parsed.meta.todayUsage, 0));
+            setDaysLeft(typeof parsed.meta.daysLeft === "number" ? parsed.meta.daysLeft : null);
+            setDaysLeftLabel(parsed.meta.daysLeftLabel ?? "");
+            setAbnormalToday(!!parsed.meta.abnormalToday);
+            setAbnormalLabel(parsed.meta.abnormalLabel ?? "");
+            setTopMenus(Array.isArray(parsed.meta.topMenus) ? parsed.meta.topMenus : []);
+        } catch (e) {
+            console.error("fetchAnalytics error:", e);
+            setIngredient(null);
+            setAvgDailyUsage7(0);
+            setTodayUsage(0);
+            setDaysLeft(null);
+            setDaysLeftLabel("");
+            setAbnormalToday(false);
+            setAbnormalLabel("");
+            setTopMenus([]);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function fetchLogs(targetId: string) {
+        await Promise.resolve();
+
+        setLoadingLogs(true);
+        try {
+            const res = await fetch(`/api/stock?ingredient_id=${encodeURIComponent(targetId)}&limit=250`, {
+                cache: "no-store",
+            });
+            const data: unknown = await res.json();
+            const flat = extractLogsFromStockEvents(data, targetId);
+            setLogs(flat);
+        } catch (e) {
+            console.error("fetchLogs error:", e);
+            setLogs([]);
+        } finally {
+            setLoadingLogs(false);
+        }
+    }
+
+    useEffect(() => {
+        if (!ingredientId) return;
+
+        const id = String(ingredientId);
+        void fetchAnalytics(id);
+        void fetchLogs(id);
+
+        // reset UI defaults for new ingredient
+        setLogRange("today");
+        setLogLimit(10);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ingredientId]);
+
+    const daysLeftUI = useMemo(() => {
+        if (daysLeftLabel && daysLeftLabel.trim()) return daysLeftLabel;
+        if (avgDailyUsage7 <= 0) return "ไม่มีการใช้";
+
+        if (daysLeft == null) return "-";
+        const v = Math.max(0, daysLeft);
+        if (v < 1) return "หมดภายในวันนี้";
+        if (v < 7) return `หมดใน ~${v.toFixed(1)} วัน`;
+        return `หมดใน ~${Math.round(v)} วัน`;
+    }, [daysLeftLabel, avgDailyUsage7, daysLeft]);
+
+    const decisionHint = useMemo(() => {
+        if (!ingredient) return "";
+        const s = toNumber(ingredient.stock, 0);
+        const min = toNumber(ingredient.min_stock, 0);
+
+        if (s <= 0) return "ควรเติมทันที";
+        if (s <= min) return "ใกล้ถึงจุดสั่งซื้อ";
+        if (avgDailyUsage7 > 0 && daysLeft != null && daysLeft < 2) return "เสี่ยงหมดเร็ว";
+        return "สถานะปกติ";
+    }, [ingredient, avgDailyUsage7, daysLeft]);
+
+    const showAbnormal = abnormalToday && avgDailyUsage7 > 0;
+
+    const topMenusUI = useMemo(() => {
+        const list = Array.isArray(topMenus) ? topMenus.slice(0, 3) : [];
+        const sum = list.reduce((acc, x) => acc + Math.max(0, toNumber(x.total_used, 0)), 0);
+        const max = list.reduce((acc, x) => Math.max(acc, Math.max(0, toNumber(x.total_used, 0))), 0);
+        return { list, sum, max };
+    }, [topMenus]);
+
+    const filteredLogs = useMemo(() => {
+        const now = new Date();
+        if (logRange === "all") return logs;
+        if (logRange === "7d") return logs.filter((x) => toStringOrNull(x.created_at) && inLastNDays(x.created_at, 7));
+        return logs.filter((x) => toStringOrNull(x.created_at) && isSameLocalDay(x.created_at, now));
+    }, [logs, logRange]);
+
+    const visibleLogs = useMemo(() => filteredLogs.slice(0, logLimit), [filteredLogs, logLimit]);
+
+    if (!ingredientId) {
+        return (
+            <div className="p-6">
+                <Card title="Ingredient">
+                    <div className="text-sm text-[var(--text-secondary)]">ไม่พบรหัสวัตถุดิบ</div>
+                    <div className="mt-4">
+                        <Link
+                            href="/admin/ingredients"
+                            className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5 text-sm"
+                        >
+                            ← กลับหน้าวัตถุดิบ
+                        </Link>
+                    </div>
+                </Card>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 space-y-6">
+            {/* Top actions */}
+            <div className="flex items-center justify-between gap-3">
+                <Link
+                    href="/admin/ingredients"
+                    className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5 text-sm"
+                >
+                    ← กลับ
+                </Link>
+
+                <div className="flex items-center gap-2">
+                    <Link
+                        href={`/admin/stock?ingredient_id=${encodeURIComponent(String(ingredientId))}`}
+                        className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5 text-sm"
+                        title="ไปดู Stock History แบบภาพรวม"
+                    >
+                        ดูประวัติทั้งหมด
+                    </Link>
+
+                    {ingredient && (
+                        <Button onClick={() => setAdjustItem(ingredient)}>
+                            ปรับสต็อก
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* Decision-first card */}
+            <Card title="ภาพรวม (ตัดสินใจเร็ว)">
+                {loading ? (
+                    <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
+                ) : !ingredient ? (
+                    <div className="space-y-2">
+                        <div className="text-sm text-[var(--text-secondary)]">ไม่พบวัตถุดิบนี้</div>
+                        <div className="text-xs text-[var(--text-secondary)]">ID: {String(ingredientId)}</div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="text-xl font-semibold truncate">{ingredient.name ?? "-"}</div>
+                                    <StatusBadge status={status} />
+                                    {showAbnormal && (
+                                        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-orange-500/15 text-orange-200 border border-orange-500/20">
+                                            ⚠️ {abnormalLabel?.trim() ? abnormalLabel : "ใช้มากผิดปกติ"}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="mt-2 text-sm text-[var(--text-secondary)]">
+                                    อัปเดตล่าสุด:{" "}
+                                    <span className="text-[var(--text)] font-medium">{formatDT(ingredient.updated_at)}</span>
+                                </div>
+
+                                <div className="mt-2 text-sm">
+                                    <span className="text-[var(--text-secondary)]">สรุป: </span>
+                                    <span className="font-semibold">{decisionHint}</span>
+                                </div>
+                            </div>
+
+                            <div className="text-right">
+                                <div className="text-xs text-[var(--text-secondary)]">คงเหลือ</div>
+                                <div className="text-3xl font-semibold tabular-nums">
+                                    {Math.round(ingredient.stock)}{" "}
+                                    <span className="text-base font-medium text-[var(--text-secondary)]">{unitLabel}</span>
+                                </div>
+                                <div className="text-xs text-[var(--text-secondary)] mt-1">
+                                    จุดสั่งซื้อ:{" "}
+                                    <span className="text-[var(--text)] font-medium tabular-nums">
+                                        {Math.round(ingredient.min_stock)} {unitLabel}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                                <div className="text-xs text-[var(--text-secondary)]">คาดว่าจะหมด</div>
+                                <div className="mt-1 text-base font-semibold">{daysLeftUI}</div>
+                                <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                                    เฉลี่ย 7 วัน:{" "}
+                                    <span className="text-[var(--text)] font-medium">
+                                        {avgDailyUsage7 > 0 ? `${avgDailyUsage7.toFixed(2)} ${unitLabel}/วัน` : `0 ${unitLabel}/วัน`}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                                <div className="text-xs text-[var(--text-secondary)]">วันนี้ใช้ไป</div>
+                                <div className="mt-1 text-base font-semibold tabular-nums">
+                                    {todayUsage > 0 ? `${todayUsage.toFixed(2)} ${unitLabel}` : `0 ${unitLabel}`}
+                                </div>
+                                <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                                    ถ้าวันนี้สูงกว่า avg×1.3 จะขึ้นเตือน
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                                <div className="text-xs text-[var(--text-secondary)]">อ้างอิง</div>
+                                <div className="mt-1 text-sm font-medium">{shortId(String(ingredientId), 16)}</div>
+                                <div className="mt-2 text-xs text-[var(--text-secondary)]">หน่วยระบบ: {unitLabel}</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </Card>
+
+            {/* What makes it run out (top consumers) */}
+            <Card title="ตัวที่ทำให้หมดเร็ว (30 วัน)">
+                {loading ? (
+                    <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
+                ) : !ingredient ? (
+                    <div className="text-sm text-[var(--text-secondary)]">-</div>
+                ) : topMenusUI.list.length === 0 ? (
+                    <div className="text-sm text-[var(--text-secondary)]">
+                        ยังไม่มีข้อมูล (ยังไม่มีสูตร/ออเดอร์ที่ใช้วัตถุดิบนี้)
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {topMenusUI.list.map((m) => {
+                            const used = Math.max(0, toNumber(m.total_used, 0));
+                            const pct = topMenusUI.max > 0 ? Math.round((used / topMenusUI.max) * 100) : 0;
+
+                            return (
+                                <div key={m.menu_id} className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold truncate">{m.menu_name}</div>
+                                            <div className="text-xs text-[var(--text-secondary)]">
+                                                ใช้รวม ~{used.toFixed(2)} {unitLabel}
+                                            </div>
+                                        </div>
+
+                                        <div className="text-right text-xs text-[var(--text-secondary)] tabular-nums">
+                                            {pct}%
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                                        <div
+                                            className="h-full bg-white/30 rounded-full"
+                                            style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        <div className="text-xs text-[var(--text-secondary)]">
+                            แสดง 3 อันดับแรก (พอแล้วสำหรับตัดสินใจไว)
+                        </div>
+                    </div>
+                )}
+            </Card>
+
+            {/* Logs - compact, owner-friendly */}
+            <Card title="การเคลื่อนไหวสต็อก (ดูไว)">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLogRange("today");
+                                setLogLimit(10);
+                            }}
+                            className={`text-xs rounded-full px-3 py-1 border ${logRange === "today" ? "border-white/20 bg-white/10" : "border-white/10 hover:bg-white/5"
+                                }`}
+                        >
+                            วันนี้
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLogRange("7d");
+                                setLogLimit(10);
+                            }}
+                            className={`text-xs rounded-full px-3 py-1 border ${logRange === "7d" ? "border-white/20 bg-white/10" : "border-white/10 hover:bg-white/5"
+                                }`}
+                        >
+                            7 วัน
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setLogRange("all");
+                                setLogLimit(10);
+                            }}
+                            className={`text-xs rounded-full px-3 py-1 border ${logRange === "all" ? "border-white/20 bg-white/10" : "border-white/10 hover:bg-white/5"
+                                }`}
+                        >
+                            ทั้งหมด
+                        </button>
+                    </div>
+
+                    <div className="text-xs text-[var(--text-secondary)]">
+                        {loadingLogs ? "กำลังโหลด..." : `พบ ${filteredLogs.length} รายการ`}
+                    </div>
+                </div>
+
+                {loadingLogs ? (
+                    <div className="text-sm text-[var(--text-secondary)]">กำลังโหลดประวัติ...</div>
+                ) : filteredLogs.length === 0 ? (
+                    <div className="text-sm text-[var(--text-secondary)]">ยังไม่มีรายการในช่วงนี้</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-left text-[var(--text-secondary)] border-b border-white/10">
+                                    <th className="py-2 pr-3 whitespace-nowrap">เวลา</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">ประเภท</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">จำนวน</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">ก่อน → หลัง</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">หมายเหตุ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {visibleLogs.map((r) => {
+                                    const amt = Math.round(toNumber(r.amount, 0));
+                                    const signAmt = r.type === "deduct" ? -Math.abs(amt) : Math.abs(amt);
+                                    const amtClass =
+                                        r.type === "add"
+                                            ? "text-green-200"
+                                            : r.type === "deduct"
+                                                ? "text-[var(--text)]"
+                                                : "text-blue-200";
+
+                                    return (
+                                        <tr key={r.id} className="border-b border-white/5">
+                                            <td className="py-2 pr-3 whitespace-nowrap">{formatDT(r.created_at)}</td>
+                                            <td className="py-2 pr-3 whitespace-nowrap">
+                                                <TypeBadge type={r.type} />
+                                            </td>
+                                            <td className="py-2 pr-3 whitespace-nowrap">
+                                                <span className={`font-semibold tabular-nums ${amtClass}`}>
+                                                    {signAmt}
+                                                </span>{" "}
+                                                <span className="text-[var(--text-secondary)]">{unitLabel}</span>
+                                            </td>
+                                            <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
+                                                <span className="text-[var(--text-secondary)]">
+                                                    {r.before_stock == null ? "-" : Math.round(r.before_stock)}
+                                                </span>{" "}
+                                                →{" "}
+                                                <span className="font-medium">
+                                                    {r.after_stock == null ? "-" : Math.round(r.after_stock)}
+                                                </span>
+                                            </td>
+                                            <td className="py-2 pr-3 min-w-[220px]">
+                                                <span className="text-[var(--text-secondary)]">{r.note ?? "-"}</span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+
+                        <div className="mt-3 flex items-center justify-between">
+                            <div className="text-xs text-[var(--text-secondary)]">
+                                แสดง {visibleLogs.length} จาก {filteredLogs.length}
+                            </div>
+
+                            {filteredLogs.length > visibleLogs.length && (
+                                <button
+                                    type="button"
+                                    onClick={() => setLogLimit((n) => Math.min(filteredLogs.length, n + 10))}
+                                    className="text-xs rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5"
+                                >
+                                    ดูเพิ่ม +10
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </Card>
+
+            {/* Adjust Modal */}
+            {adjustItem && (
+                <AdjustStockForm
+                    ingredient={adjustItem as unknown as { id: string; name: string; stock: number }}
+                    onClose={() => setAdjustItem(null)}
+                    onUpdated={() => {
+                        const id = String(ingredientId);
+                        void fetchAnalytics(id);
+                        void fetchLogs(id);
+                    }}
+                />
+            )}
+        </div>
+    );
+}

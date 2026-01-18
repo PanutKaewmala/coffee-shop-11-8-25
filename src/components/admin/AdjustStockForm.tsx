@@ -1,211 +1,275 @@
 "use client";
 
-import { useState } from "react";
+import React, { useMemo, useState } from "react";
+import Modal from "@/components/admin/Modal";
+import { Button } from "@/components/ui/button";
+import { BASE_UNIT_LABEL } from "@/lib/units";
 
-type AdjustType = "increase" | "decrease" | "set";
+type BaseUnit = "ml" | "g" | "piece";
 
-interface AdjustStockFormProps {
-    ingredient: {
-        id: string;
-        name: string;
-        stock: number;
-        unit: string;
-    };
+export type AdjustStockIngredient = {
+    id: string;
+    name: string;
+    stock: number;
+
+    // ✅ ไม่บังคับแล้ว (กันพังเวลาส่งมาจาก type ที่ยังไม่ update)
+    unit?: string | null;
+
+    // ✅ เผื่อระบบมี base_unit เป็นหลัก
+    base_unit?: BaseUnit | string | null;
+};
+
+type Props = {
+    ingredient: AdjustStockIngredient;
     onClose: () => void;
-    onUpdated?: () => void;
+    onUpdated: () => void;
+};
+
+type Reason = "in" | "waste" | "count"; // รับของเข้า | ของเสีย/ทิ้ง | นับสต็อก
+
+function toNumber(v: unknown, fallback = 0): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
 }
 
-export default function AdjustStockForm({
-    ingredient,
-    onClose,
-    onUpdated,
-}: AdjustStockFormProps) {
-    const [adjustType, setAdjustType] = useState<AdjustType>("increase");
-    const [amount, setAmount] = useState<string>("");   // ⭐ คุมด้วย string ปลอดภัยกว่า
-    const [note, setNote] = useState("");
-    const [loading, setLoading] = useState(false);
+function clampMin0(n: number): number {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, n);
+}
 
-    // -----------------------------------------
-    // จำนวนที่นำไปคำนวณ → number แบบ safety
-    // -----------------------------------------
-    function parseAmount(): number | null {
-        if (amount.trim() === "") return null;
+function formatInt(n: number): string {
+    return String(Math.round(n));
+}
 
-        const numeric = Number(amount);
-        if (!isFinite(numeric) || isNaN(numeric)) return null;
+function normUnit(s: string): string {
+    return s.trim().toLowerCase();
+}
 
-        return numeric;
+function baseUnitFromText(u: string): BaseUnit | null {
+    const s = normUnit(u);
+    if (["ml", "มล.", "มล", "milliliter", "milliliters"].includes(s)) return "ml";
+    if (["g", "กรัม", "กร", "gram", "grams"].includes(s)) return "g";
+    if (["piece", "pcs", "ชิ้น", "อัน", "unit"].includes(s)) return "piece";
+    return null;
+}
+
+function pickUnitLabel(ing: AdjustStockIngredient): string {
+    const unit = typeof ing.unit === "string" ? ing.unit.trim() : "";
+    if (unit) return unit;
+
+    const buRaw = ing.base_unit;
+    if (buRaw === "ml" || buRaw === "g" || buRaw === "piece") {
+        return BASE_UNIT_LABEL[buRaw];
+    }
+    if (typeof buRaw === "string") {
+        const parsed = baseUnitFromText(buRaw);
+        if (parsed) return BASE_UNIT_LABEL[parsed];
     }
 
-    // -----------------------------------------
-    // คำนวณ diff
-    // -----------------------------------------
-    function computeDiff(): number | null {
-        const numeric = parseAmount();
-        if (numeric === null) return null;
+    // สุดท้ายจริงๆ
+    return "";
+}
 
-        if (adjustType === "increase") return Math.abs(numeric);
+export default function AdjustStockForm({ ingredient, onClose, onUpdated }: Props) {
+    const [reason, setReason] = useState<Reason>("in");
+    const [amountText, setAmountText] = useState<string>("");
+    const [note, setNote] = useState<string>("");
+    const [saving, setSaving] = useState(false);
+    const [err, setErr] = useState<string | null>(null);
 
-        if (adjustType === "decrease") return -Math.abs(numeric);
+    const curStock = useMemo(() => clampMin0(toNumber(ingredient.stock, 0)), [ingredient.stock]);
 
-        if (adjustType === "set") return numeric - ingredient.stock;
+    const unitLabel = useMemo(() => pickUnitLabel(ingredient), [ingredient]);
 
-        return null;
-    }
+    const parsedAmount = useMemo(() => {
+        // รับ decimal ได้ แต่สุดท้ายเราปัดตอนแสดง
+        const raw = amountText.trim();
+        if (!raw) return 0;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+    }, [amountText]);
 
-    // -----------------------------------------
-    // Validate
-    // -----------------------------------------
-    function validate(): boolean {
-        const numeric = parseAmount();
-        if (numeric === null) {
-            alert("จำนวนไม่ถูกต้อง");
-            return false;
+    const preview = useMemo(() => {
+        const amt = clampMin0(parsedAmount);
+
+        if (reason === "count") {
+            // นับสต็อก = set to value
+            return amt;
         }
-
-        if (adjustType !== "set" && numeric <= 0) {
-            alert("กรุณากรอกจำนวนมากกว่า 0");
-            return false;
+        if (reason === "in") {
+            // รับของเข้า = +amount
+            return curStock + amt;
         }
+        // ของเสีย/ทิ้ง = -amount
+        return Math.max(0, curStock - amt);
+    }, [reason, parsedAmount, curStock]);
 
-        if (adjustType === "set" && numeric < 0) {
-            alert("สต็อกใหม่ต้องเป็นเลข 0 ขึ้นไป");
-            return false;
-        }
+    const helperText = useMemo(() => {
+        if (reason === "in") return "รับของเข้าสต็อก เช่น ซื้อมาใหม่ / เติมของ";
+        if (reason === "waste") return "ของเสีย/ทิ้ง/หมดอายุ เช่น ทำหก / เสียหาย";
+        return "นับสต็อกจริงแล้วตั้งให้ตรง (ระบบจะคำนวณส่วนต่างให้)";
+    }, [reason]);
 
-        return true;
-    }
-
-    // -----------------------------------------
-    // ส่งข้อมูล
-    // -----------------------------------------
     async function submit() {
-        if (loading) return; // กันดับเบิ้ลคลิก
-        if (!validate()) return;
+        if (saving) return;
+        setErr(null);
 
-        const diff = computeDiff();
-        if (diff === null) {
-            alert("จำนวนไม่ถูกต้อง");
+        const amt = clampMin0(parsedAmount);
+
+        if (reason !== "count" && amt <= 0) {
+            setErr("กรุณาใส่จำนวนมากกว่า 0");
+            return;
+        }
+        if (reason === "count" && amt < 0) {
+            setErr("จำนวนสต็อกต้องไม่ติดลบ");
+            return;
+        }
+
+        // API รับ amount เป็น “diff signed”
+        const diff = reason === "count" ? amt - curStock : reason === "in" ? amt : -amt;
+
+        if (diff === 0) {
+            setErr("ไม่มีการเปลี่ยนแปลง (จำนวนเท่าเดิม)");
             return;
         }
 
         try {
-            setLoading(true);
+            setSaving(true);
 
             const res = await fetch("/api/ingredients/adjust", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                cache: "no-store",
                 body: JSON.stringify({
                     ingredient_id: ingredient.id,
-                    diff,
-                    type: adjustType,
-                    note,
+                    amount: diff,
+                    note: note.trim() || null,
                 }),
             });
 
-            let data: Record<string, unknown> | null = null;
-
-            try {
-                data = await res.json();
-            } catch {
-                alert("รูปแบบข้อมูลตอบกลับไม่ถูกต้อง");
-                return;
-            }
+            const data: unknown = await res.json().catch(() => null);
 
             if (!res.ok) {
-                const msg = typeof data?.error === "string" ? data.error : "ปรับสต็อกไม่สำเร็จ";
-                alert(msg);
+                const msg =
+                    data &&
+                        typeof data === "object" &&
+                        data !== null &&
+                        "error" in data &&
+                        typeof (data as { error?: unknown }).error === "string"
+                        ? String((data as { error: string }).error)
+                        : "ปรับสต็อกไม่สำเร็จ";
+                setErr(msg);
                 return;
             }
 
-            onUpdated?.();
+            onUpdated();
             onClose();
-        } catch (err) {
-            console.error("Adjust error:", err);
-            alert("เกิดข้อผิดพลาดในการเชื่อมต่อ");
+        } catch {
+            setErr("เชื่อมต่อไม่สำเร็จ ลองใหม่");
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     }
 
-    // -----------------------------------------
-    // UI
-    // -----------------------------------------
     return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-            <div className="bg-surface p-6 rounded-2xl w-[380px] shadow-xl border border-[var(--text-muted)]/20">
-
-                <h2 className="text-xl font-bold text-text-primary mb-4">
-                    ปรับสต๊อก: {ingredient.name}
-                </h2>
-
-                <div className="mb-3 text-sm text-text-secondary">
-                    <span className="font-medium text-text-primary">ยอดคงเหลือเดิม:</span>{" "}
-                    <span className="text-text-secondary">{ingredient.stock} {ingredient.unit}</span>
+        <Modal isOpen onClose={saving ? () => { } : onClose} title="ปรับสต็อก">
+            <div className="space-y-4">
+                {/* header ingredient */}
+                <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                    <div className="text-sm text-[var(--text-secondary)]">วัตถุดิบ</div>
+                    <div className="text-lg font-semibold truncate">{ingredient.name}</div>
+                    <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                        ตอนนี้:{" "}
+                        <span className="text-[var(--text)] font-semibold">{formatInt(curStock)}</span>{" "}
+                        {unitLabel}
+                    </div>
                 </div>
 
-                <div className="mb-3">
-                    <label className="text-sm text-text-secondary">ประเภทการปรับ</label>
-                    <select
-                        className="w-full mt-1 p-2 rounded-md bg-background border border-[var(--text-muted)]/20"
-                        value={adjustType}
-                        onChange={(e) => {
-                            setAdjustType(e.target.value as AdjustType);
-                            setAmount("");
-                        }}
+                {/* reason tabs */}
+                <div className="grid grid-cols-3 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setReason("in")}
+                        className={`px-3 py-2 rounded-lg border border-white/10 text-sm ${reason === "in" ? "bg-white/10" : "hover:bg-white/5"
+                            }`}
                     >
-                        <option value="increase">เพิ่มสต็อก</option>
-                        <option value="decrease">ลดสต็อก</option>
-                        <option value="set">ตั้งค่ายอดใหม่</option>
-                    </select>
+                        รับของเข้า
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setReason("waste")}
+                        className={`px-3 py-2 rounded-lg border border-white/10 text-sm ${reason === "waste" ? "bg-white/10" : "hover:bg-white/5"
+                            }`}
+                    >
+                        ของเสีย/ทิ้ง
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setReason("count")}
+                        className={`px-3 py-2 rounded-lg border border-white/10 text-sm ${reason === "count" ? "bg-white/10" : "hover:bg-white/5"
+                            }`}
+                    >
+                        นับสต็อก
+                    </button>
                 </div>
 
-                <div className="mb-3">
-                    <label className="text-sm text-text-secondary">
-                        {adjustType === "set"
-                            ? `ยอดใหม่ทั้งหมด (${ingredient.unit})`
-                            : `จำนวนที่ต้องการปรับ (${ingredient.unit})`}
+                <div className="text-xs text-[var(--text-secondary)] -mt-1">{helperText}</div>
+
+                {/* amount */}
+                <div>
+                    <label className="text-xs text-[var(--text-secondary)]">
+                        {reason === "count" ? "ตั้งคงเหลือเป็น" : "จำนวน"}
                     </label>
+                    <div className="mt-1 flex items-center gap-2">
+                        <input
+                            value={amountText}
+                            onChange={(e) => setAmountText(e.target.value)}
+                            inputMode="decimal"
+                            placeholder={reason === "count" ? "เช่น 1200" : "เช่น 200"}
+                            className="w-full px-3 py-2 rounded-lg border border-white/10 bg-black/20 outline-none"
+                            disabled={saving}
+                        />
+                        <div className="text-sm text-[var(--text-secondary)] whitespace-nowrap">
+                            {unitLabel}
+                        </div>
+                    </div>
 
-                    <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="w-full mt-1 p-2 rounded-md bg-background border border-[var(--text-muted)]/20"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder={adjustType === "set" ? "ตัวอย่าง: 450" : "ตัวอย่าง: 20"}
-                    />
+                    <div className="mt-2 text-xs text-[var(--text-secondary)]">
+                        หลังปรับ:{" "}
+                        <span className="text-[var(--text)] font-semibold">{formatInt(preview)}</span>{" "}
+                        {unitLabel}
+                    </div>
                 </div>
 
-                <div className="mb-4">
-                    <label className="text-sm text-text-secondary">หมายเหตุ (ถ้ามี)</label>
+                {/* note */}
+                <div>
+                    <label className="text-xs text-[var(--text-secondary)]">หมายเหตุ (ไม่บังคับ)</label>
                     <input
-                        type="text"
-                        className="w-full mt-1 p-2 rounded-md bg-background border border-[var(--text-muted)]/20"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        placeholder="เช่น ตรวจของเสียรอบเช้า"
+                        placeholder="เช่น รับของจากซัพพลายเออร์ / ทิ้งของหมดอายุ / นับของจริง"
+                        className="mt-1 w-full px-3 py-2 rounded-lg border border-white/10 bg-black/20 outline-none"
+                        disabled={saving}
                     />
                 </div>
 
-                <div className="flex justify-end gap-3 mt-6">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 rounded-lg bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30"
-                    >
-                        ยกเลิก
-                    </button>
+                {/* error */}
+                {err && (
+                    <div className="text-sm rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2">
+                        {err}
+                    </div>
+                )}
 
-                    <button
-                        onClick={submit}
-                        disabled={loading}
-                        className="px-5 py-2 rounded-lg bg-accent text-white font-bold hover:bg-accent-dark active:scale-[0.97] disabled:opacity-50"
-                    >
-                        {loading ? "กำลังบันทึก..." : "บันทึก"}
-                    </button>
+                {/* footer */}
+                <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={onClose} disabled={saving}>
+                        ยกเลิก
+                    </Button>
+                    <Button onClick={submit} disabled={saving}>
+                        {saving ? "กำลังบันทึก..." : "บันทึก"}
+                    </Button>
                 </div>
             </div>
-        </div>
+        </Modal>
     );
 }
