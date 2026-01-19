@@ -1,4 +1,4 @@
-// admin/ingredients/page.tsx
+// src/app/admin/ingredients/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,12 +15,7 @@ import AdjustStockForm from "@/components/admin/AdjustStockForm";
 import DaysLeftBadge from "@/components/admin/DaysLeftBadge";
 
 import type { IngredientRow } from "@/lib/types";
-import {
-    BASE_UNIT_LABEL,
-    TYPE_LABEL,
-    TYPE_TO_BASE,
-    type IngredientType,
-} from "@/lib/units";
+import { BASE_UNIT_LABEL, TYPE_LABEL, TYPE_TO_BASE, type IngredientType } from "@/lib/units";
 
 type BaseUnit = "ml" | "g" | "piece";
 type UnitFilter = "all" | BaseUnit;
@@ -64,14 +59,13 @@ function toNumber(v: unknown, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
-/* ===== stock status (ใช้เป็น fallback + filter unit/min_stock) ===== */
+/* ===== stock status (fallback) ===== */
 
 type StockStatus = "ok" | "low" | "out";
 
 function getStockStatus(item: IngredientRow): StockStatus {
     const stock = toNumber(item.stock, 0);
     const min = toNumber((item as unknown as { min_stock?: unknown }).min_stock, 0);
-
     if (stock <= 0) return "out";
     if (stock <= min) return "low";
     return "ok";
@@ -84,25 +78,24 @@ function formatUpdatedAt(v: unknown): string {
     return d.toLocaleString("th-TH");
 }
 
-/* ===== P2: analytics ===== */
+/* ===== analytics ===== */
 
 type AnalyticsRow = {
     ingredient_id: string;
     avgDailyUsage7: number;
     todayUsage: number;
-    daysLeft: number | null; // null = ไม่มีการใช้
+    daysLeft: number | null;
     abnormalToday: boolean;
     unit: string | null;
 };
 
-// ใกล้หมดตามร้าน: daysLeft <= 7 (และต้องมีการใช้)
 function isLowByDaysLeft(a: AnalyticsRow | undefined): boolean {
-    if (!a) return false; // ยังไม่โหลด -> อย่าเพิ่งตัดสิน
-    if (a.daysLeft === null) return false; // ไม่มีการใช้ -> ไม่นับว่าใกล้หมด
+    if (!a) return false;
+    if (a.daysLeft === null) return false;
     return a.daysLeft <= 7;
 }
 
-/* ===== owner-happy summary ===== */
+/* ===== owner summary ===== */
 
 function fmtDaysOwner(daysLeft: number | null | undefined): string {
     if (daysLeft == null) return "ไม่มีการใช้";
@@ -116,21 +109,17 @@ type RiskLevel = "low" | "warn" | "ok" | "none";
 
 function getRiskLevel(item: IngredientRow, a: AnalyticsRow | undefined): RiskLevel {
     const r = item as unknown as { is_active?: unknown; archived_at?: unknown };
-
     const isActive = r.is_active === undefined ? true : Boolean(r.is_active);
     const isArchived = r.archived_at != null;
-
     if (!isActive || isArchived) return "none";
 
-    // ถ้ามี daysLeft -> เอา daysLeft เป็นหลัก (ร้านอ่านง่าย)
     if (a) {
-        if (a.daysLeft === null) return "ok"; // ไม่มีการใช้ แต่ยัง active -> ไม่ต้องทำให้ตื่น
-        if (a.daysLeft <= 3) return "low"; // ✅ ต้องสั่งด่วน
-        if (a.daysLeft <= 7) return "warn"; // ✅ ใกล้หมด
+        if (a.daysLeft === null) return "ok";
+        if (a.daysLeft <= 3) return "low";
+        if (a.daysLeft <= 7) return "warn";
         return "ok";
     }
 
-    // ยังไม่มี analytics -> fallback ด้วย min_stock/stock แบบเดิม
     const status = getStockStatus(item);
     if (status === "out") return "low";
     if (status === "low") return "warn";
@@ -167,7 +156,7 @@ export default function IngredientsAdminPage() {
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    // P2 analytics (batch)
+    // analytics
     const [analyticsMap, setAnalyticsMap] = useState<Record<string, AnalyticsRow>>({});
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
@@ -195,15 +184,10 @@ export default function IngredientsAdminPage() {
         fetchIngredients();
     }, []);
 
-    // ✅ NEW: refresh หลังปรับสต็อก (auto sync + force recalculation)
     const refreshAfterAdjust = async (ingredientId?: string) => {
-        // ปิด modal ให้ UX มันชัดว่า "เสร็จแล้ว"
         setAdjustItem(null);
-
-        // ingredients list ใหม่
         await fetchIngredients();
 
-        // บังคับ analytics recalculation เฉพาะตัวที่เพิ่งปรับ (กัน stale badge)
         if (ingredientId) {
             setAnalyticsMap((prev) => {
                 if (!prev[ingredientId]) return prev;
@@ -212,7 +196,6 @@ export default function IngredientsAdminPage() {
                 return next;
             });
         } else {
-            // fallback: ล้างทั้งก้อน (ถ้าอนาคต form ไม่ส่ง id)
             setAnalyticsMap({});
         }
     };
@@ -227,14 +210,9 @@ export default function IngredientsAdminPage() {
             const matchSearch = itemName.toLowerCase().includes(q);
             const matchUnit = unitFilter === "all" ? true : base === unitFilter;
 
-            // fallback status (min_stock/stock)
             const status = getStockStatus(item);
-
-            // analytics (days left)
             const a = analyticsMap[item.id];
 
-            // ✅ ปุ่ม "ใกล้หมด/หมด" = daysLeft<=7 เป็นหลัก
-            // แต่ถ้ายังไม่มี analytics (a undefined) ให้ fallback ด้วย status กันกรองหายหมด
             const lowFlag = isLowByDaysLeft(a) || status !== "ok";
             const matchLow = onlyLow ? lowFlag : true;
 
@@ -242,7 +220,6 @@ export default function IngredientsAdminPage() {
         });
     }, [ingredients, search, unitFilter, onlyLow, analyticsMap]);
 
-    // owner-first sort: abnormal ก่อน, daysLeft น้อยก่อน, แล้วชื่อ
     const sortedItems = useMemo(() => {
         const arr = [...filteredItems];
         arr.sort((a, b) => {
@@ -280,7 +257,6 @@ export default function IngredientsAdminPage() {
 
     useEffect(() => setPage(1), [search, unitFilter, onlyLow]);
 
-    // ✅ batch analytics เฉพาะของที่โชว์ (กัน API ระเบิด)
     useEffect(() => {
         const ids = paginatedItems.map((x) => x.id).filter(Boolean);
         if (ids.length === 0) return;
@@ -305,14 +281,12 @@ export default function IngredientsAdminPage() {
                 const json: unknown = await res.json().catch(() => null);
                 if (cancelled) return;
 
-                const items =
-                    isRecord(json) && Array.isArray(json.items) ? (json.items as unknown[]) : [];
+                const items = isRecord(json) && Array.isArray(json.items) ? (json.items as unknown[]) : [];
 
                 const next: Record<string, AnalyticsRow> = {};
                 for (const it of items) {
                     if (!isRecord(it)) continue;
-                    const ingredient_id =
-                        typeof it.ingredient_id === "string" ? it.ingredient_id : "";
+                    const ingredient_id = typeof it.ingredient_id === "string" ? it.ingredient_id : "";
                     if (!ingredient_id) continue;
 
                     next[ingredient_id] = {
@@ -339,7 +313,6 @@ export default function IngredientsAdminPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [paginatedItems]);
 
-    // ✅ owner-happy summary (นับจากที่มี analyticsMap + fallback)
     const summary = useMemo(() => {
         const riskList = ingredients
             .map((item) => {
@@ -386,8 +359,6 @@ export default function IngredientsAdminPage() {
 
         return { low, warn, topRisk };
     }, [ingredients, analyticsMap]);
-
-    /* ===== actions ===== */
 
     const openAdd = () => {
         setAdjustItem(null);
@@ -510,7 +481,6 @@ export default function IngredientsAdminPage() {
         }
     };
 
-    // layout v2 headers
     const headers = ["วัตถุดิบ", "คงเหลือ", "คาดว่าจะหมด", "อัปเดตล่าสุด", "จัดการ"];
 
     const unitTabs: { key: UnitFilter; label: string }[] = [
@@ -520,7 +490,6 @@ export default function IngredientsAdminPage() {
         { key: "piece", label: BASE_UNIT_LABEL.piece },
     ];
 
-    // empty hint (กัน user งงตอนกรอง low แต่ analytics ยังโหลด)
     const showEmptyLowHint =
         !loading &&
         onlyLow &&
@@ -539,9 +508,10 @@ export default function IngredientsAdminPage() {
                             <button
                                 key={t.key}
                                 onClick={() => setUnitFilter(t.key)}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap ${unitFilter === t.key
-                                    ? "bg-[var(--accent)] text-black"
-                                    : "bg-[var(--surface)] text-[var(--text-secondary)]"
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border
+                  ${unitFilter === t.key
+                                        ? "bg-accent text-background border-accent"
+                                        : "bg-surface text-text-secondary border-text-muted/25 hover:border-text-muted/40"
                                     }`}
                             >
                                 {t.label}
@@ -550,21 +520,20 @@ export default function IngredientsAdminPage() {
 
                         <button
                             onClick={() => setOnlyLow((v) => !v)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap ${onlyLow
-                                ? "bg-red-500/20 text-red-400"
-                                : "bg-[var(--surface)] text-[var(--text-secondary)]"
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border
+                ${onlyLow
+                                    ? "bg-red-500/10 text-red-600 border-red-500/30"
+                                    : "bg-surface text-text-secondary border-text-muted/25 hover:border-text-muted/40"
                                 }`}
                             title="แสดงเฉพาะวัตถุดิบที่ใกล้หมด/หมดแล้ว (daysLeft<=7)"
                         >
                             ใกล้หมด / หมด
                             {summary.low + summary.warn > 0 ? (
-                                <span className="ml-2 opacity-80 tabular-nums">
-                                    ({summary.low + summary.warn})
-                                </span>
+                                <span className="ml-2 opacity-80 tabular-nums">({summary.low + summary.warn})</span>
                             ) : null}
                         </button>
 
-                        <span className="text-xs opacity-60">
+                        <span className="text-xs text-text-muted">
                             {analyticsLoading ? "กำลังคำนวณการใช้..." : null}
                         </span>
                     </div>
@@ -577,18 +546,19 @@ export default function IngredientsAdminPage() {
                     </Button>
                 </div>
 
-                {/* Summary cards (owner-happy) */}
+                {/* Summary cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    {/* urgent */}
+                    <div className="rounded-2xl border border-text-muted/25 bg-surface p-4">
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm opacity-80">ต้องสั่งด่วน</div>
-                                <div className="text-2xl font-semibold mt-1 tabular-nums">
+                                <div className="text-sm text-text-secondary">ต้องสั่งด่วน</div>
+                                <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.low} รายการ
                                 </div>
-                                <div className="text-xs opacity-70 mt-1">เหลือ ≤ 3 วัน / หรือหมด</div>
+                                <div className="text-xs text-text-muted mt-1">เหลือ ≤ 3 วัน / หรือหมด</div>
                             </div>
-                            <div className="px-2 py-1 rounded-full text-xs border border-red-500/40 text-red-300 bg-red-500/10">
+                            <div className="px-2 py-1 rounded-full text-xs border border-red-500/30 text-red-600 bg-red-500/10">
                                 🔴 ด่วน
                             </div>
                         </div>
@@ -599,27 +569,28 @@ export default function IngredientsAdminPage() {
                                     .filter((x) => x.level === "low")
                                     .slice(0, 3)
                                     .map((x) => (
-                                        <div key={x.id} className="flex items-center justify-between text-sm">
+                                        <div key={x.id} className="flex items-center justify-between text-sm text-text-secondary">
                                             <span className="truncate">{x.name}</span>
-                                            <span className="opacity-80">{fmtDaysOwner(x.daysLeft)}</span>
+                                            <span className="text-text-muted">{fmtDaysOwner(x.daysLeft)}</span>
                                         </div>
                                     ))}
                             </div>
                         ) : (
-                            <div className="mt-3 text-sm opacity-70">วันนี้ยังไม่มีตัวแดง 👍</div>
+                            <div className="mt-3 text-sm text-text-muted">วันนี้ยังไม่มีตัวแดง 👍</div>
                         )}
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    {/* warn */}
+                    <div className="rounded-2xl border border-text-muted/25 bg-surface p-4">
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm opacity-80">ใกล้หมด</div>
-                                <div className="text-2xl font-semibold mt-1 tabular-nums">
+                                <div className="text-sm text-text-secondary">ใกล้หมด</div>
+                                <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.warn} รายการ
                                 </div>
-                                <div className="text-xs opacity-70 mt-1">เหลือ ≤ 7 วัน</div>
+                                <div className="text-xs text-text-muted mt-1">เหลือ ≤ 7 วัน</div>
                             </div>
-                            <div className="px-2 py-1 rounded-full text-xs border border-yellow-500/40 text-yellow-300 bg-yellow-500/10">
+                            <div className="px-2 py-1 rounded-full text-xs border border-yellow-500/30 text-yellow-700 bg-yellow-500/10">
                                 🟡 ระวัง
                             </div>
                         </div>
@@ -630,27 +601,27 @@ export default function IngredientsAdminPage() {
                                     .filter((x) => x.level === "warn")
                                     .slice(0, 3)
                                     .map((x) => (
-                                        <div key={x.id} className="flex items-center justify-between text-sm">
+                                        <div key={x.id} className="flex items-center justify-between text-sm text-text-secondary">
                                             <span className="truncate">{x.name}</span>
-                                            <span className="opacity-80">{fmtDaysOwner(x.daysLeft)}</span>
+                                            <span className="text-text-muted">{fmtDaysOwner(x.daysLeft)}</span>
                                         </div>
                                     ))}
                             </div>
                         ) : (
-                            <div className="mt-3 text-sm opacity-70">ตัวเหลืองยังว่างๆ อยู่</div>
+                            <div className="mt-3 text-sm text-text-muted">ตัวเหลืองยังว่างๆ อยู่</div>
                         )}
                     </div>
                 </div>
 
                 {showEmptyLowHint ? (
-                    <div className="py-8 text-center text-sm opacity-70">
+                    <div className="py-8 text-center text-sm text-text-muted">
                         กำลังคำนวณ “ใกล้หมด” จากการใช้ 7 วันล่าสุด...
                     </div>
                 ) : null}
 
                 {/* Table */}
                 {loading ? (
-                    <p>Loading...</p>
+                    <p className="text-text-muted">Loading...</p>
                 ) : (
                     <Table
                         headers={headers}
@@ -662,41 +633,31 @@ export default function IngredientsAdminPage() {
                             const isDeletingThis = deletingId === item.id;
 
                             return [
-                                // วัตถุดิบ
                                 <a
                                     key={`${item.id}-name`}
                                     href={`/admin/ingredients/${item.id}`}
                                     className="block"
                                     title="ดูรายละเอียด"
                                 >
-                                    <div className="font-medium hover:underline">{item.name ?? "-"}</div>
+                                    <div className="font-medium text-text-primary hover:underline">{item.name ?? "-"}</div>
                                 </a>,
 
-                                // คงเหลือ (บรรทัดเดียว)
-                                <div key={`${item.id}-stock`} className="font-semibold tabular-nums">
+                                <div key={`${item.id}-stock`} className="font-semibold tabular-nums text-text-primary">
                                     {toNumber(item.stock, 0)}{" "}
-                                    <span className="text-xs opacity-60 font-normal">{unitLabel}</span>
+                                    <span className="text-xs text-text-muted font-normal">{unitLabel}</span>
                                 </div>,
 
-                                // คาดว่าจะหมด (P2)
                                 <div key={`${item.id}-daysleft`} className="flex items-center gap-2">
-                                    <DaysLeftBadge
-                                        daysLeft={a?.daysLeft ?? null}
-                                        abnormal={a?.abnormalToday ?? false}
-                                    />
+                                    <DaysLeftBadge daysLeft={a?.daysLeft ?? null} abnormal={a?.abnormalToday ?? false} />
                                 </div>,
 
-                                // อัปเดตล่าสุด (แยกบรรทัด)
                                 <div
                                     key={`${item.id}-updated`}
-                                    className="text-sm opacity-80 whitespace-pre-line"
+                                    className="text-sm text-text-secondary whitespace-pre-line"
                                 >
-                                    {formatUpdatedAt(
-                                        (item as unknown as { updated_at?: unknown }).updated_at
-                                    ).replace(" ", "\n")}
+                                    {formatUpdatedAt((item as unknown as { updated_at?: unknown }).updated_at).replace(" ", "\n")}
                                 </div>,
 
-                                // จัดการ: ปุ่มหลัก + เมนูย่อย
                                 <div key={`${item.id}-actions`} className="flex items-center gap-2">
                                     <Button
                                         variant="outline"
@@ -708,14 +669,14 @@ export default function IngredientsAdminPage() {
                                     </Button>
 
                                     <details className="relative">
-                                        <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-white/10 hover:bg-white/5 text-sm">
+                                        <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
                                             ⋯
                                         </summary>
 
-                                        <div className="absolute right-0 mt-2 w-44 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 shadow-lg z-50">
+                                        <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
                                             <a
                                                 href={`/admin/ingredients/${item.id}`}
-                                                className="block px-3 py-2 rounded-lg hover:bg-white/5 text-sm"
+                                                className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
                                             >
                                                 รายละเอียด
                                             </a>
@@ -724,7 +685,7 @@ export default function IngredientsAdminPage() {
                                                 type="button"
                                                 onClick={() => openRename(item)}
                                                 disabled={disableActions}
-                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm disabled:opacity-60"
+                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
                                             >
                                                 เปลี่ยนชื่อ
                                             </button>
@@ -733,7 +694,7 @@ export default function IngredientsAdminPage() {
                                                 type="button"
                                                 onClick={() => deleteIngredient(item.id)}
                                                 disabled={disableActions}
-                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-400 text-sm disabled:opacity-60"
+                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
                                             >
                                                 {isDeletingThis ? "กำลังลบ..." : "ลบ"}
                                             </button>
@@ -756,11 +717,7 @@ export default function IngredientsAdminPage() {
 
             {/* Add / Rename Modal */}
             {showModal && (
-                <Modal
-                    isOpen={showModal}
-                    onClose={closeModal}
-                    title={editingItem ? "เปลี่ยนชื่อวัตถุดิบ" : "เพิ่มวัตถุดิบ"}
-                >
+                <Modal isOpen={showModal} onClose={closeModal} title={editingItem ? "เปลี่ยนชื่อวัตถุดิบ" : "เพิ่มวัตถุดิบ"}>
                     <div className="space-y-4">
                         <input
                             type="text"
@@ -768,7 +725,7 @@ export default function IngredientsAdminPage() {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             disabled={saving}
-                            className="w-full border rounded-md p-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full border border-text-muted/25 rounded-md p-2 bg-background text-text-primary placeholder:text-text-muted disabled:opacity-60 disabled:cursor-not-allowed"
                         />
 
                         {!editingItem ? (
@@ -779,30 +736,30 @@ export default function IngredientsAdminPage() {
                                     value={stock}
                                     onChange={(e) => setStock(e.target.value)}
                                     disabled={saving}
-                                    className="w-full border rounded-md p-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="w-full border border-text-muted/25 rounded-md p-2 bg-background text-text-primary placeholder:text-text-muted disabled:opacity-60 disabled:cursor-not-allowed"
                                 />
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">ประเภทวัตถุดิบ</label>
+                                    <label className="text-sm font-medium text-text-primary">ประเภทวัตถุดิบ</label>
                                     <select
                                         value={type}
                                         onChange={(e) => setType(e.target.value as IngredientType)}
                                         disabled={saving}
-                                        className="w-full border rounded-md p-2 bg-background disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="w-full border border-text-muted/25 rounded-md p-2 bg-background text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         <option value="liquid">{TYPE_LABEL.liquid}</option>
                                         <option value="powder">{TYPE_LABEL.powder}</option>
                                         <option value="piece">{TYPE_LABEL.piece}</option>
                                     </select>
 
-                                    <div className="text-sm opacity-80">
-                                        หน่วยที่ระบบใช้เก็บ: <b>{BASE_UNIT_LABEL[TYPE_TO_BASE[type]]}</b>
+                                    <div className="text-sm text-text-secondary">
+                                        หน่วยที่ระบบใช้เก็บ: <b className="text-text-primary">{BASE_UNIT_LABEL[TYPE_TO_BASE[type]]}</b>
                                     </div>
                                 </div>
                             </>
                         ) : (
-                            <div className="text-xs opacity-70">
-                                *สต็อกแก้ผ่าน <b>ปรับสต็อก</b> เท่านั้น
+                            <div className="text-xs text-text-muted">
+                                *สต็อกแก้ผ่าน <b className="text-text-secondary">ปรับสต็อก</b> เท่านั้น
                             </div>
                         )}
 
@@ -824,7 +781,6 @@ export default function IngredientsAdminPage() {
                 <AdjustStockForm
                     ingredient={adjustItem}
                     onClose={() => setAdjustItem(null)}
-                    // ✅ เปลี่ยนจาก fetchIngredients เฉยๆ -> refresh หลังปรับ (list + analytics)
                     onUpdated={() => refreshAfterAdjust(adjustItem.id)}
                 />
             )}

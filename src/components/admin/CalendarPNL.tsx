@@ -35,7 +35,7 @@ function toLocalISO(d: Date) {
 
 /** Hex -> r,g,b */
 function hexToRGB(hex: string) {
-    const h = hex.replace("#", "");
+    const h = hex.replace("#", "").trim();
     if (h.length === 3) {
         const r = parseInt(h[0] + h[0], 16);
         const g = parseInt(h[1] + h[1], 16);
@@ -87,7 +87,7 @@ export default function CalendarPNL({ orders, range }: Props) {
             return s;
         }
 
-        // For 'year' and '5year' we must subtract calendar years (so startLocal matches backend)
+        // For 'year' and '5year' subtract calendar years (so startLocal matches backend)
         if (range === "year" || range === "5year") {
             const yearsBack = range === "year" ? 1 : 5;
             const start = new Date(localToday.getFullYear() - yearsBack, localToday.getMonth(), localToday.getDate());
@@ -97,14 +97,14 @@ export default function CalendarPNL({ orders, range }: Props) {
             return s;
         }
 
-        // For other ranges (week, month, etc.) use day-count but compute start from local midnight
+        // For other ranges (week, month, etc.) day-count from local midnight
         const days = RANGE_DAYS[range as Exclude<RangeType, "all">];
         const start = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate() - (days - 1));
         for (let d = new Date(start); d <= localToday; d.setDate(d.getDate() + 1)) {
             s.add(toLocalISO(new Date(d)));
         }
         return s;
-    }, [orders, range]);    
+    }, [orders, range]);
 
     // 3) Month list
     const monthList = React.useMemo(() => {
@@ -178,24 +178,23 @@ export default function CalendarPNL({ orders, range }: Props) {
 
     const formatMoney = (v: number) => `${v.toLocaleString("th-TH")} ฿`;
 
-    /* -------------------------
-     * Render
-     * ------------------------- */
     return (
-        <div className="w-full bg-surface p-4 rounded-xl border border-gray-700/40 shadow">
+        <div className="w-full bg-surface p-4 rounded-xl border border-text-muted/25 shadow">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">ปฏิทินยอดขายรายวัน</h2>
+                <h2 className="text-lg font-semibold text-text-primary">ปฏิทินยอดขายรายวัน</h2>
 
                 <div className="flex items-center gap-3">
-                    {range !== "week" && <div className="text-sm text-gray-400">ช่วง: {range.toUpperCase()}</div>}
+                    {range !== "week" && (
+                        <div className="text-sm text-text-muted">ช่วง: {range.toUpperCase()}</div>
+                    )}
 
-                    {/* 🔥 Dropdown ซ่อนเมื่อ range = week หรือ today */}
+                    {/* Dropdown hide when range = week/today */}
                     {range !== "week" && range !== "today" && monthList.length > 0 && (
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="bg-surface border border-gray-700/40 text-gray-300 px-3 py-1 rounded-md"
+                            className="bg-background border border-text-muted/25 text-text-secondary px-3 py-1 rounded-md outline-none focus:ring-2 focus:ring-accent/40"
                         >
                             {monthList.map((m) => (
                                 <option key={m} value={m}>
@@ -229,27 +228,35 @@ export default function CalendarPNL({ orders, range }: Props) {
 
                             const intensity = maxVal ? Math.min(Math.abs(total) / maxVal, 1) : 0;
 
+                            // defaults (out of range)
                             let bg = "transparent";
-                            let dayClass = "text-gray-500";
+                            let dayClass = "text-text-muted";
                             let amountClass = "text-transparent";
 
                             if (inRange) {
-                                dayClass = "text-gray-200";
-                                amountClass = "text-gray-100";
+                                // วันในช่วง
+                                dayClass = "text-text-secondary";
 
+                                // ตัวเลข: ให้อ่านได้ใน light + dark
+                                // - total > 0 -> primary (เพราะพื้นมี tint accent)
+                                // - total = 0 -> muted (อย่าใช้ขาว)
+                                // - total < 0 -> primary (พื้นแดง tint)
+                                amountClass = total === 0 ? "text-text-muted" : "text-text-primary";
+
+                                // background tint
                                 if (total > 0) {
-                                    bg = `rgba(${accentRGB}, ${0.12 + intensity * 0.6})`;
+                                    bg = `rgba(${accentRGB}, ${0.10 + intensity * 0.55})`;
                                 } else if (total < 0) {
-                                    bg = `rgba(220, 38, 38, ${0.12 + intensity * 0.6})`;
+                                    bg = `rgba(220, 38, 38, ${0.10 + intensity * 0.55})`;
                                 } else {
-                                    bg = `rgba(${accentRGB}, 0.06)`;
+                                    bg = `rgba(${accentRGB}, 0.05)`;
                                 }
                             }
 
                             return (
                                 <div
                                     key={ci}
-                                    className="h-[75px] rounded-lg border border-gray-700/40 p-3 flex flex-col justify-between"
+                                    className="h-[75px] rounded-lg border border-text-muted/25 p-3 flex flex-col justify-between"
                                     style={{ background: bg }}
                                 >
                                     <div className={`text-[12px] ${dayClass}`}>{cell.day}</div>

@@ -1,4 +1,3 @@
-// components/admin/DaysLeftBadge.tsx
 "use client";
 
 import React from "react";
@@ -15,33 +14,65 @@ function fmtDays(d: number): string {
     return `${Math.ceil(d)} วัน`;
 }
 
-function badgeClass(kind: "muted" | "ok" | "warn" | "bad") {
+type Kind = "muted" | "ok" | "warn" | "bad";
+
+/**
+ * Theme-safe badge
+ * - Light: pastel bg + dark text
+ * - Dark: soft glow + light text
+ */
+function badgeClass(kind: Kind) {
     const base =
-        "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ring-1";
-    if (kind === "bad") return `${base} bg-red-500/10 text-red-300 ring-red-500/30`;
-    if (kind === "warn") return `${base} bg-yellow-500/10 text-yellow-200 ring-yellow-500/30`;
-    if (kind === "ok") return `${base} bg-emerald-500/10 text-emerald-200 ring-emerald-500/30`;
-    return `${base} bg-white/5 text-white/60 ring-white/10`;
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums border";
+
+    switch (kind) {
+        case "bad":
+            return `${base}
+              bg-red-500/12 text-red-700 border-red-500/30
+              dark:bg-red-500/15 dark:text-red-300`;
+
+        case "warn":
+            return `${base}
+              bg-yellow-500/15 text-yellow-800 border-yellow-500/30
+              dark:bg-yellow-500/15 dark:text-yellow-300`;
+
+        case "ok":
+            return `${base}
+              bg-emerald-500/12 text-emerald-700 border-emerald-500/30
+              dark:bg-emerald-500/15 dark:text-emerald-300`;
+
+        default:
+            return `${base}
+              bg-surface text-text-muted border-text-muted/25`;
+    }
 }
 
 export default function DaysLeftBadge({ daysLeft, abnormal }: Props) {
     if (daysLeft === null) {
         return (
             <span className={badgeClass("muted")}>
-                ไม่มีการใช้ {abnormal ? <span title="ใช้ผิดปกติ">⚠️</span> : null}
+                ไม่มีการใช้
+                {abnormal ? (
+                    <span className="ml-1 opacity-70" title="ใช้วันนี้ผิดปกติ">
+                        ⚠️
+                    </span>
+                ) : null}
             </span>
         );
     }
 
-    // ✅ owner-happy thresholds:
-    // <=3 วัน = ต้องสั่งด่วน (แดง)
-    // <=7 วัน = ใกล้หมด (เหลือง)
-    // >7 วัน = ปกติ (เขียว)
-    const kind = daysLeft <= 3 ? "bad" : daysLeft <= 7 ? "warn" : "ok";
+    // owner-happy thresholds
+    const kind: Kind =
+        daysLeft <= 3 ? "bad" : daysLeft <= 7 ? "warn" : "ok";
 
     return (
         <span className={badgeClass(kind)}>
-            {fmtDays(daysLeft)} {abnormal ? <span title="ใช้วันนี้ผิดปกติ">⚠️</span> : null}
+            {fmtDays(daysLeft)}
+            {abnormal ? (
+                <span className="ml-1 opacity-80" title="ใช้วันนี้ผิดปกติ">
+                    ⚠️
+                </span>
+            ) : null}
         </span>
     );
 }
