@@ -195,6 +195,28 @@ export default function IngredientsAdminPage() {
         fetchIngredients();
     }, []);
 
+    // ✅ NEW: refresh หลังปรับสต็อก (auto sync + force recalculation)
+    const refreshAfterAdjust = async (ingredientId?: string) => {
+        // ปิด modal ให้ UX มันชัดว่า "เสร็จแล้ว"
+        setAdjustItem(null);
+
+        // ingredients list ใหม่
+        await fetchIngredients();
+
+        // บังคับ analytics recalculation เฉพาะตัวที่เพิ่งปรับ (กัน stale badge)
+        if (ingredientId) {
+            setAnalyticsMap((prev) => {
+                if (!prev[ingredientId]) return prev;
+                const next = { ...prev };
+                delete next[ingredientId];
+                return next;
+            });
+        } else {
+            // fallback: ล้างทั้งก้อน (ถ้าอนาคต form ไม่ส่ง id)
+            setAnalyticsMap({});
+        }
+    };
+
     const filteredItems = useMemo(() => {
         const q = search.trim().toLowerCase();
 
@@ -802,7 +824,8 @@ export default function IngredientsAdminPage() {
                 <AdjustStockForm
                     ingredient={adjustItem}
                     onClose={() => setAdjustItem(null)}
-                    onUpdated={fetchIngredients}
+                    // ✅ เปลี่ยนจาก fetchIngredients เฉยๆ -> refresh หลังปรับ (list + analytics)
+                    onUpdated={() => refreshAfterAdjust(adjustItem.id)}
                 />
             )}
         </div>
