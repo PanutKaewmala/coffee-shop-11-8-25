@@ -88,6 +88,11 @@ export type MenuWithRelations = {
 export type OrderStatus = "paid" | "void" | "refunded";
 export type PaymentMethod = "cash" | "promptpay";
 
+/**
+ * ✅ UI/POS-friendly item shape
+ * - รองรับ variant_label เพื่อแก้ปัญหา “ชื่อเดียวกันแต่ราคาต่าง”
+ * - optional: serve_type_id/size เผื่ออนาคตทำ filter/sort/summary
+ */
 export type OrderItem = {
   id: string;
   name: string;
@@ -96,6 +101,13 @@ export type OrderItem = {
 
   menu_id?: string | null;
   variant_id?: string | null;
+
+  // ✅ new
+  variant_label?: string | null;
+
+  // ✅ optional future-proof
+  serve_type_id?: string | null;
+  size?: string | null;
 };
 
 export type Order = {

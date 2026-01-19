@@ -21,6 +21,17 @@ type OrderItemRow = {
     price: number | null;
     qty: number | null;
     created_at?: string | null;
+
+    // ✅ new
+    variant_label?: string | null;
+
+    // ✅ join fallback (computed if variant_label null)
+    variant?: {
+        id: string;
+        size: string | null;
+        serve_type_id: string | null;
+        serve_type?: { id: string; name: string } | null;
+    } | null;
 };
 
 type OrderWithItemsRow = {
@@ -46,11 +57,20 @@ type VariantRow = {
     id: string;
     menu_id: string;
     price_override: number | null;
+
+    // ✅ for label
+    serve_type_id: string;
+    size: string;
 };
 
 type MenuVariantMiniRow = {
     id: string;
     menu_id: string;
+};
+
+type ServeTypeRow = {
+    id: string;
+    name: string;
 };
 
 type IncomingItem = {
@@ -92,13 +112,30 @@ function isStockErrorMessage(msg: string) {
     );
 }
 
+function compactSpaces(s: string) {
+    return s.replace(/\s+/g, " ").trim();
+}
+
+function buildVariantLabel(opts: {
+    serveTypeName?: string | null;
+    size?: string | null;
+}) {
+    const a = opts.serveTypeName ? compactSpaces(opts.serveTypeName) : "";
+    const b = opts.size ? compactSpaces(opts.size) : "";
+    const merged = compactSpaces([a, b].filter(Boolean).join(" "));
+    return merged || null;
+}
+
 /* ============================================
    GET /api/orders
+   - ✅ include variant_label
+   - ✅ join variant->serve_type for fallback label
 ============================================ */
 export async function GET(req: NextRequest) {
     const supabase = getSupabaseServer();
     const id = req.nextUrl.searchParams.get("id");
 
+    // ✅ include join (variant -> serve_type)
     const select = `
     id,
     total,
@@ -112,10 +149,20 @@ export async function GET(req: NextRequest) {
       order_id,
       menu_id,
       variant_id,
+      variant_label,
       name,
       price,
       qty,
-      created_at
+      created_at,
+      variant:menu_variants(
+        id,
+        size,
+        serve_type_id,
+        serve_type:menu_serve_types(
+          id,
+          name
+        )
+      )
     )
   `;
 
@@ -134,6 +181,28 @@ export async function GET(req: NextRequest) {
             );
         }
 
+        // ✅ fallback label if missing
+        const items = (data.order_items ?? []).map((it) => {
+            const label =
+                it.variant_label ??
+                buildVariantLabel({
+                    serveTypeName: it.variant?.serve_type?.name ?? null,
+                    size: it.variant?.size ?? null,
+                });
+
+            return {
+                id: it.id,
+                order_id: it.order_id,
+                menu_id: it.menu_id,
+                variant_id: it.variant_id,
+                variant_label: label,
+                name: it.name,
+                price: it.price,
+                qty: it.qty,
+                created_at: it.created_at ?? null,
+            };
+        });
+
         return NextResponse.json({
             order: {
                 id: data.id,
@@ -143,7 +212,7 @@ export async function GET(req: NextRequest) {
                 payment_method: data.payment_method ?? "cash",
                 paid_at: data.paid_at ?? null,
                 note: data.note ?? null,
-                items: data.order_items ?? [],
+                items,
             },
         });
     }
@@ -162,21 +231,45 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-        orders: data.map((o) => ({
-            id: o.id,
-            total: o.total,
-            created_at: o.created_at,
-            status: o.status ?? "paid",
-            payment_method: o.payment_method ?? "cash",
-            paid_at: o.paid_at ?? null,
-            note: o.note ?? null,
-            items: o.order_items ?? [],
-        })),
+        orders: data.map((o) => {
+            const items = (o.order_items ?? []).map((it) => {
+                const label =
+                    it.variant_label ??
+                    buildVariantLabel({
+                        serveTypeName: it.variant?.serve_type?.name ?? null,
+                        size: it.variant?.size ?? null,
+                    });
+
+                return {
+                    id: it.id,
+                    order_id: it.order_id,
+                    menu_id: it.menu_id,
+                    variant_id: it.variant_id,
+                    variant_label: label,
+                    name: it.name,
+                    price: it.price,
+                    qty: it.qty,
+                    created_at: it.created_at ?? null,
+                };
+            });
+
+            return {
+                id: o.id,
+                total: o.total,
+                created_at: o.created_at,
+                status: o.status ?? "paid",
+                payment_method: o.payment_method ?? "cash",
+                paid_at: o.paid_at ?? null,
+                note: o.note ?? null,
+                items,
+            };
+        }),
     });
 }
 
 /* ============================================
-   POST /api/orders (variant-based stock)
+   POST /api/orders
+   - ✅ compute variant_label แล้ว insert ลง order_items
 ============================================ */
 export async function POST(req: NextRequest) {
     const supabase = getSupabaseServer();
@@ -190,7 +283,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "No items provided" }, { status: 400 });
         }
 
-        // ✅ payment method + note
         const paymentRaw = toStringOrNull(raw?.payment_method);
         const payment_method: PaymentMethod = isPaymentMethod(paymentRaw)
             ? paymentRaw
@@ -199,7 +291,6 @@ export async function POST(req: NextRequest) {
         const noteRaw = toStringOrNull(raw?.note);
         const note = noteRaw ? noteRaw : null;
 
-        // Normalize
         const normalized = (rawItems as IncomingItem[])
             .map((i) => {
                 const menu_id = toStringOrNull(i.menu_id) ?? toStringOrNull(i.id);
@@ -219,7 +310,6 @@ export async function POST(req: NextRequest) {
 
         const menuIds = Array.from(new Set(normalized.map((i) => i.menu_id)));
 
-        // Load menus
         const { data: menus, error: menuErr } = await supabase
             .from("menu")
             .select("id, name, price")
@@ -240,7 +330,6 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // detect menus with variants
         const { data: menuVariantsMini, error: mvMiniErr } = await supabase
             .from("menu_variants")
             .select("id, menu_id")
@@ -253,7 +342,6 @@ export async function POST(req: NextRequest) {
             (menuVariantsMini ?? []).map((v) => v.menu_id)
         );
 
-        // load defaults for menus
         const { data: defaultsMini, error: defErr } = await supabase
             .from("menu_variants")
             .select("id, menu_id")
@@ -270,7 +358,6 @@ export async function POST(req: NextRequest) {
             defaultsByMenu.set(d.menu_id, arr);
         });
 
-        // fill missing variant_id if possible
         const items = normalized.map((it) => {
             if (it.variant_id) return it;
 
@@ -283,7 +370,6 @@ export async function POST(req: NextRequest) {
             return { ...it, variant_id: null };
         });
 
-        // enforce variant_id
         for (const it of items) {
             if (!it.variant_id) {
                 return NextResponse.json(
@@ -300,10 +386,10 @@ export async function POST(req: NextRequest) {
 
         const variantIds = Array.from(new Set(items.map((i) => i.variant_id))) as string[];
 
-        // load variants
+        // ✅ load variants w/ serve_type_id + size
         const { data: variants, error: vErr } = await supabase
             .from("menu_variants")
-            .select("id, menu_id, price_override")
+            .select("id, menu_id, price_override, serve_type_id, size")
             .in("id", variantIds)
             .returns<VariantRow[]>();
 
@@ -321,23 +407,42 @@ export async function POST(req: NextRequest) {
                 );
             }
             if (v.menu_id !== it.menu_id) {
-                return NextResponse.json(
-                    { error: "Variant does not belong to menu" },
-                    { status: 400 }
-                );
+                return NextResponse.json({ error: "Variant does not belong to menu" }, { status: 400 });
             }
         }
 
-        // compute order_items + total
+        // ✅ load serve types to build label
+        const serveTypeIds = Array.from(
+            new Set((variants ?? []).map((v) => v.serve_type_id).filter(Boolean))
+        );
+
+        const { data: serveTypes, error: stErr } = await supabase
+            .from("menu_serve_types") // ✅ correct table name
+            .select("id, name")
+            .in("id", serveTypeIds)
+            .returns<ServeTypeRow[]>();
+
+        if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
+
+        const serveTypeMap = new Map<string, string>();
+        (serveTypes ?? []).forEach((s) => serveTypeMap.set(s.id, s.name));
+
+        // ✅ compute order_items + total + variant_label
         const itemsToInsert = items.map((it) => {
             const menu = menuMap.get(it.menu_id)!;
             const basePrice = toNumber(menu.price, 0);
             const v = variantMap.get(it.variant_id!)!;
             const finalPrice = toNumber(v.price_override ?? basePrice, basePrice);
 
+            const variant_label = buildVariantLabel({
+                serveTypeName: serveTypeMap.get(v.serve_type_id) ?? null,
+                size: v.size ?? null,
+            });
+
             return {
                 menu_id: it.menu_id,
                 variant_id: it.variant_id!,
+                variant_label,
                 name: menu.name,
                 price: finalPrice,
                 qty: it.qty,
@@ -346,7 +451,6 @@ export async function POST(req: NextRequest) {
 
         const total = itemsToInsert.reduce((sum, i) => sum + i.price * i.qty, 0);
 
-        // ✅ create order with status/payment
         const { data: createdOrder, error: orderErr } = await supabase
             .from("orders")
             .insert([
@@ -376,12 +480,12 @@ export async function POST(req: NextRequest) {
 
         createdOrderId = createdOrder.id;
 
-        // insert order_items
         const { error: itemErr } = await supabase.from("order_items").insert(
             itemsToInsert.map((i) => ({
                 order_id: createdOrderId,
                 menu_id: i.menu_id,
                 variant_id: i.variant_id,
+                variant_label: i.variant_label, // ✅ save it
                 name: i.name,
                 price: i.price,
                 qty: i.qty,
@@ -394,7 +498,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: itemErr.message }, { status: 500 });
         }
 
-        // deduct stock (DB RPC)
         const result = await deductStock({
             order_id: createdOrderId,
             note: "", // ห้าม null

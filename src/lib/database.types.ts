@@ -124,12 +124,16 @@ export type Database = {
           cost_per_unit: number | null
           id: string
           is_active: boolean
+          lead_time_days: number
+          low_stock_days: number
           min_stock: number
           name: string
           name_key: string | null
+          safety_stock_qty: number | null
           stock: number
           unit: string
           updated_at: string | null
+          warn_stock_days: number
         }
         Insert: {
           archived_at?: string | null
@@ -138,12 +142,16 @@ export type Database = {
           cost_per_unit?: number | null
           id?: string
           is_active?: boolean
+          lead_time_days?: number
+          low_stock_days?: number
           min_stock?: number
           name: string
           name_key?: string | null
+          safety_stock_qty?: number | null
           stock?: number
           unit: string
           updated_at?: string | null
+          warn_stock_days?: number
         }
         Update: {
           archived_at?: string | null
@@ -152,12 +160,16 @@ export type Database = {
           cost_per_unit?: number | null
           id?: string
           is_active?: boolean
+          lead_time_days?: number
+          low_stock_days?: number
           min_stock?: number
           name?: string
           name_key?: string | null
+          safety_stock_qty?: number | null
           stock?: number
           unit?: string
           updated_at?: string | null
+          warn_stock_days?: number
         }
         Relationships: []
       }
@@ -373,6 +385,7 @@ export type Database = {
           price: number
           qty: number
           variant_id: string | null
+          variant_label: string | null
         }
         Insert: {
           created_at?: string
@@ -383,6 +396,7 @@ export type Database = {
           price: number
           qty: number
           variant_id?: string | null
+          variant_label?: string | null
         }
         Update: {
           created_at?: string
@@ -393,6 +407,7 @@ export type Database = {
           price?: number
           qty?: number
           variant_id?: string | null
+          variant_label?: string | null
         }
         Relationships: [
           {
@@ -490,6 +505,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "recipe_items_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "recipe_items_variant_id_fkey"
             columns: ["variant_id"]
             isOneToOne: false
@@ -523,6 +545,13 @@ export type Database = {
             columns: ["ingredient_id"]
             isOneToOne: false
             referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_recipe_ingredient"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
             referencedColumns: ["id"]
           },
           {
@@ -584,6 +613,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stock_logs_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "stock_logs_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
@@ -612,6 +648,26 @@ export type Database = {
       }
     }
     Views: {
+      v_ingredients_alert: {
+        Row: {
+          archived_at: string | null
+          category: string | null
+          days_left_est: number | null
+          id: string | null
+          is_active: boolean | null
+          lead_time_days: number | null
+          low_stock_days: number | null
+          min_stock: number | null
+          name: string | null
+          safety_stock_qty: number | null
+          stock: number | null
+          stock_status: string | null
+          unit: string | null
+          used_per_day: number | null
+          warn_stock_days: number | null
+        }
+        Relationships: []
+      }
       v_pos_menu: {
         Row: {
           menu_id: string | null

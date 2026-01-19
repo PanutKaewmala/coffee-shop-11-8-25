@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 /* =========================
    Types (match /api/pos response)
@@ -31,7 +31,6 @@ type PosFeedResponse = { menu: PosMenuItem[] };
 ========================= */
 type PosCheckoutPayload = {
     items: { variant_id: string; qty: number }[];
-    // branch_id?: string; // ถ้าจะใช้ทีหลัง ค่อยเปิด
 };
 
 type PosCheckoutResponse = {
@@ -46,10 +45,11 @@ type PosCheckoutResponse = {
    Local cart type
 ========================= */
 type CartItem = {
-    id: string; // use variant_id as unique key
+    id: string; // variant_id
     variant_id: string;
     menu_id: string;
-    name: string;
+    menu_name: string;
+    variant_label: string;
     price: number;
     qty: number;
 };
@@ -70,6 +70,10 @@ function toNumber(v: unknown, fallback = 0): number {
     return Number.isFinite(n) ? n : fallback;
 }
 
+function clamp(n: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, n));
+}
+
 function parsePosFeed(data: unknown): PosMenuItem[] {
     if (!isRecord(data)) return [];
     const menu = asArray<unknown>(data.menu);
@@ -85,7 +89,9 @@ function parsePosFeed(data: unknown): PosMenuItem[] {
 
                     const st = v.serve_type;
                     const serve_type =
-                        isRecord(st) && typeof st.id === "string" && typeof st.name === "string"
+                        isRecord(st) &&
+                            typeof st.id === "string" &&
+                            typeof st.name === "string"
                             ? { id: st.id, name: st.name }
                             : null;
 
@@ -123,6 +129,32 @@ function parsePosFeed(data: unknown): PosMenuItem[] {
         .filter((x): x is PosMenuItem => x !== null);
 }
 
+/* =========================
+   UI helpers
+========================= */
+function serveLabel(v: PosVariant) {
+    return v.serve_type?.name?.trim() ? v.serve_type!.name : "Default";
+}
+
+function getMinVariantPrice(item: PosMenuItem): number {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    const base = toNumber(item.price, 0);
+    if (variants.length === 0) return base;
+
+    let min = Number.POSITIVE_INFINITY;
+    for (const v of variants) {
+        const p = toNumber(v.price, base);
+        if (p < min) min = p;
+    }
+    return Number.isFinite(min) ? min : base;
+}
+
+function resolveDefaultVariant(item: PosMenuItem): PosVariant | null {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    if (variants.length === 0) return null;
+    return variants.find((v) => v.is_default) ?? variants[0] ?? null;
+}
+
 export default function POSPage() {
     /* -------------------- STATE -------------------- */
     const [menu, setMenu] = useState<PosMenuItem[]>([]);
@@ -131,6 +163,10 @@ export default function POSPage() {
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
+
+    // filters
+    const [query, setQuery] = useState("");
+    const [activeCatId, setActiveCatId] = useState<string>("all");
 
     /* -------------------- LOAD MENU (POS FEED) -------------------- */
     useEffect(() => {
@@ -177,10 +213,9 @@ export default function POSPage() {
             for (const m of menu) {
                 if (next[m.id]) continue;
 
-                const variants = Array.isArray(m.variants) ? m.variants : [];
-                if (variants.length === 0) continue;
+                const dv = resolveDefaultVariant(m);
+                if (!dv) continue;
 
-                const dv = variants.find((v) => v.is_default) ?? variants[0];
                 next[m.id] = dv.id;
             }
 
@@ -188,61 +223,56 @@ export default function POSPage() {
         });
     }, [menu]);
 
-    /* -------------------- HELPERS -------------------- */
-    function getSelectedVariant(item: PosMenuItem): PosVariant | null {
-        const variants = Array.isArray(item.variants) ? item.variants : [];
-        if (variants.length === 0) return null;
-
-        const pickedId = variantPick[item.id];
-        return (
-            variants.find((v) => v.id === pickedId) ??
-            variants.find((v) => v.is_default) ??
-            variants[0] ??
-            null
-        );
-    }
-
-    function getVariantLabel(v: PosVariant) {
-        return v.serve_type?.name ?? "Default";
-    }
-
-    function getMinVariantPrice(item: PosMenuItem): number {
-        const variants = Array.isArray(item.variants) ? item.variants : [];
-        if (variants.length === 0) return toNumber(item.price, 0);
-
-        let min = Number.POSITIVE_INFINITY;
-        for (const v of variants) {
-            const p = toNumber(v.price, toNumber(item.price, 0));
-            if (p < min) min = p;
+    /* -------------------- DERIVED: categories -------------------- */
+    const categories = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const m of menu) {
+            const c = m.category;
+            if (c?.id && c.name) map.set(c.id, c.name);
         }
-        return Number.isFinite(min) ? min : toNumber(item.price, 0);
-    }
+        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    }, [menu]);
 
-    function getVariantOptionLabel(v: PosVariant) {
-        return `${getVariantLabel(v)} — ${toNumber(v.price, 0)} บาท`;
-    }
+    const filteredMenu = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return menu.filter((m) => {
+            const okCat = activeCatId === "all" ? true : m.category?.id === activeCatId;
+            if (!okCat) return false;
 
-    /* -------------------- ADD TO CART (BY VARIANT) -------------------- */
-    function addToCart(item: PosMenuItem) {
+            if (!q) return true;
+            const hay = `${m.name} ${m.description ?? ""} ${m.category?.name ?? ""}`.toLowerCase();
+            return hay.includes(q);
+        });
+    }, [menu, query, activeCatId]);
+
+    /* -------------------- SELECTED VARIANT -------------------- */
+    const getSelectedVariant = useCallback(
+        (item: PosMenuItem): PosVariant | null => {
+            const variants = Array.isArray(item.variants) ? item.variants : [];
+            if (variants.length === 0) return null;
+
+            const pickedId = variantPick[item.id];
+            return (
+                variants.find((v) => v.id === pickedId) ??
+                variants.find((v) => v.is_default) ??
+                variants[0] ??
+                null
+            );
+        },
+        [variantPick]
+    );
+
+    /* -------------------- CART OPS -------------------- */
+    const addVariantToCart = useCallback((item: PosMenuItem, variantId: string) => {
         const variants = Array.isArray(item.variants) ? item.variants : [];
-        if (variants.length === 0) {
-            alert(`เมนู "${item.name}" ยังไม่มี variants`);
-            return;
-        }
+        const v = variants.find((x) => x.id === variantId) ?? null;
+        if (!v) return;
 
-        const v = getSelectedVariant(item);
-        if (!v?.id) {
-            alert("เลือก variant ไม่สำเร็จ");
-            return;
-        }
-
-        const variantId = v.id;
-        const price = toNumber(v.price, toNumber(item.price, 0));
-        const displayName = `${item.name} (${getVariantLabel(v)})`;
+        const base = toNumber(item.price, 0);
+        const price = toNumber(v.price, base);
 
         setCart((prev) => {
             const exists = prev.find((c) => c.variant_id === variantId);
-
             if (exists) {
                 return prev.map((c) =>
                     c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c
@@ -253,44 +283,113 @@ export default function POSPage() {
                 id: variantId,
                 variant_id: variantId,
                 menu_id: item.id,
-                name: displayName,
+                menu_name: item.name,
+                variant_label: serveLabel(v),
                 price,
                 qty: 1,
             };
 
             return [...prev, next];
         });
-    }
+    }, []);
 
-    function increaseQty(variantId: string) {
+    // ✅ add จากการ์ดเท่านั้น (serve ไม่ add)
+    const addToCart = useCallback(
+        (item: PosMenuItem) => {
+            const variants = Array.isArray(item.variants) ? item.variants : [];
+            if (variants.length === 0) {
+                alert(`เมนู "${item.name}" ยังไม่มี variants`);
+                return;
+            }
+
+            const selected = getSelectedVariant(item) ?? resolveDefaultVariant(item);
+            if (!selected?.id) {
+                alert("เลือก variant ไม่สำเร็จ");
+                return;
+            }
+
+            addVariantToCart(item, selected.id);
+        },
+        [addVariantToCart, getSelectedVariant]
+    );
+
+    const increaseQty = useCallback((variantId: string) => {
         setCart((prev) =>
             prev.map((c) => (c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c))
         );
-    }
+    }, []);
 
-    function decreaseQty(variantId: string) {
+    const decreaseQty = useCallback((variantId: string) => {
         setCart((prev) =>
             prev
                 .map((c) => (c.variant_id === variantId ? { ...c, qty: c.qty - 1 } : c))
                 .filter((c) => c.qty > 0)
         );
-    }
+    }, []);
 
-    function removeItem(variantId: string) {
+    const removeItem = useCallback((variantId: string) => {
         setCart((prev) => prev.filter((c) => c.variant_id !== variantId));
-    }
+    }, []);
 
-    function clearCart() {
-        setCart([]);
-    }
+    const clearCart = useCallback(() => setCart([]), []);
 
     /* -------------------- TOTAL -------------------- */
-    const total = useMemo(
-        () => cart.reduce((sum, i) => sum + i.price * i.qty, 0),
-        [cart]
-    );
+    const total = useMemo(() => cart.reduce((sum, i) => sum + i.price * i.qty, 0), [cart]);
 
-    /* -------------------- CHECKOUT (POST /api/pos) -------------------- */
+    /* -------------------- GROUPED CART -------------------- */
+    type CartGroup = {
+        menu_id: string;
+        menu_name: string;
+        lines: CartItem[];
+        groupQty: number;
+        groupTotal: number;
+    };
+
+    const groupedCart: CartGroup[] = useMemo(() => {
+        const map = new Map<string, CartGroup>();
+        const lastIndex = new Map<string, number>();
+
+        for (let i = 0; i < cart.length; i++) {
+            const it = cart[i];
+            lastIndex.set(it.menu_id, i);
+
+            const prev = map.get(it.menu_id);
+            if (!prev) {
+                map.set(it.menu_id, {
+                    menu_id: it.menu_id,
+                    menu_name: it.menu_name,
+                    lines: [it],
+                    groupQty: it.qty,
+                    groupTotal: it.qty * it.price,
+                });
+            } else {
+                prev.lines.push(it);
+                prev.groupQty += it.qty;
+                prev.groupTotal += it.qty * it.price;
+            }
+        }
+
+        return Array.from(map.values()).sort(
+            (a, b) => (lastIndex.get(b.menu_id) ?? 0) - (lastIndex.get(a.menu_id) ?? 0)
+        );
+    }, [cart]);
+
+    /* -------------------- KEYBOARD SHORTCUTS -------------------- */
+    useEffect(() => {
+        function onKeyDown(e: KeyboardEvent) {
+            if (e.key === "Escape") {
+                if (cart.length > 0 && !loading) clearCart();
+            }
+            if (e.key === "Enter") {
+                if (cart.length > 0 && !loading) void checkout();
+            }
+        }
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cart.length, loading]);
+
+    /* -------------------- CHECKOUT -------------------- */
     async function checkout() {
         if (cart.length === 0) return;
         setLoading(true);
@@ -299,7 +398,7 @@ export default function POSPage() {
             const payload: PosCheckoutPayload = {
                 items: cart.map((c) => ({
                     variant_id: c.variant_id,
-                    qty: c.qty,
+                    qty: clamp(c.qty, 1, 999),
                 })),
             };
 
@@ -315,7 +414,7 @@ export default function POSPage() {
                 throw new Error("Server returned invalid JSON");
             });
 
-            const data: PosCheckoutResponse = (isRecord(raw) ? (raw as PosCheckoutResponse) : {});
+            const data: PosCheckoutResponse = isRecord(raw) ? (raw as PosCheckoutResponse) : {};
 
             if (!res.ok) {
                 console.error("❌ POS checkout failed:", { status: res.status, data });
@@ -347,57 +446,98 @@ export default function POSPage() {
             <div className="w-2/3 border-r border-[var(--text-muted)]/20 p-4 overflow-y-auto">
                 <div className="flex items-center justify-between gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-text-primary">เมนูทั้งหมด</h2>
+
+                    <div className="flex items-center gap-2">
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="ค้นหาเมนู..."
+                            className="w-64 px-3 py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary placeholder:text-text-muted"
+                        />
+
+                        <select
+                            value={activeCatId}
+                            onChange={(e) => setActiveCatId(e.target.value)}
+                            className="px-3 py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
+                        >
+                            <option value="all">ทุกหมวด</option>
+                            {categories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {menu.map((item) => {
+                    {filteredMenu.map((item) => {
                         const variants = Array.isArray(item.variants) ? item.variants : [];
                         const selectedVariant = getSelectedVariant(item);
 
                         return (
                             <div
                                 key={item.id}
+                                // ✅ add ที่การ์ด (เหมือนเดิม)
                                 onClick={() => addToCart(item)}
                                 className="p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface cursor-pointer hover:bg-accent/20 transition"
+                                title="คลิกเพื่อเพิ่ม"
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <div className="font-semibold text-text-primary truncate">
                                             {item.name}
                                         </div>
-
                                         <div className="text-text-secondary">
                                             เริ่มต้น {getMinVariantPrice(item)} บาท
                                         </div>
                                     </div>
 
-                                    {/* Variant selector ต่อเมนู */}
-                                    <div className="shrink-0">
-                                        <select
-                                            value={selectedVariant?.id ?? ""}
-                                            disabled={variants.length === 0}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onChange={(e) => {
-                                                e.stopPropagation();
-                                                const variantId = e.target.value;
-                                                setVariantPick((prev) => ({
-                                                    ...prev,
-                                                    [item.id]: variantId,
-                                                }));
-                                            }}
-                                            className="px-3 py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary disabled:opacity-50"
-                                        >
-                                            {variants.length === 0 ? (
-                                                <option value="">ไม่มี Serve</option>
-                                            ) : (
-                                                variants.map((v) => (
-                                                    <option key={v.id} value={v.id}>
-                                                        {getVariantOptionLabel(v)}
-                                                    </option>
-                                                ))
-                                            )}
-                                        </select>
+                                    <div className="shrink-0 text-xs text-text-muted">
+                                        คลิกเพื่อเพิ่ม
                                     </div>
+                                </div>
+
+                                {/* pills: เลือก serve อย่างเดียว (ไม่ add) */}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {variants.length === 0 ? (
+                                        <span className="text-sm text-text-muted">ไม่มี Serve</span>
+                                    ) : (
+                                        variants.map((v) => {
+                                            const active = (selectedVariant?.id ?? "") === v.id;
+
+                                            return (
+                                                <button
+                                                    key={v.id}
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        // ✅ กันไม่ให้ bubble ไป addToCart
+                                                        e.stopPropagation();
+                                                        setVariantPick((prev) => ({
+                                                            ...prev,
+                                                            [item.id]: v.id,
+                                                        }));
+                                                    }}
+                                                    className={[
+                                                        "px-3 py-1 rounded-full text-sm border transition",
+                                                        active
+                                                            ? "bg-accent text-white border-accent"
+                                                            : "bg-[var(--text-muted)]/10 text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
+                                                    ].join(" ")}
+                                                    title={`${serveLabel(v)} — ${toNumber(
+                                                        v.price,
+                                                        item.price
+                                                    )} บาท`}
+                                                >
+                                                    {serveLabel(v)}
+                                                </button>
+                                            );
+                                        })
+                                    )}
+                                </div>
+
+                                <div className="mt-2 text-xs text-text-muted">
+                                    เลือกประเภทก่อน แล้วค่อยคลิกการ์ดเพื่อเพิ่ม
                                 </div>
                             </div>
                         );
@@ -407,51 +547,81 @@ export default function POSPage() {
 
             {/* RIGHT: Cart */}
             <div className="w-1/3 p-4 flex flex-col">
-                <h2 className="text-2xl font-bold mb-4 text-text-primary">ตะกร้า</h2>
+                <div className="flex items-end justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-text-primary">ตะกร้า</h2>
+                    <div className="text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
+                </div>
 
                 <div className="flex-1 overflow-y-auto space-y-3">
-                    {cart.map((item) => (
-                        <div
-                            key={item.variant_id}
-                            className="p-3 border border-[var(--text-muted)]/20 rounded-lg bg-surface"
-                        >
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <div className="font-semibold text-text-primary">{item.name}</div>
-                                    <div className="text-text-muted text-sm">
-                                        {item.qty} × {item.price} บาท
-                                    </div>
-                                </div>
-
-                                <div className="font-bold text-text-primary">
-                                    {item.qty * item.price}
-                                </div>
-                            </div>
-
-                            <div className="mt-2 flex gap-2">
-                                <button
-                                    onClick={() => decreaseQty(item.variant_id)}
-                                    className="w-8 h-8 rounded-md bg-accent/20 text-text-primary"
-                                >
-                                    -
-                                </button>
-
-                                <button
-                                    onClick={() => increaseQty(item.variant_id)}
-                                    className="w-8 h-8 rounded-md bg-accent/20 text-text-primary"
-                                >
-                                    +
-                                </button>
-
-                                <button
-                                    onClick={() => removeItem(item.variant_id)}
-                                    className="px-3 py-1 text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30"
-                                >
-                                    ลบ
-                                </button>
-                            </div>
+                    {groupedCart.length === 0 ? (
+                        <div className="p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
+                            ยังไม่มีรายการ
                         </div>
-                    ))}
+                    ) : (
+                        groupedCart.map((g) => (
+                            <div
+                                key={g.menu_id}
+                                className="p-3 border border-[var(--text-muted)]/20 rounded-lg bg-surface"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="font-semibold text-text-primary truncate">
+                                            {g.menu_name}
+                                        </div>
+                                        <div className="text-xs text-text-muted">
+                                            รวม {g.groupQty} ชิ้น
+                                        </div>
+                                    </div>
+
+                                    <div className="font-bold text-text-primary">{g.groupTotal}</div>
+                                </div>
+
+                                <div className="mt-3 space-y-2">
+                                    {g.lines
+                                        .slice()
+                                        .sort((a, b) => a.variant_label.localeCompare(b.variant_label))
+                                        .map((it) => (
+                                            <div
+                                                key={it.variant_id}
+                                                className="flex items-center justify-between gap-3"
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="text-sm text-text-secondary truncate">
+                                                        • {it.variant_label}
+                                                    </div>
+                                                    <div className="text-xs text-text-muted">
+                                                        {it.qty} × {it.price} บาท
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => decreaseQty(it.variant_id)}
+                                                        className="w-8 h-8 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
+                                                    >
+                                                        -
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => increaseQty(it.variant_id)}
+                                                        className="w-8 h-8 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
+                                                    >
+                                                        +
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => removeItem(it.variant_id)}
+                                                        className="px-3 h-8 text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98]"
+                                                    >
+                                                        ลบ
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
 
                 <div className="mt-4 border-t border-[var(--text-muted)]/20 pt-4">
@@ -469,7 +639,7 @@ export default function POSPage() {
                     </button>
 
                     <button
-                        onClick={checkout}
+                        onClick={() => void checkout()}
                         disabled={loading || cart.length === 0}
                         className="mt-4 w-full py-3 rounded-xl text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
