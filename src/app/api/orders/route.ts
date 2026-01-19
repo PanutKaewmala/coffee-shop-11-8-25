@@ -116,13 +116,20 @@ function compactSpaces(s: string) {
     return s.replace(/\s+/g, " ").trim();
 }
 
+// ✅ hide implementation detail ("default") from users
+function cleanLabel(s: string | null | undefined): string | null {
+    if (!s) return null;
+    const cleaned = compactSpaces(String(s).replace(/\bdefault\b/gi, ""));
+    return cleaned || null;
+}
+
 function buildVariantLabel(opts: {
     serveTypeName?: string | null;
     size?: string | null;
 }) {
-    const a = opts.serveTypeName ? compactSpaces(opts.serveTypeName) : "";
-    const b = opts.size ? compactSpaces(opts.size) : "";
-    const merged = compactSpaces([a, b].filter(Boolean).join(" "));
+    const a = cleanLabel(opts.serveTypeName);
+    const b = cleanLabel(opts.size);
+    const merged = compactSpaces([a, b].filter(Boolean).join(" • "));
     return merged || null;
 }
 
@@ -181,10 +188,10 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        // ✅ fallback label if missing
+        // ✅ fallback label if missing (and cleanup)
         const items = (data.order_items ?? []).map((it) => {
             const label =
-                it.variant_label ??
+                cleanLabel(it.variant_label) ??
                 buildVariantLabel({
                     serveTypeName: it.variant?.serve_type?.name ?? null,
                     size: it.variant?.size ?? null,
@@ -234,7 +241,7 @@ export async function GET(req: NextRequest) {
         orders: data.map((o) => {
             const items = (o.order_items ?? []).map((it) => {
                 const label =
-                    it.variant_label ??
+                    cleanLabel(it.variant_label) ??
                     buildVariantLabel({
                         serveTypeName: it.variant?.serve_type?.name ?? null,
                         size: it.variant?.size ?? null,
@@ -270,6 +277,7 @@ export async function GET(req: NextRequest) {
 /* ============================================
    POST /api/orders
    - ✅ compute variant_label แล้ว insert ลง order_items
+   - ✅ cleanup "default" in label
 ============================================ */
 export async function POST(req: NextRequest) {
     const supabase = getSupabaseServer();
@@ -417,7 +425,7 @@ export async function POST(req: NextRequest) {
         );
 
         const { data: serveTypes, error: stErr } = await supabase
-            .from("menu_serve_types") // ✅ correct table name
+            .from("menu_serve_types")
             .select("id, name")
             .in("id", serveTypeIds)
             .returns<ServeTypeRow[]>();
@@ -427,7 +435,7 @@ export async function POST(req: NextRequest) {
         const serveTypeMap = new Map<string, string>();
         (serveTypes ?? []).forEach((s) => serveTypeMap.set(s.id, s.name));
 
-        // ✅ compute order_items + total + variant_label
+        // ✅ compute order_items + total + variant_label (cleaned)
         const itemsToInsert = items.map((it) => {
             const menu = menuMap.get(it.menu_id)!;
             const basePrice = toNumber(menu.price, 0);
@@ -485,7 +493,7 @@ export async function POST(req: NextRequest) {
                 order_id: createdOrderId,
                 menu_id: i.menu_id,
                 variant_id: i.variant_id,
-                variant_label: i.variant_label, // ✅ save it
+                variant_label: i.variant_label,
                 name: i.name,
                 price: i.price,
                 qty: i.qty,

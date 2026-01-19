@@ -1,17 +1,38 @@
+// components/admin/OrderItemsTooltip.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
 import type { OrderItem } from "@/lib/types";
 
-export default function OrderItemsTooltip({ items }: { items: OrderItem[] }) {
+type Props = {
+    items: OrderItem[];
+};
+
+export default function OrderItemsTooltip({ items }: Props) {
     const tooltipRef = useRef<HTMLDivElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [flip, setFlip] = useState(false);
 
-    // ---- calculate item count ----
-    const count = items?.reduce((sum, i) => sum + (i.qty || 0), 0) ?? 0;
+    /* =========================
+       Helpers
+    ========================= */
 
-    // ---- auto flip tooltip ----
+    const count =
+        items?.reduce((sum, i) => sum + (i.qty || 0), 0) ?? 0;
+
+    function getSubLabel(it: OrderItem): string | null {
+        if (it.variant_label && it.variant_label.trim()) {
+            return it.variant_label.trim();
+        }
+        if (it.size && it.size.trim()) {
+            return it.size.trim();
+        }
+        return null;
+    }
+
+    /* =========================
+       Auto flip tooltip (viewport safe)
+    ========================= */
     useEffect(() => {
         if (!items || items.length === 0) return;
 
@@ -21,7 +42,7 @@ export default function OrderItemsTooltip({ items }: { items: OrderItem[] }) {
             const rect = tooltipRef.current.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
 
-            setFlip(rect.bottom > viewportHeight - 10);
+            setFlip(rect.bottom > viewportHeight - 8);
         };
 
         checkPosition();
@@ -34,14 +55,16 @@ export default function OrderItemsTooltip({ items }: { items: OrderItem[] }) {
         };
     }, [items]);
 
-    // ---- if no items: show simple text ----
+    /* =========================
+       Empty state
+    ========================= */
     if (!items || items.length === 0) {
         return <span>0 รายการ</span>;
     }
 
     return (
         <div ref={containerRef} className="relative group w-max mx-auto">
-            {/* text */}
+            {/* trigger text */}
             <span className="cursor-default underline decoration-dotted">
                 {count} รายการ
             </span>
@@ -70,17 +93,32 @@ export default function OrderItemsTooltip({ items }: { items: OrderItem[] }) {
                 </div>
 
                 <div className="space-y-1 text-sm">
-                    {items.map((it, idx) => (
-                        <div
-                            key={idx}
-                            className="flex justify-between gap-4"
-                        >
-                            <span className="truncate">{it.name}</span>
-                            <span className="whitespace-nowrap opacity-80">
-                                ×{it.qty ?? 1} — {it.price ?? 0} บาท
-                            </span>
-                        </div>
-                    ))}
+                    {items.map((it, idx) => {
+                        const sub = getSubLabel(it);
+
+                        return (
+                            <div
+                                key={idx}
+                                className="flex justify-between gap-4"
+                            >
+                                <div className="min-w-0">
+                                    <div className="truncate">
+                                        {it.name}
+                                    </div>
+
+                                    {sub && (
+                                        <div className="text-xs opacity-70 truncate">
+                                            {sub}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <span className="whitespace-nowrap opacity-80">
+                                    ×{it.qty ?? 1} — {it.price ?? 0} บาท
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>
