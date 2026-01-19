@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
@@ -23,8 +23,65 @@ type OrderRow = {
     items?: OrderItem[];
 };
 
+type Preset = "today" | "7days" | "month";
+
+type RevenueSummary = {
+    preset: Preset;
+    current: { total: number; count: number };
+    previous: { total: number; count: number };
+    delta: { total: number; count: number };
+    percent: { total: number | null; count: number | null };
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+
+function toNum(v: unknown, fallback = 0): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function toNullNum(v: unknown): number | null {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+function presetFromDateFilter(df: DateFilter): Preset {
+    if (df === "month") return "month";
+    if (df === "7days") return "7days";
+    return "today";
+}
+
+function parseRevenueSummary(j: unknown): RevenueSummary | null {
+    if (!isRecord(j)) return null;
+    if (typeof j.error === "string") return null;
+
+    const preset = j.preset;
+    if (preset !== "today" && preset !== "7days" && preset !== "month") return null;
+
+    const current = isRecord(j.current) ? j.current : null;
+    const previous = isRecord(j.previous) ? j.previous : null;
+    const delta = isRecord(j.delta) ? j.delta : null;
+    const percent = isRecord(j.percent) ? j.percent : null;
+
+    if (!current || !previous || !delta || !percent) return null;
+
+    return {
+        preset,
+        current: { total: toNum(current.total), count: toNum(current.count) },
+        previous: { total: toNum(previous.total), count: toNum(previous.count) },
+        delta: { total: toNum(delta.total), count: toNum(delta.count) },
+        percent: {
+            total: toNullNum(percent.total),
+            count: toNullNum(percent.count),
+        },
+    };
+}
+
 function formatMoneyTHB(n: number) {
-    return new Intl.NumberFormat("th-TH").format(n);
+    const v = Number.isFinite(n) ? n : 0;
+    return new Intl.NumberFormat("th-TH").format(v);
 }
 
 function safeDateTH(dateStr: string) {
@@ -37,7 +94,24 @@ function shortId(id: string) {
     return id?.length > 10 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+function trendText(delta: number, pct: number | null) {
+    const up = delta > 0;
+    const down = delta < 0;
+    const arrow = up ? "▲" : down ? "▼" : "•";
+    const sign = up ? "+" : "";
+    const pctText = pct == null ? "" : ` (${sign}${pct.toFixed(1)}%)`;
+    return `${arrow} ${sign}${delta.toLocaleString("th-TH")}${pctText}`;
+}
+
+function trendClass(delta: number) {
+    if (delta > 0) return "text-emerald-400";
+    if (delta < 0) return "text-rose-400";
+    return "text-text-secondary";
+}
+
 export default function AdminOrdersPage() {
+    const rowsPerPage = 20;
+
     const {
         loading,
         search,
@@ -52,9 +126,21 @@ export default function AdminOrdersPage() {
         inputPage,
         setInputPage,
         totalPages,
-    } = useOrdersSearch({ rowsPerPage: 20, initialFilter: "today" });
+    } = useOrdersSearch({ rowsPerPage, initialFilter: "today" });
 
-    const paidCount = filteredOrders.length; // ตอนนี้ถือว่า paid-only
+    // ✅ revenue trend summary
+    const [rev, setRev] = useState<RevenueSummary | null>(null);
+
+    useEffect(() => {
+        const preset = presetFromDateFilter(dateFilter as DateFilter);
+
+        fetch(`/api/revenue/summary?preset=${preset}`, { cache: "no-store" })
+            .then((r) => r.json() as Promise<unknown>)
+            .then((j) => setRev(parseRevenueSummary(j)))
+            .catch(() => setRev(null));
+    }, [dateFilter]);
+
+    const paidCount = filteredOrders.length; // ตอนนี้ถือว่า paid-only (ตาม hook เดิม)
     const avgOrder = useMemo(() => {
         if (paidCount <= 0) return 0;
         return totalSales / paidCount;
@@ -70,7 +156,7 @@ export default function AdminOrdersPage() {
 
             return [
                 <span key={`idx-${order.id}`} className="text-text-secondary">
-                    {(page - 1) * 20 + (idx + 1)}
+                    {(page - 1) * rowsPerPage + (idx + 1)}
                 </span>,
 
                 <Link
@@ -175,6 +261,13 @@ export default function AdminOrdersPage() {
                                     <div className="text-3xl font-bold mt-1 tabular-nums">
                                         {formatMoneyTHB(totalSales)} บาท
                                     </div>
+
+                                    {rev ? (
+                                        <div className={`text-sm mt-1 ${trendClass(rev.delta.total)}`}>
+                                            เทียบช่วงก่อนหน้า:{" "}
+                                            {trendText(rev.delta.total, rev.percent.total)}
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="p-4 rounded-xl bg-card border border-border/40">
@@ -182,6 +275,13 @@ export default function AdminOrdersPage() {
                                     <div className="text-3xl font-bold mt-1 tabular-nums">
                                         {filteredOrders.length} รายการ
                                     </div>
+
+                                    {rev ? (
+                                        <div className={`text-sm mt-1 ${trendClass(rev.delta.count)}`}>
+                                            เทียบช่วงก่อนหน้า:{" "}
+                                            {trendText(rev.delta.count, rev.percent.count)}
+                                        </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="p-4 rounded-xl bg-card border border-border/40">
