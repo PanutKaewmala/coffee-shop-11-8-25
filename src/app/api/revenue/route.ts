@@ -7,9 +7,7 @@ function pad(n: number) {
     return String(n).padStart(2, "0");
 }
 
-/** format Date (local Bangkok) => 'YYYY-MM-DD'
- *  (ใช้ local time แท้ — ไม่ใช้ UTC)
- */
+/** format Date (local Bangkok) => 'YYYY-MM-DD' */
 function formatLocalDate(d: Date) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
@@ -50,7 +48,7 @@ function normalizePgTimestampToUTCISO(ts: string): string {
 
 /** Convert UTC ISO string → local date YYYY-MM-DD */
 function utcIsoToLocalDate(iso: string) {
-    const d = new Date(iso); // auto local timezone
+    const d = new Date(iso);
     return formatLocalDate(d);
 }
 
@@ -61,6 +59,21 @@ function localStartToUTCISO(local: Date) {
 }
 
 type RangeType = "today" | "week" | "month" | "year" | "5year" | "all";
+
+type OrderStatusUI = "paid" | "cancelled" | "void" | "refunded" | "unknown";
+function normalizeStatus(v: unknown): OrderStatusUI {
+    const s = typeof v === "string" ? v.toLowerCase().trim() : "";
+    if (s === "paid") return "paid";
+    if (s === "cancelled") return "cancelled";
+    if (s === "void") return "void";
+    if (s === "refunded") return "refunded";
+    return "unknown";
+}
+
+function toNumber(v: unknown, fallback = 0): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
 
 export async function GET(req: Request) {
     const supabase = getSupabaseServer();
@@ -93,11 +106,11 @@ export async function GET(req: Request) {
     }
 
     // -------------------------
-    // Query DB
+    // Query DB (✅ include status)
     // -------------------------
     let query = supabase
         .from("orders")
-        .select("id, total, created_at, order_items(*)")
+        .select("id, total, created_at, status, order_items(*)")
         .order("created_at", { ascending: false })
         .range(0, 99999);
 
@@ -120,57 +133,34 @@ export async function GET(req: Request) {
         id: string;
         created_at: string; // normalized ISO UTC
         total: number;
+        status: OrderStatusUI;
         items: OrderItem[];
         raw_created_at?: string;
     };
 
     const formattedOrders: FormattedOrder[] = rows.map((r) => {
-        // narrow the incoming row shape safely
         const row = r as Record<string, unknown>;
 
         const rawCreated = row.created_at ? String(row.created_at) : "";
         const createdISO = rawCreated ? normalizePgTimestampToUTCISO(rawCreated) : new Date().toISOString();
 
-        const total = (() => {
-            const t = row.total;
-            if (typeof t === "number") return t;
-            if (typeof t === "string") {
-                const n = Number(t);
-                return isNaN(n) ? 0 : n;
-            }
-            return 0;
-        })();
+        const total = toNumber(row.total, 0);
+        const status = normalizeStatus(row.status);
 
         const rawItems = Array.isArray(row.order_items) ? (row.order_items as unknown[]) : [];
         const items: OrderItem[] = rawItems.map((it) => {
             const o = it as Record<string, unknown>;
             const id = o.id !== undefined ? String(o.id) : "";
             const name = o.name !== undefined ? String(o.name) : "";
-            const price = (() => {
-                const p = o.price;
-                if (typeof p === "number") return p;
-                if (typeof p === "string") {
-                    const n = Number(p);
-                    return isNaN(n) ? 0 : n;
-                }
-                return 0;
-            })();
-            const qty = (() => {
-                const q = o.qty;
-                if (typeof q === "number") return q;
-                if (typeof q === "string") {
-                    const n = Number(q);
-                    return isNaN(n) ? 0 : n;
-                }
-                return 0;
-            })();
-
+            const price = toNumber(o.price, 0);
+            const qty = toNumber(o.qty, 0);
             return { id, name, price, qty };
         });
 
         return {
             id: row.id !== undefined ? String(row.id) : "",
             total,
+            status,
             created_at: createdISO,
             items,
             raw_created_at: rawCreated || undefined,
@@ -179,21 +169,32 @@ export async function GET(req: Request) {
 
     // If "all" and startLocal not set, derive from earliest order
     if (range === "all" && formattedOrders.length > 0 && !startLocal) {
-        // note: query ordered descending, earliest at the end
         const last = formattedOrders[formattedOrders.length - 1];
         const first = new Date(last.created_at);
         startLocal = new Date(first.getFullYear(), first.getMonth(), first.getDate());
     }
 
     // -------------------------
-    // Summary
+    // Summary (✅ paid-only, owner-safe)
     // -------------------------
-    const totalRevenue = formattedOrders.reduce((s, o) => s + o.total, 0);
-    const totalOrders = formattedOrders.length;
-    const avgOrder = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
+    const paidOrders = formattedOrders.filter((o) => o.status === "paid");
+    const refundedOrders = formattedOrders.filter((o) => o.status === "refunded");
+    const cancelledOrders = formattedOrders.filter((o) => o.status === "cancelled" || o.status === "void");
+    const unknownOrders = formattedOrders.filter((o) => o.status === "unknown");
 
+    const paidRevenue = paidOrders.reduce((s, o) => s + o.total, 0);
+    const refundedTotal = refundedOrders.reduce((s, o) => s + o.total, 0);
+    const netRevenue = paidRevenue - refundedTotal;
+
+    const totalOrders = paidOrders.length; // paid-only
+    const avgOrder = totalOrders ? Math.round(paidRevenue / totalOrders) : 0;
+
+    const cancelledCount = cancelledOrders.length;
+    const cancelledTotal = cancelledOrders.reduce((s, o) => s + o.total, 0);
+
+    // Top items (✅ paid-only)
     const itemCount: Record<string, number> = {};
-    formattedOrders.forEach((o) => {
+    paidOrders.forEach((o) => {
         o.items.forEach((it) => {
             itemCount[it.name] = (itemCount[it.name] || 0) + (it.qty ?? 0);
         });
@@ -205,28 +206,22 @@ export async function GET(req: Request) {
         .slice(0, 5);
 
     // -------------------------
-    // Build bucket
+    // Build bucket (✅ paid-only)
     // -------------------------
     const bucket: Record<string, number> = {};
 
     if (range === "today") {
         for (let h = 0; h < 24; h++) bucket[`${pad(h)}:00`] = 0;
     } else if (startLocal) {
-
         const endLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-        // iterate from startLocal to endLocal (inclusive)
         for (let d = new Date(startLocal); d <= endLocal; d.setDate(d.getDate() + 1)) {
             bucket[formatLocalDate(new Date(d))] = 0;
         }
     }
 
-    // -------------------------
-    // Fill bucket totals
-    // -------------------------
-    for (const o of formattedOrders) {
+    for (const o of paidOrders) {
         if (range === "today") {
-            const dt = new Date(o.created_at); // JS Date will convert to local timezone
+            const dt = new Date(o.created_at);
             const hourKey = `${pad(dt.getHours())}:00`;
             if (bucket[hourKey] !== undefined) bucket[hourKey] += o.total;
         } else {
@@ -239,11 +234,22 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
         range,
-        totalRevenue,
+
+        // backward-compatible names (dashboard uses these)
+        totalRevenue: paidRevenue,
         totalOrders,
         avgOrder,
         topItems,
         chart,
+
+        // ✅ extra fields (optional)
+        netRevenue,
+        refundedTotal,
+        cancelledCount,
+        cancelledTotal,
+        unknownCount: unknownOrders.length,
+
+        // orders (include status so UI can filter later if needed)
         orders: formattedOrders,
     });
 }
