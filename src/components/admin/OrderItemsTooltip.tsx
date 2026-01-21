@@ -6,11 +6,18 @@ import type { OrderItem } from "@/lib/types";
 
 type Props = {
     items: OrderItem[];
+    children?: React.ReactNode; // ✅ new: wrapper trigger
+    label?: string; // ✅ optional fallback label
+    align?: "left" | "right"; // ✅ optional: tooltip align
 };
 
-export default function OrderItemsTooltip({ items }: Props) {
+export default function OrderItemsTooltip({
+    items,
+    children,
+    label,
+    align = "left",
+}: Props) {
     const tooltipRef = useRef<HTMLDivElement | null>(null);
-    const containerRef = useRef<HTMLDivElement | null>(null);
     const [flip, setFlip] = useState(false);
 
     /* =========================
@@ -54,34 +61,43 @@ export default function OrderItemsTooltip({ items }: Props) {
        Empty state
     ========================= */
     if (!items || items.length === 0) {
-        return <span className="block text-left">0 รายการ</span>;
+        // ถ้ามี children ก็ยังโชว์ children ได้ (แต่ไม่มี tooltip)
+        return children ? <>{children}</> : <span className="block text-left">0 รายการ</span>;
     }
 
+    const trigger = children ? (
+        <>{children}</>
+    ) : (
+        <span className="inline-block cursor-default underline decoration-dotted text-left">
+            {label ?? `${count} รายการ`}
+        </span>
+    );
+
+    const alignClass = align === "right" ? "right-0" : "left-0";
+
     return (
-        <div ref={containerRef} className="relative group w-full text-left">
-            {/* trigger text */}
-            <span className="inline-block cursor-default underline decoration-dotted text-left">
-                {count} รายการ
-            </span>
+        <div className="relative group inline-block text-left">
+            {/* trigger */}
+            {trigger}
 
             {/* tooltip */}
             <div
                 ref={tooltipRef}
                 className={`
-                    absolute left-0
-                    w-[260px]
-                    opacity-0 group-hover:opacity-100
-                    transform transition-all duration-200
-                    pointer-events-none z-50
+          absolute ${alignClass}
+          w-[260px]
+          opacity-0 group-hover:opacity-100
+          transform transition-all duration-200
+          pointer-events-none z-50
 
-                    ${flip ? "bottom-full mb-2" : "top-full mt-2"}
+          ${flip ? "bottom-full mb-2" : "top-full mt-2"}
 
-                    bg-[rgba(30,30,30,0.85)]
-                    backdrop-blur-xl
-                    border border-white/10
-                    shadow-xl shadow-black/40
-                    rounded-xl p-4 text-white
-                `}
+          bg-[rgba(30,30,30,0.85)]
+          backdrop-blur-xl
+          border border-white/10
+          shadow-xl shadow-black/40
+          rounded-xl p-4 text-white
+        `}
             >
                 <div className="mb-2 text-sm font-semibold opacity-90">รายละเอียดรายการ</div>
 
@@ -93,7 +109,6 @@ export default function OrderItemsTooltip({ items }: Props) {
                             <div key={idx} className="flex justify-between gap-4">
                                 <div className="min-w-0">
                                     <div className="truncate">{it.name}</div>
-
                                     {sub && <div className="text-xs opacity-70 truncate">{sub}</div>}
                                 </div>
 

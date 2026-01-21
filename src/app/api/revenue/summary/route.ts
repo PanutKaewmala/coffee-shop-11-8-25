@@ -1,42 +1,21 @@
+// app/api/revenue/summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
-/* =========================
-   Types
-========================= */
 type Preset = "today" | "7days" | "month";
-type By = "paid_at" | "created_at";
 
 type Summary = {
     preset: Preset;
-    by: By;
-    current: {
-        start: string;
-        end: string;
-        total: number;
-        count: number;
-    };
-    previous: {
-        start: string;
-        end: string;
-        total: number;
-        count: number;
-    };
-    delta: {
-        total: number;
-        count: number;
-    };
-    percent: {
-        total: number | null;
-        count: number | null;
-    };
+    current: { start: string; end: string; total: number; count: number };
+    previous: { start: string; end: string; total: number; count: number };
+    delta: { total: number; count: number };
+    percent: { total: number | null; count: number | null };
 };
 
-/* =========================
-   Time helpers (TH)
-========================= */
+type PaidOrderRow = { total: number | null };
+
 const TZ = "Asia/Bangkok";
 
 function fmtKey(d: Date): string {
@@ -49,7 +28,6 @@ function fmtKey(d: Date): string {
 }
 
 function keyToDate(key: string): Date {
-    // force TH timezone
     return new Date(`${key}T00:00:00+07:00`);
 }
 
@@ -78,14 +56,10 @@ function pct(current: number, previous: number): number | null {
     return ((current - previous) / previous) * 100;
 }
 
-/* =========================
-   Range builder
-========================= */
 function getRanges(preset: Preset, todayKey: string) {
     if (preset === "today") {
         const curStartKey = todayKey;
         const curEndKey = addDays(todayKey, 1);
-
         const prevStartKey = addDays(todayKey, -1);
         const prevEndKey = todayKey;
 
@@ -108,7 +82,6 @@ function getRanges(preset: Preset, todayKey: string) {
         };
     }
 
-    // month
     const curStartKey = firstDayOfMonthKey(todayKey);
     const curEndKey = firstDayNextMonthKey(todayKey);
 
@@ -122,83 +95,47 @@ function getRanges(preset: Preset, todayKey: string) {
     };
 }
 
-/* =========================
-   DB aggregation (RPC)
-========================= */
-async function sumAndCountPaid(
-    startISO: string,
-    endISO: string,
-    by: By
-): Promise<{ total: number; count: number }> {
+async function sumAndCountPaid(startISO: string, endISO: string) {
     const supabase = getSupabaseServer();
 
-    const { data, error } = await supabase.rpc("revenue_summary_range", {
-        p_start: startISO,
-        p_end: endISO,
-        p_by: by,
-    });
+    const { data, error, count } = await supabase
+        .from("orders")
+        .select("total", { count: "exact" })
+        .eq("status", "paid")
+        .gte("paid_at", startISO)
+        .lt("paid_at", endISO)
+        .returns<PaidOrderRow[]>();
 
     if (error) throw new Error(error.message);
 
-    const row =
-        Array.isArray(data) && data.length > 0
-            ? (data[0] as { total: number | null; count: number | null })
-            : null;
+    const rows = Array.isArray(data) ? data : [];
+    const total = rows.reduce((sum, r) => sum + (typeof r.total === "number" ? r.total : 0), 0);
 
-    return {
-        total: Number(row?.total ?? 0),
-        count: Number(row?.count ?? 0),
-    };
+    return { total, count: typeof count === "number" ? count : rows.length };
 }
 
-/* =========================
-   GET /api/revenue/summary
-   ?preset=today|7days|month
-   ?by=paid_at|created_at
-========================= */
 export async function GET(req: NextRequest) {
     try {
         const presetRaw = req.nextUrl.searchParams.get("preset");
-        const byRaw = req.nextUrl.searchParams.get("by");
-
         const preset: Preset =
             presetRaw === "today" || presetRaw === "7days" || presetRaw === "month"
                 ? presetRaw
                 : "today";
 
-        const by: By = byRaw === "created_at" ? "created_at" : "paid_at";
-
         const todayKey = fmtKey(new Date());
         const { current, previous } = getRanges(preset, todayKey);
 
         const [cur, prev] = await Promise.all([
-            sumAndCountPaid(current.startISO, current.endISO, by),
-            sumAndCountPaid(previous.startISO, previous.endISO, by),
+            sumAndCountPaid(current.startISO, current.endISO),
+            sumAndCountPaid(previous.startISO, previous.endISO),
         ]);
 
         const out: Summary = {
             preset,
-            by,
-            current: {
-                start: current.startISO,
-                end: current.endISO,
-                total: cur.total,
-                count: cur.count,
-            },
-            previous: {
-                start: previous.startISO,
-                end: previous.endISO,
-                total: prev.total,
-                count: prev.count,
-            },
-            delta: {
-                total: cur.total - prev.total,
-                count: cur.count - prev.count,
-            },
-            percent: {
-                total: pct(cur.total, prev.total),
-                count: pct(cur.count, prev.count),
-            },
+            current: { start: current.startISO, end: current.endISO, total: cur.total, count: cur.count },
+            previous: { start: previous.startISO, end: previous.endISO, total: prev.total, count: prev.count },
+            delta: { total: cur.total - prev.total, count: cur.count - prev.count },
+            percent: { total: pct(cur.total, prev.total), count: pct(cur.count, prev.count) },
         };
 
         return NextResponse.json(out);
