@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
-  }
   public: {
     Tables: {
       branch: {
@@ -428,30 +423,48 @@ export type Database = {
       }
       orders: {
         Row: {
+          cancel_note: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
           id: string
           note: string | null
           paid_at: string | null
           payment_method: string
           status: string
+          stock_refunded: boolean
+          stock_refunded_at: string | null
           total: number
         }
         Insert: {
+          cancel_note?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           id?: string
           note?: string | null
           paid_at?: string | null
           payment_method?: string
           status?: string
+          stock_refunded?: boolean
+          stock_refunded_at?: string | null
           total: number
         }
         Update: {
+          cancel_note?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           id?: string
           note?: string | null
           paid_at?: string | null
           payment_method?: string
           status?: string
+          stock_refunded?: boolean
+          stock_refunded_at?: string | null
           total?: number
         }
         Relationships: []
@@ -683,26 +696,25 @@ export type Database = {
         Args: { diff: number; ing_id: string; note?: string }
         Returns: undefined
       }
-      create_random_order: { Args: { target_date: string }; Returns: undefined }
-      deduct_stock_atomic:
-        | {
-            Args: { p_items: Json; p_note: string; p_order_id?: string }
-            Returns: {
-              after_stock: number
-              before_stock: number
-              deduct: number
-              ingredient_id: string
-            }[]
-          }
-        | {
-            Args: { p_items: Json; p_note: string; p_order_id: string }
-            Returns: {
-              after_stock: number
-              before_stock: number
-              deduct: number
-              ingredient_id: string
-            }[]
-          }
+      cancel_order: {
+        Args: {
+          p_cancelled_by?: string
+          p_note?: string
+          p_order_id: string
+          p_reason: string
+          p_restock?: boolean
+        }
+        Returns: Json
+      }
+      deduct_stock_atomic: {
+        Args: { p_items: Json; p_note: string; p_order_id: string }
+        Returns: {
+          after_stock: number
+          before_stock: number
+          deduct: number
+          ingredient_id: string
+        }[]
+      }
       increment_stock: {
         Args: { diff: number; ing_id: string }
         Returns: number
@@ -712,11 +724,11 @@ export type Database = {
         Args: { p_branch_id: string; p_items: Json }
         Returns: Json
       }
-      random_menu_item: {
-        Args: never
+      revenue_summary_range: {
+        Args: { p_by?: string; p_end: string; p_start: string }
         Returns: {
-          name: string
-          price: number
+          count: number
+          total: number
         }[]
       }
     }
@@ -868,3 +880,4 @@ export const Constants = {
     },
   },
 } as const
+
