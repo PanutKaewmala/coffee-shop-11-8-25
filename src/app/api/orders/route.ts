@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
    Types (no any)
 ============================================ */
 
-type OrderStatus = "paid" | "void" | "refunded";
+type OrderStatus = "paid" | "cancelled" | "void" | "refunded";
 type PaymentMethod = "cash" | "promptpay";
 
 type OrderItemRow = {
@@ -22,7 +22,7 @@ type OrderItemRow = {
     qty: number | null;
     created_at?: string | null;
 
-    // ✅ new
+    // ✅ stored label
     variant_label?: string | null;
 
     // ✅ join fallback (computed if variant_label null)
@@ -43,6 +43,12 @@ type OrderWithItemsRow = {
     payment_method: PaymentMethod | null;
     paid_at?: string | null;
     note?: string | null;
+
+    // ✅ cancel fields (new)
+    cancel_reason?: string | null;
+    cancel_note?: string | null;
+    cancelled_at?: string | null;
+    cancelled_by?: string | null;
 
     order_items: OrderItemRow[] | null;
 };
@@ -123,10 +129,7 @@ function cleanLabel(s: string | null | undefined): string | null {
     return cleaned || null;
 }
 
-function buildVariantLabel(opts: {
-    serveTypeName?: string | null;
-    size?: string | null;
-}) {
+function buildVariantLabel(opts: { serveTypeName?: string | null; size?: string | null }) {
     const a = cleanLabel(opts.serveTypeName);
     const b = cleanLabel(opts.size);
     const merged = compactSpaces([a, b].filter(Boolean).join(" • "));
@@ -137,12 +140,12 @@ function buildVariantLabel(opts: {
    GET /api/orders
    - ✅ include variant_label
    - ✅ join variant->serve_type for fallback label
+   - ✅ include cancel_* fields for admin detail/history
 ============================================ */
 export async function GET(req: NextRequest) {
     const supabase = getSupabaseServer();
     const id = req.nextUrl.searchParams.get("id");
 
-    // ✅ include join (variant -> serve_type)
     const select = `
     id,
     total,
@@ -151,6 +154,10 @@ export async function GET(req: NextRequest) {
     payment_method,
     paid_at,
     note,
+    cancel_reason,
+    cancel_note,
+    cancelled_at,
+    cancelled_by,
     order_items(
       id,
       order_id,
@@ -188,7 +195,6 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        // ✅ fallback label if missing (and cleanup)
         const items = (data.order_items ?? []).map((it) => {
             const label =
                 cleanLabel(it.variant_label) ??
@@ -219,6 +225,13 @@ export async function GET(req: NextRequest) {
                 payment_method: data.payment_method ?? "cash",
                 paid_at: data.paid_at ?? null,
                 note: data.note ?? null,
+
+                // ✅ cancel fields
+                cancel_reason: data.cancel_reason ?? null,
+                cancel_note: data.cancel_note ?? null,
+                cancelled_at: data.cancelled_at ?? null,
+                cancelled_by: data.cancelled_by ?? null,
+
                 items,
             },
         });
@@ -268,6 +281,13 @@ export async function GET(req: NextRequest) {
                 payment_method: o.payment_method ?? "cash",
                 paid_at: o.paid_at ?? null,
                 note: o.note ?? null,
+
+                // ✅ cancel fields (for list badge / drilldown)
+                cancel_reason: o.cancel_reason ?? null,
+                cancel_note: o.cancel_note ?? null,
+                cancelled_at: o.cancelled_at ?? null,
+                cancelled_by: o.cancelled_by ?? null,
+
                 items,
             };
         }),
@@ -346,9 +366,7 @@ export async function POST(req: NextRequest) {
 
         if (mvMiniErr) return NextResponse.json({ error: mvMiniErr.message }, { status: 500 });
 
-        const menusWithVariants = new Set<string>(
-            (menuVariantsMini ?? []).map((v) => v.menu_id)
-        );
+        const menusWithVariants = new Set<string>((menuVariantsMini ?? []).map((v) => v.menu_id));
 
         const { data: defaultsMini, error: defErr } = await supabase
             .from("menu_variants")
@@ -394,7 +412,6 @@ export async function POST(req: NextRequest) {
 
         const variantIds = Array.from(new Set(items.map((i) => i.variant_id))) as string[];
 
-        // ✅ load variants w/ serve_type_id + size
         const { data: variants, error: vErr } = await supabase
             .from("menu_variants")
             .select("id, menu_id, price_override, serve_type_id, size")
@@ -419,10 +436,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // ✅ load serve types to build label
-        const serveTypeIds = Array.from(
-            new Set((variants ?? []).map((v) => v.serve_type_id).filter(Boolean))
-        );
+        const serveTypeIds = Array.from(new Set((variants ?? []).map((v) => v.serve_type_id).filter(Boolean)));
 
         const { data: serveTypes, error: stErr } = await supabase
             .from("menu_serve_types")
@@ -435,7 +449,6 @@ export async function POST(req: NextRequest) {
         const serveTypeMap = new Map<string, string>();
         (serveTypes ?? []).forEach((s) => serveTypeMap.set(s.id, s.name));
 
-        // ✅ compute order_items + total + variant_label (cleaned)
         const itemsToInsert = items.map((it) => {
             const menu = menuMap.get(it.menu_id)!;
             const basePrice = toNumber(menu.price, 0);
