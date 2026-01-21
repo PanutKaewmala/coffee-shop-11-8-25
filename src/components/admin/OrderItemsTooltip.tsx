@@ -17,16 +17,11 @@ export default function OrderItemsTooltip({ items }: Props) {
        Helpers
     ========================= */
 
-    const count =
-        items?.reduce((sum, i) => sum + (i.qty || 0), 0) ?? 0;
+    const count = items?.reduce((sum, i) => sum + (i.qty || 0), 0) ?? 0;
 
     function getSubLabel(it: OrderItem): string | null {
-        if (it.variant_label && it.variant_label.trim()) {
-            return it.variant_label.trim();
-        }
-        if (it.size && it.size.trim()) {
-            return it.size.trim();
-        }
+        if (it.variant_label && it.variant_label.trim()) return it.variant_label.trim();
+        if (it.size && it.size.trim()) return it.size.trim();
         return null;
     }
 
@@ -59,13 +54,13 @@ export default function OrderItemsTooltip({ items }: Props) {
        Empty state
     ========================= */
     if (!items || items.length === 0) {
-        return <span>0 รายการ</span>;
+        return <span className="block text-left">0 รายการ</span>;
     }
 
     return (
-        <div ref={containerRef} className="relative group w-max mx-auto">
+        <div ref={containerRef} className="relative group w-full text-left">
             {/* trigger text */}
-            <span className="cursor-default underline decoration-dotted">
+            <span className="inline-block cursor-default underline decoration-dotted text-left">
                 {count} รายการ
             </span>
 
@@ -73,7 +68,7 @@ export default function OrderItemsTooltip({ items }: Props) {
             <div
                 ref={tooltipRef}
                 className={`
-                    absolute left-1/2 -translate-x-1/2
+                    absolute left-0
                     w-[260px]
                     opacity-0 group-hover:opacity-100
                     transform transition-all duration-200
@@ -88,29 +83,18 @@ export default function OrderItemsTooltip({ items }: Props) {
                     rounded-xl p-4 text-white
                 `}
             >
-                <div className="mb-2 text-sm font-semibold opacity-90">
-                    รายละเอียดรายการ
-                </div>
+                <div className="mb-2 text-sm font-semibold opacity-90">รายละเอียดรายการ</div>
 
                 <div className="space-y-1 text-sm">
                     {items.map((it, idx) => {
                         const sub = getSubLabel(it);
 
                         return (
-                            <div
-                                key={idx}
-                                className="flex justify-between gap-4"
-                            >
+                            <div key={idx} className="flex justify-between gap-4">
                                 <div className="min-w-0">
-                                    <div className="truncate">
-                                        {it.name}
-                                    </div>
+                                    <div className="truncate">{it.name}</div>
 
-                                    {sub && (
-                                        <div className="text-xs opacity-70 truncate">
-                                            {sub}
-                                        </div>
-                                    )}
+                                    {sub && <div className="text-xs opacity-70 truncate">{sub}</div>}
                                 </div>
 
                                 <span className="whitespace-nowrap opacity-80">

@@ -15,14 +15,6 @@ import useOrdersSearch from "@/hooks/useOrdersSearch";
 import type { OrderItem } from "@/lib/types";
 
 type DateFilter = "all" | "today" | "yesterday" | "7days" | "month";
-
-type OrderRow = {
-    id: string;
-    total: number;
-    created_at: string;
-    items?: OrderItem[];
-};
-
 type Preset = "today" | "7days" | "month";
 
 type RevenueSummary = {
@@ -31,6 +23,16 @@ type RevenueSummary = {
     previous: { total: number; count: number };
     delta: { total: number; count: number };
     percent: { total: number | null; count: number | null };
+};
+
+type OrderStatusUI = "paid" | "cancelled" | "void" | "refunded" | "unknown";
+
+type OrderRow = {
+    id: string;
+    total: number;
+    created_at: string;
+    status?: string | null;
+    items?: OrderItem[];
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -45,12 +47,6 @@ function toNum(v: unknown, fallback = 0): number {
 function toNullNum(v: unknown): number | null {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : null;
-}
-
-function presetFromDateFilter(df: DateFilter): Preset {
-    if (df === "month") return "month";
-    if (df === "7days") return "7days";
-    return "today";
 }
 
 function parseRevenueSummary(j: unknown): RevenueSummary | null {
@@ -72,10 +68,7 @@ function parseRevenueSummary(j: unknown): RevenueSummary | null {
         current: { total: toNum(current.total), count: toNum(current.count) },
         previous: { total: toNum(previous.total), count: toNum(previous.count) },
         delta: { total: toNum(delta.total), count: toNum(delta.count) },
-        percent: {
-            total: toNullNum(percent.total),
-            count: toNullNum(percent.count),
-        },
+        percent: { total: toNullNum(percent.total), count: toNullNum(percent.count) },
     };
 }
 
@@ -94,6 +87,9 @@ function shortId(id: string) {
     return id?.length > 10 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+/* =========================
+   Trend helpers
+========================= */
 function trendText(delta: number, pct: number | null) {
     const up = delta > 0;
     const down = delta < 0;
@@ -109,6 +105,104 @@ function trendClass(delta: number) {
     return "text-text-secondary";
 }
 
+/* =========================
+   Status helpers
+========================= */
+function normalizeStatus(s: string | null | undefined): OrderStatusUI {
+    const v = (s ?? "").toLowerCase().trim();
+    if (v === "paid") return "paid";
+    if (v === "cancelled") return "cancelled";
+    if (v === "void") return "void";
+    if (v === "refunded") return "refunded";
+    return "unknown";
+}
+
+function statusLabelTH(k: OrderStatusUI) {
+    switch (k) {
+        case "paid":
+            return "ชำระแล้ว";
+        case "cancelled":
+        case "void":
+            return "ยกเลิก";
+        case "refunded":
+            return "คืนเงิน";
+        default:
+            return "ไม่ทราบ";
+    }
+}
+
+function StatusPill({ status }: { status: string | null | undefined }) {
+    const k = normalizeStatus(status);
+
+    const base =
+        "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold whitespace-nowrap";
+
+    if (k === "paid") {
+        return (
+            <span className={`${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-200`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                {statusLabelTH(k)}
+            </span>
+        );
+    }
+
+    if (k === "refunded") {
+        return (
+            <span className={`${base} border-blue-500/30 bg-blue-500/10 text-blue-200`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-300" />
+                {statusLabelTH(k)}
+            </span>
+        );
+    }
+
+    if (k === "cancelled" || k === "void") {
+        return (
+            <span className={`${base} border-rose-500/30 bg-rose-500/10 text-rose-200`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+                {statusLabelTH(k)}
+            </span>
+        );
+    }
+
+    return (
+        <span className={`${base} border-white/10 bg-white/5 text-text-secondary`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-white/40" />
+            {statusLabelTH(k)}
+        </span>
+    );
+}
+
+/* =========================
+   Revenue preset mapping
+   - yesterday / all: ไม่โชว์ compare (ยังไม่รองรับใน API summary)
+========================= */
+function presetFromDateFilter(df: DateFilter): Preset | null {
+    if (df === "today") return "today";
+    if (df === "7days") return "7days";
+    if (df === "month") return "month";
+    return null;
+}
+
+function StatCard({
+    label,
+    value,
+    sub,
+    subClass,
+}: {
+    label: string;
+    value: string;
+    sub?: string | null;
+    subClass?: string;
+}) {
+    return (
+        <div className="p-4 rounded-xl bg-card border border-border/40">
+            <div className="text-text-secondary">{label}</div>
+            <div className="text-3xl font-bold mt-1 tabular-nums">{value}</div>
+            {sub ? <div className={`text-sm mt-1 ${subClass ?? "text-text-secondary"}`}>{sub}</div> : null}
+        </div>
+    );
+}
+
 export default function AdminOrdersPage() {
     const rowsPerPage = 20;
 
@@ -120,43 +214,101 @@ export default function AdminOrdersPage() {
         setDateFilter,
         filteredOrders,
         paginatedOrders,
-        totalSales,
         page,
         setPage,
         inputPage,
         setInputPage,
         totalPages,
+        totalSales, // paid-only from hook
     } = useOrdersSearch({ rowsPerPage, initialFilter: "today" });
 
-    // ✅ revenue trend summary
+    const df = (dateFilter as DateFilter) ?? "today";
+
+    // ✅ derived preset: ไม่ setState sync ใน effect
+    const preset = useMemo(() => presetFromDateFilter(df), [df]);
+
     const [rev, setRev] = useState<RevenueSummary | null>(null);
 
-    useEffect(() => {
-        const preset = presetFromDateFilter(dateFilter as DateFilter);
+    // ✅ only show compare when preset exists
+    const revToShow = preset ? rev : null;
 
-        fetch(`/api/revenue/summary?preset=${preset}`, { cache: "no-store" })
+    useEffect(() => {
+        if (!preset) return;
+
+        const ac = new AbortController();
+
+        fetch(`/api/revenue/summary?preset=${preset}`, {
+            cache: "no-store",
+            signal: ac.signal,
+        })
             .then((r) => r.json() as Promise<unknown>)
             .then((j) => setRev(parseRevenueSummary(j)))
-            .catch(() => setRev(null));
-    }, [dateFilter]);
+            .catch((e) => {
+                if (e?.name !== "AbortError") setRev(null);
+            });
 
-    const paidCount = filteredOrders.length; // ตอนนี้ถือว่า paid-only (ตาม hook เดิม)
-    const avgOrder = useMemo(() => {
-        if (paidCount <= 0) return 0;
-        return totalSales / paidCount;
-    }, [totalSales, paidCount]);
+        return () => ac.abort();
+    }, [preset]);
 
-    const headers = ["#", "Order ID", "Items", "Total", "Date"];
+    const computed = useMemo(() => {
+        const list = (filteredOrders as unknown as OrderRow[]) ?? [];
+
+        let paidCount = 0;
+        let cancelledCount = 0;
+        let refundedCount = 0;
+        let unknownCount = 0;
+
+        let cancelledValue = 0; // lost opportunity
+        let refundedValue = 0; // money returned
+        let unknownValue = 0;
+
+        for (const o of list) {
+            const st = normalizeStatus(o.status ?? null);
+            const t = Number.isFinite(o.total) ? o.total : 0;
+
+            if (st === "paid") {
+                paidCount += 1;
+            } else if (st === "cancelled" || st === "void") {
+                cancelledCount += 1;
+                cancelledValue += t;
+            } else if (st === "refunded") {
+                refundedCount += 1;
+                refundedValue += t;
+            } else {
+                unknownCount += 1;
+                unknownValue += t;
+            }
+        }
+
+        const aov = paidCount > 0 ? totalSales / paidCount : 0;
+        const netSales = Math.max(0, totalSales - refundedValue);
+
+        return {
+            paidCount,
+            cancelledCount,
+            refundedCount,
+            unknownCount,
+            cancelledValue,
+            refundedValue,
+            unknownValue,
+            aov,
+            netSales,
+            totalCount: list.length,
+        };
+    }, [filteredOrders, totalSales]);
+
+    const headers = ["#", "Order ID", "Status", "Items", "Total", "Date"];
 
     const rows = useMemo(() => {
-        const list = paginatedOrders as unknown as OrderRow[];
+        const list = (paginatedOrders as unknown as OrderRow[]) ?? [];
 
         return list.map((order, idx) => {
             const items = Array.isArray(order.items) ? order.items : [];
+            const n = (page - 1) * rowsPerPage + (idx + 1);
 
             return [
-                <span key={`idx-${order.id}`} className="text-text-secondary">
-                    {(page - 1) * rowsPerPage + (idx + 1)}
+                <span key={`idx-${order.id}`} className="text-text-secondary tabular-nums">
+                    {n}
                 </span>,
 
                 <Link
@@ -168,21 +320,27 @@ export default function AdminOrdersPage() {
                     {shortId(order.id)}
                 </Link>,
 
-                <OrderItemsTooltip key={`items-${order.id}`} items={items} />,
+                <span key={`st-${order.id}`}>
+                    <StatusPill status={order.status ?? null} />
+                </span>,
 
-                <span key={`total-${order.id}`} className="tabular-nums text-right block">
+                <span key={`items-${order.id}`} className="text-text-secondary">
+                    <OrderItemsTooltip items={items} />
+                </span>,
+
+                <span key={`total-${order.id}`} className="tabular-nums text-text-secondary">
                     {formatMoneyTHB(order.total)} บาท
                 </span>,
 
-                <span key={`date-${order.id}`} className="text-text-secondary">
+                <span key={`date-${order.id}`} className="text-text-secondary whitespace-nowrap">
                     {safeDateTH(order.created_at)}
                 </span>,
             ];
         });
     }, [paginatedOrders, page]);
 
-    const isEmpty = !loading && filteredOrders.length === 0;
-    const showReset = search.trim().length > 0 || dateFilter !== "today";
+    const isEmpty = !loading && (filteredOrders?.length ?? 0) === 0;
+    const showReset = search.trim().length > 0 || df !== "today";
 
     return (
         <div className="p-6">
@@ -191,7 +349,7 @@ export default function AdminOrdersPage() {
                     {/* FILTER + SEARCH */}
                     <div className="space-y-3">
                         <QuickDateFilter
-                            dateFilter={dateFilter as DateFilter}
+                            dateFilter={df}
                             setDateFilter={(v) => {
                                 setDateFilter(v as DateFilter);
                                 setPage(1);
@@ -199,7 +357,7 @@ export default function AdminOrdersPage() {
                             }}
                         />
 
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div className="flex-1">
                                 <SearchBox
                                     value={search}
@@ -212,10 +370,10 @@ export default function AdminOrdersPage() {
                                 />
                             </div>
 
-                            {showReset && (
+                            {showReset ? (
                                 <button
                                     type="button"
-                                    className="text-sm text-accent hover:underline whitespace-nowrap"
+                                    className="text-sm text-accent hover:underline whitespace-nowrap self-end md:self-auto"
                                     onClick={() => {
                                         setSearch("");
                                         setDateFilter("today" as DateFilter);
@@ -225,25 +383,22 @@ export default function AdminOrdersPage() {
                                 >
                                     รีเซ็ต
                                 </button>
-                            )}
+                            ) : null}
                         </div>
                     </div>
 
                     {loading ? (
                         <div className="mt-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
-                                    <div className="h-4 w-28 bg-border/40 rounded" />
-                                    <div className="h-8 w-44 bg-border/40 rounded mt-3" />
-                                </div>
-                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
-                                    <div className="h-4 w-28 bg-border/40 rounded" />
-                                    <div className="h-8 w-28 bg-border/40 rounded mt-3" />
-                                </div>
-                                <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
-                                    <div className="h-4 w-24 bg-border/40 rounded" />
-                                    <div className="h-8 w-36 bg-border/40 rounded mt-3" />
-                                </div>
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="p-4 rounded-xl bg-card border border-border/40 animate-pulse"
+                                    >
+                                        <div className="h-4 w-28 bg-border/40 rounded" />
+                                        <div className="h-8 w-44 bg-border/40 rounded mt-3" />
+                                    </div>
+                                ))}
                             </div>
 
                             <div className="p-4 rounded-xl bg-card border border-border/40 animate-pulse">
@@ -255,41 +410,65 @@ export default function AdminOrdersPage() {
                     ) : (
                         <>
                             {/* SUMMARY */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 mb-6">
-                                <div className="p-4 rounded-xl bg-card border border-border/40">
-                                    <div className="text-text-secondary">ยอดขายรวม</div>
-                                    <div className="text-3xl font-bold mt-1 tabular-nums">
-                                        {formatMoneyTHB(totalSales)} บาท
-                                    </div>
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 mb-6">
+                                <StatCard
+                                    label="ยอดขายสุทธิ (Net)"
+                                    value={`${formatMoneyTHB(computed.netSales)} บาท`}
+                                    sub={
+                                        computed.refundedValue > 0
+                                            ? `คืนเงิน: -${formatMoneyTHB(computed.refundedValue)} บาท`
+                                            : null
+                                    }
+                                    subClass="text-text-secondary"
+                                />
 
-                                    {rev ? (
-                                        <div className={`text-sm mt-1 ${trendClass(rev.delta.total)}`}>
-                                            เทียบช่วงก่อนหน้า:{" "}
-                                            {trendText(rev.delta.total, rev.percent.total)}
-                                        </div>
-                                    ) : null}
-                                </div>
+                                <StatCard
+                                    label="ยอดขายรวม (Paid)"
+                                    value={`${formatMoneyTHB(totalSales)} บาท`}
+                                    sub={
+                                        revToShow
+                                            ? `เทียบช่วงก่อนหน้า: ${trendText(
+                                                revToShow.delta.total,
+                                                revToShow.percent.total
+                                            )}`
+                                            : null
+                                    }
+                                    subClass={revToShow ? trendClass(revToShow.delta.total) : "text-text-secondary"}
+                                />
 
-                                <div className="p-4 rounded-xl bg-card border border-border/40">
-                                    <div className="text-text-secondary">จำนวนออเดอร์</div>
-                                    <div className="text-3xl font-bold mt-1 tabular-nums">
-                                        {filteredOrders.length} รายการ
-                                    </div>
+                                <StatCard
+                                    label="ออเดอร์ชำระแล้ว"
+                                    value={`${computed.paidCount} รายการ`}
+                                    sub={
+                                        revToShow
+                                            ? `เทียบช่วงก่อนหน้า: ${trendText(
+                                                revToShow.delta.count,
+                                                revToShow.percent.count
+                                            )}`
+                                            : null
+                                    }
+                                    subClass={revToShow ? trendClass(revToShow.delta.count) : "text-text-secondary"}
+                                />
 
-                                    {rev ? (
-                                        <div className={`text-sm mt-1 ${trendClass(rev.delta.count)}`}>
-                                            เทียบช่วงก่อนหน้า:{" "}
-                                            {trendText(rev.delta.count, rev.percent.count)}
-                                        </div>
-                                    ) : null}
-                                </div>
+                                <StatCard
+                                    label="ออเดอร์ยกเลิก"
+                                    value={`${computed.cancelledCount} รายการ`}
+                                    sub={
+                                        computed.cancelledValue > 0
+                                            ? `มูลค่า: ${formatMoneyTHB(computed.cancelledValue)} บาท`
+                                            : null
+                                    }
+                                />
 
-                                <div className="p-4 rounded-xl bg-card border border-border/40">
-                                    <div className="text-text-secondary">บิลเฉลี่ย (AOV)</div>
-                                    <div className="text-3xl font-bold mt-1 tabular-nums">
-                                        {formatMoneyTHB(avgOrder)} บาท
-                                    </div>
-                                </div>
+                                <StatCard
+                                    label="บิลเฉลี่ย (AOV)"
+                                    value={`${formatMoneyTHB(computed.aov)} บาท`}
+                                    sub={
+                                        computed.unknownCount > 0
+                                            ? `สถานะไม่ทราบ: ${computed.unknownCount} รายการ`
+                                            : null
+                                    }
+                                />
                             </div>
 
                             {/* EMPTY */}
@@ -303,7 +482,13 @@ export default function AdminOrdersPage() {
                             ) : (
                                 <>
                                     {/* TABLE */}
-                                    <Table headers={headers} data={rows} />
+                                    <div className="rounded-xl overflow-hidden">
+                                        <Table headers={headers} data={rows} />
+                                    </div>
+
+                                    <div className="text-xs text-text-secondary mt-2">
+                                        ทิป: คลิกที่ Order ID เพื่อดูรายละเอียด/ยกเลิกออเดอร์
+                                    </div>
 
                                     {/* PAGINATION */}
                                     <Pagination
