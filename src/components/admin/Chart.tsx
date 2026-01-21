@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import type { Order } from "@/lib/types";
+import type { RevenueChartPoint } from "@/lib/types";
 import {
     LineChart,
     Line,
@@ -15,182 +15,41 @@ import {
 
 type RangeType = "today" | "week" | "month" | "year" | "5year" | "all";
 
-interface Props {
-    orders: Order[];
+type Props = {
+    chart: RevenueChartPoint[];
     range: RangeType;
+};
+
+type ChartRow = {
+    date: string;
+    value: number;
+};
+
+function toNumber(v: unknown): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
 }
 
-function pad(n: number) {
-    return String(n).padStart(2, "0");
-}
+export default function Chart({ chart, range }: Props) {
+    const data: ChartRow[] = React.useMemo(() => {
+        const safe = Array.isArray(chart) ? chart : [];
+        return safe
+            .map((p) => ({
+                date: String(p.label ?? ""),
+                value: toNumber(p.value),
+            }))
+            .filter((x) => x.date.length > 0);
+    }, [chart]);
 
-function toLocalISO(d: Date) {
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function getWeekNumber(d: Date) {
-    const oneJan = new Date(d.getFullYear(), 0, 1);
-    const diff = d.getTime() - oneJan.getTime();
-    return Math.ceil((diff / 86400000 + oneJan.getDay() + 1) / 7);
-}
-
-export default function Chart({ orders, range }: Props) {
-    // -------- daily map --------
-    const dailyMapLocal = React.useMemo(() => {
-        const m = new Map<string, number>();
-        for (const o of orders) {
-            const d = new Date(o.created_at);
-            const key = toLocalISO(d);
-            m.set(key, (m.get(key) || 0) + (o.total ?? 0));
-        }
-        return m;
-    }, [orders]);
-
-    // -------- chart data --------
-    const data = React.useMemo(() => {
-
-        /* ===================================
-         * TODAY → hourly
-         * =================================== */
-        if (range === "today") {
-            const hourly = new Map<number, number>();
-            orders.forEach(o => {
-                const d = new Date(o.created_at);
-                const h = d.getHours();
-                hourly.set(h, (hourly.get(h) || 0) + (o.total ?? 0));
-            });
-
-            return Array.from({ length: 24 }, (_, h) => ({
-                date: `${String(h).padStart(2, "0")}:00`,
-                value: hourly.get(h) || 0,
-            }));
-        }
-
-
-        /* ===================================
-         * WEEK → daily (7 วันย้อนหลัง)
-         * =================================== */
-        if (range === "week") {
-            const today = new Date();
-            const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-            const arr = [];
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date(localToday);
-                d.setDate(localToday.getDate() - i);
-                const iso = toLocalISO(d);
-
-                arr.push({
-                    date: iso,
-                    value: dailyMapLocal.get(iso) ?? 0,
-                });
-            }
-            return arr;
-        }
-
-
-        /* ===================================
-         * MONTH → daily (เต็มเดือน)
-         * =================================== */
-        if (range === "month") {
-            const today = new Date();
-            const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-            const arr = [];
-
-            for (let i = 29; i >= 0; i--) {
-                const d = new Date(localToday);
-                d.setDate(localToday.getDate() - i);
-                const iso = toLocalISO(d);
-
-                arr.push({
-                    date: iso,
-                    value: dailyMapLocal.get(iso) ?? 0,
-                });
-            }
-
-            return arr;
-        }
-
-        /* ===================================
-         * YEAR → weekly
-         * =================================== */
-        if (range === "year") {
-            const weekly = new Map<number, number>();
-
-            orders.forEach(o => {
-                const d = new Date(o.created_at);
-                const w = getWeekNumber(d);
-                weekly.set(w, (weekly.get(w) || 0) + (o.total ?? 0));
-            });
-
-            return [...weekly.entries()].map(([w, total]) => ({
-                date: `W${w}`,
-                value: total,
-            }));
-        }
-
-
-        /* ===================================
-         * 5YEAR → monthly
-         * =================================== */
-        if (range === "5year") {
-            const monthly = new Map<string, number>();
-
-            orders.forEach(o => {
-                const d = new Date(o.created_at);
-                const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-                monthly.set(ym, (monthly.get(ym) || 0) + (o.total ?? 0));
-            });
-
-            return [...monthly.entries()]
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([ym, total]) => ({
-                    date: ym,
-                    value: total,
-                }));
-        }
-
-
-        /* ===================================
-         * ALL → monthly
-         * =================================== */
-        if (range === "all") {
-            const monthly = new Map<string, number>();
-
-            orders.forEach(o => {
-                const d = new Date(o.created_at);
-                const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-                monthly.set(ym, (monthly.get(ym) || 0) + (o.total ?? 0));
-            });
-
-            return [...monthly.entries()]
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([ym, total]) => ({
-                    date: ym,
-                    value: total,
-                }));
-        }
-
-
-        /* ===================================
-         * FALLBACK (should not happen)
-         * =================================== */
-        return [];
-
-    }, [orders, range, dailyMapLocal]);
-
-
-    // -------- render --------
     return (
         <div className="w-full bg-surface p-4 rounded-xl border border-gray-700/40 shadow">
             <h2 className="text-lg font-semibold text-white mb-4">
                 {range === "today" && "ยอดขายรายชั่วโมง"}
                 {range === "week" && "ยอดขายรายวัน (สัปดาห์)"}
                 {range === "month" && "ยอดขายรายวัน (เดือน)"}
-                {range === "year" && "ยอดขายรายสัปดาห์"}
-                {range === "5year" && "ยอดขายรายเดือน (5 ปี)"}
-                {range === "all" && "ยอดขายรายเดือน (ทั้งหมด)"}
+                {range === "year" && "ยอดขายรายวัน (ปี)"} {/* ✅ ให้ตรงกับ API ตอนนี้ */}
+                {range === "5year" && "ยอดขายรายวัน (5 ปี)"} {/* ✅ ให้ตรงกับ API ตอนนี้ */}
+                {range === "all" && "ยอดขายรายวัน (ทั้งหมด)"} {/* ✅ ให้ตรงกับ API ตอนนี้ */}
             </h2>
 
             <div className="w-full h-[280px]">
@@ -203,13 +62,7 @@ export default function Chart({ orders, range }: Props) {
                             contentStyle={{ background: "#1f1f1f", border: "1px solid #555" }}
                             labelStyle={{ color: "#fff" }}
                         />
-                        <Line
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#d4a574"
-                            strokeWidth={2}
-                            dot={false}
-                        />
+                        <Line type="monotone" dataKey="value" stroke="#d4a574" strokeWidth={2} dot={false} />
                     </LineChart>
                 </ResponsiveContainer>
             </div>

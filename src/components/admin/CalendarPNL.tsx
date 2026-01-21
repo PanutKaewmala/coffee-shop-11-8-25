@@ -2,39 +2,45 @@
 "use client";
 
 import React from "react";
-import type { Order } from "@/lib/types";
+import type { RevenueChartPoint } from "@/lib/types";
 
 type RangeType = "today" | "week" | "month" | "year" | "5year" | "all";
 
-interface Props {
-    orders: Order[];
+type Props = {
+    chart: RevenueChartPoint[];
     range: RangeType;
-}
+};
 
 type Cell = { iso?: string; day?: number };
 
-const RANGE_DAYS: Record<Exclude<RangeType, "all">, number> = {
-    today: 1,
-    week: 7,
-    month: 30,
-    year: 365,
-    "5year": 5 * 365,
-};
-
-/* -------------------------
- * Helpers
- * ------------------------- */
 function pad(n: number) {
     return String(n).padStart(2, "0");
 }
 
-/** Format a Date object as local YYYY-MM-DD */
-function toLocalISO(d: Date) {
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function toNumber(v: unknown): number {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
 }
 
-/** Hex -> r,g,b */
-function hexToRGB(hex: string) {
+/** "YYYY-MM-DD" -> {y,m,d} (NO Date.parse / NO UTC surprise) */
+function parseYMD(iso: string): { y: number; m: number; d: number } | null {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+    return { y, m: mo, d };
+}
+
+function monthKeyFromISO(iso: string): string | null {
+    const p = parseYMD(iso);
+    if (!p) return null;
+    return `${p.y}-${pad(p.m)}`;
+}
+
+/** Hex -> "r, g, b" */
+function hexToRGB(hex: string): string {
     const h = hex.replace("#", "").trim();
     if (h.length === 3) {
         const r = parseInt(h[0] + h[0], 16);
@@ -49,77 +55,35 @@ function hexToRGB(hex: string) {
     return `${r}, ${g}, ${b}`;
 }
 
-/* -------------------------
- * Component
- * ------------------------- */
-export default function CalendarPNL({ orders, range }: Props) {
+export default function CalendarPNL({ chart, range }: Props) {
     const [selectedMonth, setSelectedMonth] = React.useState<string>("");
 
-    // 1) Build daily totals keyed by LOCAL date (YYYY-MM-DD)
-    const dailyMapLocal = React.useMemo(() => {
+    // 1) Build daily totals from API chart (label = YYYY-MM-DD)
+    const dailyMap = React.useMemo(() => {
         const m = new Map<string, number>();
-        for (const o of orders) {
-            const d = new Date(o.created_at);
-            const key = toLocalISO(d);
-            m.set(key, (m.get(key) || 0) + (o.total ?? 0));
+        const safe = Array.isArray(chart) ? chart : [];
+        for (const p of safe) {
+            const iso = String(p.label ?? "");
+            const parsed = parseYMD(iso);
+            if (!parsed) continue; // ignore non-date labels (เช่น today hourly "HH:00")
+            m.set(iso, toNumber(p.value));
         }
         return m;
-    }, [orders]);
+    }, [chart]);
 
-    // 2) Build rangeDates
+    // 2) Range dates set = keys ของ dailyMap (เพราะ API เตรียมช่วงมาให้แล้ว)
     const rangeDates = React.useMemo(() => {
-        const s = new Set<string>();
-        const today = new Date();
-        const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        return new Set(Array.from(dailyMap.keys()));
+    }, [dailyMap]);
 
-        if (range === "all") {
-            if (orders.length === 0) return s;
-            let earliest: Date | null = null;
-            for (const o of orders) {
-                const d = new Date(o.created_at);
-                const localDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                if (!earliest || localDay < earliest) earliest = localDay;
-            }
-            if (!earliest) return s;
-            for (let d = new Date(earliest); d <= localToday; d.setDate(d.getDate() + 1)) {
-                s.add(toLocalISO(new Date(d)));
-            }
-            return s;
-        }
-
-        // For 'year' and '5year' subtract calendar years (so startLocal matches backend)
-        if (range === "year" || range === "5year") {
-            const yearsBack = range === "year" ? 1 : 5;
-            const start = new Date(localToday.getFullYear() - yearsBack, localToday.getMonth(), localToday.getDate());
-            for (let d = new Date(start); d <= localToday; d.setDate(d.getDate() + 1)) {
-                s.add(toLocalISO(new Date(d)));
-            }
-            return s;
-        }
-
-        // For other ranges (week, month, etc.) day-count from local midnight
-        const days = RANGE_DAYS[range as Exclude<RangeType, "all">];
-        const start = new Date(localToday.getFullYear(), localToday.getMonth(), localToday.getDate() - (days - 1));
-        for (let d = new Date(start); d <= localToday; d.setDate(d.getDate() + 1)) {
-            s.add(toLocalISO(new Date(d)));
-        }
-        return s;
-    }, [orders, range]);
-
-    // 3) Month list
+    // 3) Month list from rangeDates
     const monthList = React.useMemo(() => {
-        if (rangeDates.size === 0) return [] as string[];
-        const days = Array.from(rangeDates).sort((a, b) => a.localeCompare(b));
-        const first = new Date(days[0]);
-        const last = new Date(days[days.length - 1]);
-        const months: string[] = [];
-        const cur = new Date(first.getFullYear(), first.getMonth(), 1);
-        const end = new Date(last.getFullYear(), last.getMonth(), 1);
-        while (cur <= end) {
-            months.push(`${cur.getFullYear()}-${pad(cur.getMonth() + 1)}`);
-            cur.setMonth(cur.getMonth() + 1);
+        const months = new Set<string>();
+        for (const iso of rangeDates) {
+            const mk = monthKeyFromISO(iso);
+            if (mk) months.add(mk);
         }
-        return months;
+        return Array.from(months).sort((a, b) => a.localeCompare(b));
     }, [rangeDates]);
 
     // 4) default selected month
@@ -131,36 +95,43 @@ export default function CalendarPNL({ orders, range }: Props) {
     // 5) max value for intensity
     const maxVal = React.useMemo(() => {
         let m = 0;
-        for (const day of rangeDates) {
-            m = Math.max(m, Math.abs(dailyMapLocal.get(day) ?? 0));
+        for (const iso of rangeDates) {
+            m = Math.max(m, Math.abs(dailyMap.get(iso) ?? 0));
         }
         return m;
-    }, [dailyMapLocal, rangeDates]);
+    }, [dailyMap, rangeDates]);
 
-    // 6) build calendar weeks
+    // 6) build calendar weeks for selected month
     const calendarMatrix = React.useMemo(() => {
         if (!selectedMonth) return [] as Cell[][];
-        const [yStr, mmStr] = selectedMonth.split("-");
-        const y = Number(yStr);
-        const mm = Number(mmStr);
-        const first = new Date(y, mm - 1, 1);
+
+        const mm = /^(\d{4})-(\d{2})$/.exec(selectedMonth);
+        if (!mm) return [] as Cell[][];
+
+        const y = Number(mm[1]);
+        const mth = Number(mm[2]); // 1..12
+        if (!Number.isFinite(y) || !Number.isFinite(mth)) return [] as Cell[][];
+
+        const first = new Date(y, mth - 1, 1);
         const startDow = first.getDay();
-        const daysInMonth = new Date(y, mm, 0).getDate();
+        const daysInMonth = new Date(y, mth, 0).getDate();
 
         const weeks: Cell[][] = [];
         let day = 1;
 
-        const firstWeek: Cell[] = Array.from({ length: 7 }, () => ({} as Cell));
+        const firstWeek: Cell[] = Array.from({ length: 7 }, () => ({}));
         for (let i = startDow; i < 7 && day <= daysInMonth; i++) {
-            firstWeek[i] = { iso: toLocalISO(new Date(y, mm - 1, day)), day };
+            const iso = `${y}-${pad(mth)}-${pad(day)}`;
+            firstWeek[i] = { iso, day };
             day++;
         }
         weeks.push(firstWeek);
 
         while (day <= daysInMonth) {
-            const w: Cell[] = Array.from({ length: 7 }, () => ({} as Cell));
+            const w: Cell[] = Array.from({ length: 7 }, () => ({}));
             for (let i = 0; i < 7 && day <= daysInMonth; i++) {
-                w[i] = { iso: toLocalISO(new Date(y, mm - 1, day)), day };
+                const iso = `${y}-${pad(mth)}-${pad(day)}`;
+                w[i] = { iso, day };
                 day++;
             }
             weeks.push(w);
@@ -185,12 +156,10 @@ export default function CalendarPNL({ orders, range }: Props) {
                 <h2 className="text-lg font-semibold text-text-primary">ปฏิทินยอดขายรายวัน</h2>
 
                 <div className="flex items-center gap-3">
-                    {range !== "week" && (
-                        <div className="text-sm text-text-muted">ช่วง: {range.toUpperCase()}</div>
-                    )}
+                    <div className="text-sm text-text-muted">ช่วง: {range.toUpperCase()}</div>
 
-                    {/* Dropdown hide when range = week/today */}
-                    {range !== "week" && range !== "today" && monthList.length > 0 && (
+                    {/* Dropdown hide when today (เพราะ today chart = hourly ไม่มีเดือนให้เลือก) */}
+                    {range !== "today" && monthList.length > 0 && (
                         <select
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(e.target.value)}
@@ -224,26 +193,18 @@ export default function CalendarPNL({ orders, range }: Props) {
 
                             const iso = cell.iso;
                             const inRange = rangeDates.has(iso);
-                            const total = dailyMapLocal.get(iso) ?? 0;
+                            const total = dailyMap.get(iso) ?? 0;
 
                             const intensity = maxVal ? Math.min(Math.abs(total) / maxVal, 1) : 0;
 
-                            // defaults (out of range)
                             let bg = "transparent";
                             let dayClass = "text-text-muted";
                             let amountClass = "text-transparent";
 
                             if (inRange) {
-                                // วันในช่วง
                                 dayClass = "text-text-secondary";
-
-                                // ตัวเลข: ให้อ่านได้ใน light + dark
-                                // - total > 0 -> primary (เพราะพื้นมี tint accent)
-                                // - total = 0 -> muted (อย่าใช้ขาว)
-                                // - total < 0 -> primary (พื้นแดง tint)
                                 amountClass = total === 0 ? "text-text-muted" : "text-text-primary";
 
-                                // background tint
                                 if (total > 0) {
                                     bg = `rgba(${accentRGB}, ${0.10 + intensity * 0.55})`;
                                 } else if (total < 0) {
