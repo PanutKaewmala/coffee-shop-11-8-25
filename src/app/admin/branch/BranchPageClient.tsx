@@ -1,3 +1,4 @@
+// src/app/admin/branch/BranchPageClient.tsx
 "use client";
 
 import Card from "@/components/admin/Card";

@@ -2,7 +2,7 @@
 "use client";
 
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import AdminNavbar from "@/components/admin/AdminNavbar";
 import Sidebar from "@/components/admin/Sidebar";
 import { supabase } from "@/lib/supabaseClient";
@@ -17,15 +17,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     const router = useRouter();
     const pathname = usePathname();
-    const sp = useSearchParams();
 
     const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
     const closeSidebar = () => setIsSidebarOpen(false);
 
     const nextUrl = useMemo(() => {
-        const qs = sp.toString();
-        return qs ? `${pathname}?${qs}` : pathname;
-    }, [pathname, sp]);
+        // ตอน build/prerender บางจังหวะ window อาจยังไม่พร้อม → กันไว้
+        if (typeof window === "undefined") return pathname;
+        return `${window.location.pathname}${window.location.search}`;
+    }, [pathname]);
 
     useEffect(() => {
         let alive = true;
@@ -51,13 +51,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         checkSession();
 
         const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-            // ✅ ถ้ามี session แล้ว ให้ปลด loading เสมอ (กันค้าง)
             if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || session) {
                 setLoading(false);
                 return;
             }
 
-            // ✅ กันหลุด/หมดอายุ/ออกจากระบบ
             if (event === "SIGNED_OUT" || !session) {
                 goLogin();
             }

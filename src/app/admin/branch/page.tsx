@@ -1,3 +1,4 @@
+// src/app/admin/branch/page.tsx
 import React, { Suspense } from "react";
 import BranchPageClient from "./BranchPageClient";
 
