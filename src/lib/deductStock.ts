@@ -1,5 +1,5 @@
 // src/lib/deductStock.ts
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 import type { Database } from "@/lib/database.types";
 
 type DeductRow =
