@@ -1,4 +1,3 @@
-
 // src/app/login/LoginClient.tsx
 "use client";
 
@@ -7,26 +6,36 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 
+function safeNext(raw: string | null) {
+    if (!raw) return "/admin";
+    // allow only internal paths
+    return raw.startsWith("/") ? raw : "/admin";
+}
+
 export default function LoginClient() {
     const router = useRouter();
     const sp = useSearchParams();
 
-    const next = useMemo(() => {
-        const raw = sp.get("next");
-        return raw && raw.startsWith("/") ? raw : "/admin";
-    }, [sp]);
+    const next = useMemo(() => safeNext(sp.get("next")), [sp]);
 
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+    const [email, setEmail] = useState("owner@demo.com");
+    const [password, setPassword] = useState("123456");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
+    // if already signed in -> go next
     useEffect(() => {
         let alive = true;
-        supabase.auth.getSession().then(({ data }) => {
+
+        (async () => {
+            const { data } = await supabase.auth.getSession();
             if (!alive) return;
-            if (data.session) router.replace(next);
-        });
+            if (data.session) {
+                router.replace(next);
+                router.refresh();
+            }
+        })();
+
         return () => {
             alive = false;
         };
@@ -34,18 +43,36 @@ export default function LoginClient() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
+
         setError("");
         setLoading(true);
 
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-        if (error) {
-            setError(error.message);
+            if (error) {
+                setError(error.message);
+                return;
+            }
+
+            // sometimes session needs a tick; ensure it exists before redirect
+            if (!data.session) {
+                const { data: s2 } = await supabase.auth.getSession();
+                if (!s2.session) {
+                    setError("ล็อกอินแล้วแต่ยังไม่เจอ session ลองใหม่อีกครั้ง");
+                    return;
+                }
+            }
+
+            router.replace(next);
+            router.refresh();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Login failed";
+            setError(msg);
+        } finally {
             setLoading(false);
-            return;
         }
-
-        router.replace(next);
     };
 
     return (
@@ -66,6 +93,7 @@ export default function LoginClient() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             disabled={loading}
+                            autoComplete="email"
                             required
                         />
                     </div>
@@ -79,6 +107,7 @@ export default function LoginClient() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             disabled={loading}
+                            autoComplete="current-password"
                             required
                         />
                     </div>

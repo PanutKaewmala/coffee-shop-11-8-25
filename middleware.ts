@@ -1,22 +1,40 @@
 // middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
 
-    // create supabase client ที่อ่าน session จาก cookies
-    const supabase = createMiddlewareClient({ req, res });
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                getAll() {
+                    return req.cookies.getAll();
+                },
+                setAll(cookiesToSet) {
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        res.cookies.set(name, value, options);
+                    });
+                },
+            },
+        }
+    );
 
-    // get active session
     const {
-        data: { session },
-    } = await supabase.auth.getSession();
+        data: { user },
+    } = await supabase.auth.getUser();
 
-    // protect admin route
-    if (req.nextUrl.pathname.startsWith("/admin") && !session) {
-        return NextResponse.redirect(new URL("/login", req.url));
+    if (req.nextUrl.pathname.startsWith("/admin") && !user) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/login";
+        url.searchParams.set(
+            "next",
+            req.nextUrl.pathname + req.nextUrl.search
+        );
+        return NextResponse.redirect(url);
     }
 
     return res;
