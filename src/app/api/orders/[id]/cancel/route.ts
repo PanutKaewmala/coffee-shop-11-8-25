@@ -102,9 +102,15 @@ function isCancelRpcFail(v: unknown): v is CancelRpcFail {
     return v.success === false && typeof v.error === "string";
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id?: string } }) {
+// ✅ Next.js 16: params is Promise
+export async function POST(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
     try {
-        const fromParams = (params?.id ?? "").trim();
+        const { id } = await params;
+
+        const fromParams = (id ?? "").trim();
         const fromPath = readOrderIdFromPath(req.nextUrl.pathname) ?? "";
         const rawId = (fromParams || fromPath).trim();
 
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: { id?: string
             return NextResponse.json(
                 {
                     error: "Invalid order id",
-                    debug: { rawId, params, pathname: req.nextUrl.pathname, fromParams, fromPath },
+                    debug: { rawId, params: { id }, pathname: req.nextUrl.pathname, fromParams, fromPath },
                 },
                 { status: 400 }
             );
