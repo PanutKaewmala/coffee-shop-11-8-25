@@ -531,7 +531,7 @@ export default function AdminDashboard() {
         // 1) Cancel rate
         list.push({
             key: "cancelRate",
-            title: "อัตรายกเลิก",
+            title: "อัตราการยกเลิก",
             value: `${Math.round(clamp(cancelRate * 100, 0, 100))}% • ${cancelRisk.label}`,
             tone: cancelRisk.tone,
             hint: cancelRisk.hint,
@@ -770,9 +770,6 @@ export default function AdminDashboard() {
 
                 {/* Owner-first strip */}
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="text-sm text-text-secondary">
-                        โหมดเจ้าของร้าน: ดู “กำไรสุทธิ + ความเสี่ยง” ก่อน แล้วค่อยไล่ดูรายละเอียด
-                    </div>
                     <div className="text-xs text-text-muted">{loading ? "กำลังอัปเดตข้อมูล…" : "ข้อมูลตามช่วงที่เลือก"}</div>
                 </div>
 
@@ -780,7 +777,6 @@ export default function AdminDashboard() {
                 <div className="rounded-xl border border-text-muted/20 bg-surface/40 p-4">
                     <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="text-sm font-semibold text-text-primary">Owner-first Signals</div>
-                        <div className="text-xs text-text-muted">อ่านแล้ว “รู้เลยว่าต้องทำอะไร”</div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -805,9 +801,6 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                     <Card title="ยอดขายสุทธิ (Net)">
                         <div className="text-2xl font-bold text-text-primary">{fmtCurrency(summary.netTotal)}</div>
-                        <div className="text-sm text-text-muted mt-1">
-                            เงินเข้าจริงหลังหัก <span className="text-text-secondary">คืนเงิน</span>
-                        </div>
                     </Card>
 
                     <Card title="ยอดขายรวม (Paid)">
@@ -819,7 +812,6 @@ export default function AdminDashboard() {
 
                     <Card title="ออเดอร์ชำระแล้ว">
                         <div className="text-2xl font-bold text-text-primary">{summary.paidCount}</div>
-                        <div className="text-sm text-text-muted mt-1">ถ้าต่ำ → เช็ค “ทราฟฟิค/ช่วงพีค”</div>
                     </Card>
 
                     <Card title="ออเดอร์ยกเลิก/ปัญหา">
@@ -908,9 +900,6 @@ export default function AdminDashboard() {
                                     <span className="text-text-secondary font-medium">
                                         {viewMode === "chart" ? "Chart" : "Calendar"}
                                     </span>
-                                    {isToday ? (
-                                        <span className="ml-2 text-xs text-text-muted">• วันนี้ดูเป็น Chart เท่านั้น</span>
-                                    ) : null}
                                 </div>
 
                                 {/* ✅ Hide toggle on TODAY */}
@@ -1045,7 +1034,6 @@ export default function AdminDashboard() {
 
                             <div className="mt-3 pt-3 border-t border-text-muted/20 flex items-center justify-between text-xs text-text-muted">
                                 <span>คลิก Order เพื่อดูรายละเอียด</span>
-                                {loading ? <span>กำลังโหลด…</span> : <span>อัปเดตล่าสุดตามช่วงที่เลือก</span>}
                             </div>
                         </Card>
                     </div>

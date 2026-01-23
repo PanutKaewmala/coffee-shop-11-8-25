@@ -35,6 +35,9 @@ type OrderRow = {
     items?: OrderItem[];
 };
 
+/* =========================
+   Safe readers
+========================= */
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null;
 }
@@ -72,6 +75,9 @@ function parseRevenueSummary(j: unknown): RevenueSummary | null {
     };
 }
 
+/* =========================
+   UI helpers
+========================= */
 function formatMoneyTHB(n: number) {
     const v = Number.isFinite(n) ? n : 0;
     return new Intl.NumberFormat("th-TH").format(v);
@@ -174,7 +180,7 @@ function StatusPill({ status }: { status: string | null | undefined }) {
 
 /* =========================
    Revenue preset mapping
-   - yesterday / all: ไม่โชว์ compare (ยังไม่รองรับใน API summary)
+   - yesterday / all: ไม่โชว์ compare (API summary ยังไม่รองรับ)
 ========================= */
 function presetFromDateFilter(df: DateFilter): Preset | null {
     if (df === "today") return "today";
@@ -219,21 +225,30 @@ export default function AdminOrdersPage() {
         inputPage,
         setInputPage,
         totalPages,
-        totalSales, // paid-only from hook
+
+        // ✅ list-based KPI (ตรงกับตารางเสมอ)
+        paidTotalList,
+        paidCountList,
+
+        // ✅ preset paid_at KPI (ไว้สำรอง)
+        paidTotalPreset,
+        paidCountPreset,
     } = useOrdersSearch({ rowsPerPage, initialFilter: "today" });
 
     const df = (dateFilter as DateFilter) ?? "today";
-
-    // ✅ derived preset: ไม่ setState sync ใน effect
     const preset = useMemo(() => presetFromDateFilter(df), [df]);
 
     const [rev, setRev] = useState<RevenueSummary | null>(null);
 
-    // ✅ only show compare when preset exists
-    const revToShow = preset ? rev : null;
+    // ✅ block compare when search active (dataset mismatch)
+    const hasSearch = search.trim().length > 0;
+
+    // ✅ only show compare when preset exists and no search
+    const revToShow = preset && !hasSearch ? rev : null;
 
     useEffect(() => {
         if (!preset) return;
+        if (hasSearch) return;
 
         const ac = new AbortController();
 
@@ -248,43 +263,58 @@ export default function AdminOrdersPage() {
             });
 
         return () => ac.abort();
-    }, [preset]);
+    }, [preset, hasSearch]);
+
+    /**
+     * ✅ KPI source of truth:
+     * - compare mode (today/7days/month + no search) -> API summary current (rev.current)
+     * - otherwise -> list-based (filteredOrders) so numbers match the table
+     */
+    const paidTotalToShow = useMemo(() => {
+        if (revToShow) return revToShow.current.total;
+        if (preset && !hasSearch) return paidTotalPreset; // fallback if API not ready
+        return paidTotalList;
+    }, [revToShow, preset, hasSearch, paidTotalPreset, paidTotalList]);
+
+    const paidCountToShow = useMemo(() => {
+        if (revToShow) return revToShow.current.count;
+        if (preset && !hasSearch) return paidCountPreset; // fallback if API not ready
+        return paidCountList;
+    }, [revToShow, preset, hasSearch, paidCountPreset, paidCountList]);
 
     const computed = useMemo(() => {
         const list = (filteredOrders as unknown as OrderRow[]) ?? [];
 
-        let paidCount = 0;
         let cancelledCount = 0;
         let refundedCount = 0;
         let unknownCount = 0;
 
-        let cancelledValue = 0; // lost opportunity
-        let refundedValue = 0; // money returned
+        let cancelledValue = 0;
+        let refundedValue = 0;
         let unknownValue = 0;
 
         for (const o of list) {
             const st = normalizeStatus(o.status ?? null);
             const t = Number.isFinite(o.total) ? o.total : 0;
 
-            if (st === "paid") {
-                paidCount += 1;
-            } else if (st === "cancelled" || st === "void") {
+            if (st === "cancelled" || st === "void") {
                 cancelledCount += 1;
                 cancelledValue += t;
             } else if (st === "refunded") {
                 refundedCount += 1;
                 refundedValue += t;
-            } else {
+            } else if (st === "unknown") {
                 unknownCount += 1;
                 unknownValue += t;
             }
         }
 
-        const aov = paidCount > 0 ? totalSales / paidCount : 0;
-        const netSales = Math.max(0, totalSales - refundedValue);
+        const aov = paidCountToShow > 0 ? paidTotalToShow / paidCountToShow : 0;
+
+        // Net = Paid KPI - refunded from the current list (match what user is viewing)
+        const netSales = Math.max(0, paidTotalToShow - refundedValue);
 
         return {
-            paidCount,
             cancelledCount,
             refundedCount,
             unknownCount,
@@ -295,7 +325,7 @@ export default function AdminOrdersPage() {
             netSales,
             totalCount: list.length,
         };
-    }, [filteredOrders, totalSales]);
+    }, [filteredOrders, paidTotalToShow, paidCountToShow]);
 
     const headers = ["#", "Order ID", "Status", "Items", "Total", "Date"];
 
@@ -424,7 +454,7 @@ export default function AdminOrdersPage() {
 
                                 <StatCard
                                     label="ยอดขายรวม (Paid)"
-                                    value={`${formatMoneyTHB(totalSales)} บาท`}
+                                    value={`${formatMoneyTHB(paidTotalToShow)} บาท`}
                                     sub={
                                         revToShow
                                             ? `เทียบช่วงก่อนหน้า: ${trendText(
@@ -438,7 +468,7 @@ export default function AdminOrdersPage() {
 
                                 <StatCard
                                     label="ออเดอร์ชำระแล้ว"
-                                    value={`${computed.paidCount} รายการ`}
+                                    value={`${paidCountToShow} รายการ`}
                                     sub={
                                         revToShow
                                             ? `เทียบช่วงก่อนหน้า: ${trendText(

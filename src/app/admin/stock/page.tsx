@@ -158,7 +158,7 @@ export default function StockHistoryPage() {
         kpi,
         criticalItems,
         criticalCount,
-    } = useStockSearch({ rowsPerPage: 20, initialFilter: "7days" });
+    } = useStockSearch({ rowsPerPage: 20, initialFilter: "today" });
 
     /* Modal */
     const [selectedEvent, setSelectedEvent] = useState<StockEvent | null>(null);

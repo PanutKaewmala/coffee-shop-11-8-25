@@ -12,6 +12,9 @@ type PaymentMethodUI = "cash" | "promptpay";
 type StatusFilter = "all" | OrderStatusUI;
 type PaymentFilter = "all" | PaymentMethodUI;
 
+// ✅ KPI preset (เฉพาะช่วงที่ summary รองรับ)
+type Preset = "today" | "7days" | "month";
+
 export type OrderLite = {
     id: string;
     total: number;
@@ -20,7 +23,7 @@ export type OrderLite = {
     status: OrderStatusUI;
     payment_method: PaymentMethodUI;
 
-    paid_at: string | null; // ✅ ไม่ optional
+    paid_at: string | null;
     note: string | null;
 
     cancel_reason: string | null;
@@ -28,7 +31,7 @@ export type OrderLite = {
     cancelled_at: string | null;
     cancelled_by: string | null;
 
-    items: OrderItem[]; // ✅ ไม่ optional
+    items: OrderItem[];
 };
 
 interface UseOrdersSearchOptions {
@@ -39,10 +42,6 @@ interface UseOrdersSearchOptions {
 function safeDate(dateStr: string) {
     const d = new Date(dateStr);
     return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function isSameDay(a: Date, b: Date) {
-    return a.toDateString() === b.toDateString();
 }
 
 function isOrderStatus(v: unknown): v is OrderStatusUI {
@@ -64,6 +63,92 @@ function readNumber(v: unknown, fallback = 0): number {
 
 function isNotNull<T>(v: T | null): v is T {
     return v !== null;
+}
+
+/* =========================
+   ✅ Bangkok day-boundary helpers
+   - ใช้กับ "ตาราง/ฟิลเตอร์" และ "KPI preset" ให้มาตรฐานเดียวกัน
+========================= */
+const TZ = "Asia/Bangkok";
+
+// YYYY-MM-DD in Bangkok
+function fmtKey(d: Date): string {
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(d);
+}
+
+function keyToDate(key: string): Date {
+    // key is YYYY-MM-DD
+    return new Date(`${key}T00:00:00+07:00`);
+}
+
+function addDaysKey(key: string, days: number): string {
+    const d = keyToDate(key);
+    d.setDate(d.getDate() + days);
+    return fmtKey(d);
+}
+
+function firstDayOfMonthKey(key: string): string {
+    return `${key.slice(0, 7)}-01`;
+}
+
+function firstDayNextMonthKey(key: string): string {
+    const d = keyToDate(firstDayOfMonthKey(key));
+    d.setMonth(d.getMonth() + 1);
+    // fmtKey(d) returns YYYY-MM-DD but could be not 01 due to date object,
+    // so force "-01" with the computed month
+    return fmtKey(d).slice(0, 7) + "-01";
+}
+
+// compare YYYY-MM-DD keys (Bangkok boundary)
+function inBangkokRange(d: Date, startKey: string, endKey: string) {
+    const k = fmtKey(d);
+    return k >= startKey && k < endKey;
+}
+
+// ✅ ใช้สร้างช่วงของ "ตาราง" ตาม dateFilter โดยอิง Bangkok 00:00
+function getListRangeKeysByDateFilter(df: DateFilter, todayKey: string) {
+    if (df === "today") {
+        return { startKey: todayKey, endKey: addDaysKey(todayKey, 1) };
+    }
+    if (df === "yesterday") {
+        const startKey = addDaysKey(todayKey, -1);
+        const endKey = todayKey;
+        return { startKey, endKey };
+    }
+    if (df === "7days") {
+        // ✅ 7 วันล่าสุดแบบ "วันปฏิทิน" => วันนี้ + ย้อนหลังอีก 6 วัน = รวม 7 วัน
+        return { startKey: addDaysKey(todayKey, -6), endKey: addDaysKey(todayKey, 1) };
+    }
+    if (df === "month") {
+        const startKey = firstDayOfMonthKey(todayKey);
+        const endKey = firstDayNextMonthKey(todayKey);
+        return { startKey, endKey };
+    }
+    return null; // all
+}
+
+function presetFromDateFilter(df: DateFilter): Preset | null {
+    if (df === "today") return "today";
+    if (df === "7days") return "7days";
+    if (df === "month") return "month";
+    return null;
+}
+
+function getPresetRangeKeys(preset: Preset, todayKey: string) {
+    if (preset === "today") {
+        return { startKey: todayKey, endKey: addDaysKey(todayKey, 1) };
+    }
+    if (preset === "7days") {
+        return { startKey: addDaysKey(todayKey, -6), endKey: addDaysKey(todayKey, 1) };
+    }
+    const startKey = firstDayOfMonthKey(todayKey);
+    const endKey = firstDayNextMonthKey(todayKey);
+    return { startKey, endKey };
 }
 
 export default function useOrdersSearch({
@@ -159,38 +244,18 @@ export default function useOrdersSearch({
         return () => clearTimeout(t);
     }, [search]);
 
-    /* -------------------- QUICK DATE FILTER -------------------- */
+    /* -------------------- QUICK DATE FILTER (LIST uses created_at, Bangkok boundary) -------------------- */
     const isWithinFilter = useCallback(
         (d: Date) => {
-            const now = new Date();
-
-            switch (dateFilter) {
-                case "today":
-                    return isSameDay(d, now);
-
-                case "yesterday": {
-                    const y = new Date();
-                    y.setDate(y.getDate() - 1);
-                    return isSameDay(d, y);
-                }
-
-                case "7days": {
-                    const past = new Date();
-                    past.setDate(past.getDate() - 7);
-                    return d >= past;
-                }
-
-                case "month":
-                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-
-                default:
-                    return true;
-            }
+            const todayKey = fmtKey(new Date());
+            const range = getListRangeKeysByDateFilter(dateFilter, todayKey);
+            if (!range) return true; // all
+            return inBangkokRange(d, range.startKey, range.endKey);
         },
         [dateFilter]
     );
 
-    /* -------------------- FILTER + SORT -------------------- */
+    /* -------------------- FILTER + SORT (LIST) -------------------- */
     const filteredOrders = useMemo(() => {
         let result = orders.filter((o) => {
             const d = safeDate(o.created_at);
@@ -213,11 +278,7 @@ export default function useOrdersSearch({
 
         return result
             .slice()
-            .sort(
-                (a, b) =>
-                    (safeDate(b.created_at)?.getTime() ?? 0) -
-                    (safeDate(a.created_at)?.getTime() ?? 0)
-            );
+            .sort((a, b) => (safeDate(b.created_at)?.getTime() ?? 0) - (safeDate(a.created_at)?.getTime() ?? 0));
     }, [orders, debouncedSearch, isWithinFilter, statusFilter, paymentFilter]);
 
     /* -------------------- PAGINATION -------------------- */
@@ -240,10 +301,52 @@ export default function useOrdersSearch({
         return filteredOrders.slice(start, start + rowsPerPage);
     }, [filteredOrders, page, rowsPerPage]);
 
-    /* -------------------- TOTAL SALES (paid only) -------------------- */
-    const totalSales = useMemo(() => {
-        return filteredOrders.reduce((sum, o) => (o.status === "paid" ? sum + o.total : sum), 0);
+    /* =========================
+       ✅ LIST-based paid KPI (ตรงกับตาราง/ฟิลเตอร์/คำค้นหา)
+    ========================= */
+    const paidList = useMemo(() => {
+        let paidTotal = 0;
+        let paidCount = 0;
+
+        for (const o of filteredOrders) {
+            if (o.status !== "paid") continue;
+            paidCount += 1;
+            paidTotal += Number.isFinite(o.total) ? o.total : 0;
+        }
+
+        return { paidTotal, paidCount };
     }, [filteredOrders]);
+
+    /* =========================
+       ✅ PRESET paid_at KPI (match /api/revenue/summary)
+       - ไม่สน status/payment/search filters (ให้ตรงกับ API summary)
+    ========================= */
+    const preset = useMemo(() => presetFromDateFilter(dateFilter), [dateFilter]);
+
+    const paidPreset = useMemo(() => {
+        if (!preset) return { paidTotal: 0, paidCount: 0 };
+
+        const todayKey = fmtKey(new Date());
+        const { startKey, endKey } = getPresetRangeKeys(preset, todayKey);
+
+        let paidTotal = 0;
+        let paidCount = 0;
+
+        for (const o of orders) {
+            if (o.status !== "paid") continue;
+            if (!o.paid_at) continue;
+
+            const d = safeDate(o.paid_at);
+            if (!d) continue;
+
+            if (!inBangkokRange(d, startKey, endKey)) continue;
+
+            paidCount += 1;
+            paidTotal += Number.isFinite(o.total) ? o.total : 0;
+        }
+
+        return { paidTotal, paidCount };
+    }, [orders, preset]);
 
     return {
         loading,
@@ -270,7 +373,13 @@ export default function useOrdersSearch({
         setInputPage,
         totalPages,
 
-        totalSales,
+        // ✅ list-based KPI (match table)
+        paidTotalList: paidList.paidTotal,
+        paidCountList: paidList.paidCount,
+
+        // ✅ preset paid_at KPI (match summary)
+        paidTotalPreset: paidPreset.paidTotal,
+        paidCountPreset: paidPreset.paidCount,
 
         refresh: loadOrders,
     };
