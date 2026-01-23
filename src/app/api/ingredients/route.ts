@@ -1,6 +1,6 @@
 // app/api/ingredients/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 import type { IngredientUpdatePayload, UUID, BaseUnit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 import { NextRequest, NextResponse } from "next/server";
 
 /* =========================

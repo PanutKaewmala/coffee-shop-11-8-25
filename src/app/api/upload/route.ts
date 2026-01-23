@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 

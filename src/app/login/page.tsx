@@ -1,16 +1,37 @@
+// src/app/login/page.tsx
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
+    const sp = useSearchParams();
+
+    const next = useMemo(() => {
+        const raw = sp.get("next");
+        // basic safety: ถ้าไม่มีให้ไป admin
+        return raw && raw.startsWith("/") ? raw : "/admin";
+    }, [sp]);
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
+    // ✅ ถ้า login อยู่แล้ว อย่าให้เห็นหน้า login
+    useEffect(() => {
+        let alive = true;
+        supabase.auth.getSession().then(({ data }) => {
+            if (!alive) return;
+            if (data.session) router.replace(next);
+        });
+        return () => {
+            alive = false;
+        };
+    }, [router, next]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -25,30 +46,25 @@ export default function LoginPage() {
             return;
         }
 
-        router.push("/admin");
+        // ✅ ใช้ replace กันกด back แล้วกลับมาหน้า login
+        router.replace(next);
     };
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-[var(--background)] px-4">
             <div className="bg-[var(--surface)] shadow-xl rounded-2xl w-full max-w-sm p-8 border border-[var(--text-muted)]/10">
-                {/* Header */}
                 <div className="text-center mb-6">
                     <h1 className="text-2xl font-bold text-[var(--text-primary)]">☕ Coffee Admin</h1>
-                    <p className="text-sm text-[var(--text-secondary)] mt-1">
-                        Sign in to manage your café
-                    </p>
+                    <p className="text-sm text-[var(--text-secondary)] mt-1">Sign in to manage your café</p>
                 </div>
 
-                {/* Form */}
                 <form onSubmit={handleLogin} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                            Email
-                        </label>
+                        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Email</label>
                         <input
                             type="email"
                             className="w-full rounded-lg border border-[var(--text-muted)]/30 px-3 py-2 bg-[var(--background)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)] focus:outline-none transition"
-                            placeholder="Your@examp.com"
+                            placeholder="owner@demo.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             disabled={loading}
@@ -57,13 +73,11 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                            Password
-                        </label>
+                        <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Password</label>
                         <input
                             type="password"
                             className="w-full rounded-lg border border-[var(--text-muted)]/30 px-3 py-2 bg-[var(--background)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)] focus:outline-none transition"
-                            placeholder="Your password"
+                            placeholder="123456"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             disabled={loading}
@@ -71,14 +85,12 @@ export default function LoginPage() {
                         />
                     </div>
 
-                    {/* Error message */}
                     {error && (
                         <div className="bg-red-100/70 border border-red-300 text-red-700 text-sm rounded-lg px-3 py-2">
                             {error}
                         </div>
                     )}
 
-                    {/* Submit */}
                     <button
                         type="submit"
                         disabled={loading}
@@ -93,6 +105,10 @@ export default function LoginPage() {
                             "Sign In"
                         )}
                     </button>
+
+                    <div className="text-xs text-[var(--text-secondary)] opacity-80">
+                        Demo: owner@demo.com / 123456 • staff@demo.com / 123456
+                    </div>
                 </form>
             </div>
         </div>

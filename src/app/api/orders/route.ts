@@ -1,6 +1,6 @@
 // app/api/orders/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 import { deductStock } from "@/lib/deductStock";
 
 export const dynamic = "force-dynamic";

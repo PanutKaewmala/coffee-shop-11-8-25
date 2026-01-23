@@ -1,6 +1,6 @@
 // app/api/revenue/route.ts
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseClient";
+import { getSupabaseServer } from "@/lib/supabaseServer";
 
 /* =========================
    Helpers
