@@ -1,0 +1,48 @@
+// src/app/admin/select-shop/page.tsx
+import { redirect } from "next/navigation";
+import { getSupabaseServer, getCurrentContextFromCookies } from "@/lib/supabaseServer";
+import SelectShopClient from "./SelectShopClient";
+
+
+type ShopRow = { id: string; name: string };
+type MemberRow = { shop_id: string; shops: ShopRow | null };
+
+export default async function SelectShopPage() {
+    const supabase = await getSupabaseServer();
+
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) redirect("/login?next=/admin/select-shop");
+
+    // ถ้ามี cookie อยู่แล้ว ไม่ต้องมาเลือกซ้ำ
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (currentShopId) redirect("/admin");
+
+    const { data, error } = await supabase
+        .from("shop_members")
+        .select("shop_id, shops(id,name), created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+
+    if (error) {
+        // โยนไปให้ client แสดง error แบบอ่านง่าย
+        return <SelectShopClient shops={[]} error={error.message} />;
+    }
+
+    const shops = (data ?? [])
+        .map((row) => {
+            const r = row as unknown as MemberRow;
+            if (!r.shops?.id) return null;
+            return { id: r.shops.id, name: r.shops.name ?? r.shops.id };
+        })
+        .filter((x): x is ShopRow => x !== null);
+
+    // ถ้ามีร้านเดียว: auto-select ให้เลย (UX โหดๆ)
+    if (shops.length === 1) {
+        // เรียก API ตั้ง cookie ไม่ได้จาก server component ง่ายๆ แบบปลอดภัย
+        // เลยให้ client ทำ auto-click แทน (ยังเร็วอยู่)
+        return <SelectShopClient shops={shops} autoPickSingle />;
+    }
+
+    return <SelectShopClient shops={shops} />;
+}

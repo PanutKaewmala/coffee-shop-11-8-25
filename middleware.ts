@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 
 export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
@@ -23,17 +24,23 @@ export async function middleware(req: NextRequest) {
         }
     );
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    let user: User | null = null;
+
+    try {
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
+
+        user = session?.user ?? null;
+    } catch {
+        // refresh token เพี้ยน/หาย -> ถือว่าไม่ได้ login
+        user = null;
+    }
 
     if (req.nextUrl.pathname.startsWith("/admin") && !user) {
         const url = req.nextUrl.clone();
         url.pathname = "/login";
-        url.searchParams.set(
-            "next",
-            req.nextUrl.pathname + req.nextUrl.search
-        );
+        url.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
         return NextResponse.redirect(url);
     }
 
