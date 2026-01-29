@@ -1,12 +1,24 @@
+// components/admin/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 
-interface SidebarProps {
+/* ================================
+   Types
+================================ */
+export interface SidebarProps {
     isOpen?: boolean;
     onClose?: () => void;
+
+    // SaaS context
+    currentShopId?: string;
+    currentBranchId?: string | null;
+
+    // optional: ถ้าส่งชื่อมาจาก server
+    currentShopName?: string | null;
+    currentBranchName?: string | null;
 }
 
 type NavItem = {
@@ -16,7 +28,9 @@ type NavItem = {
     badge?: string;
 };
 
-// จัดกลุ่มเมนูเป็น section
+/* ================================
+   Navigation config
+================================ */
 const navSections: { title: string; items: NavItem[] }[] = [
     {
         title: "Overview",
@@ -29,13 +43,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
             {
                 label: "Ingredients",
                 path: "/admin/ingredients",
-                children: [
-                    {
-                        label: "Archived",
-                        path: "/admin/ingredients/archived",
-                        // badge: "NEW",
-                    },
-                ],
+                children: [{ label: "Archived", path: "/admin/ingredients/archived" }],
             },
             { label: "Recipes", path: "/admin/recipes" },
             { label: "Stock History", path: "/admin/stock" },
@@ -52,20 +60,41 @@ const navSections: { title: string; items: NavItem[] }[] = [
     },
 ];
 
+/* ================================
+   Helpers
+================================ */
 function isActivePath(pathname: string, itemPath: string) {
     if (itemPath === "/admin") return pathname === "/admin";
     return pathname === itemPath || pathname.startsWith(itemPath + "/");
 }
 
-export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
+/* ================================
+   Component
+================================ */
+export default function Sidebar({
+    isOpen = false,
+    onClose,
+    currentShopId,
+    currentBranchId,
+    currentShopName,
+    currentBranchName,
+}: SidebarProps) {
     const pathname = usePathname();
+
+    const shopLabel =
+        currentShopName ??
+        (currentShopId ? `Shop: ${currentShopId.slice(0, 8)}…` : "No shop selected");
+
+    const branchLabel =
+        currentBranchName ??
+        (currentBranchId ? `Branch: ${currentBranchId.slice(0, 8)}…` : "Branch: -");
 
     return (
         <>
             {/* Backdrop for mobile */}
             <div
                 className={`
-          fixed inset-0 bg-black/40 z-30 md:hidden transition-opacity duration-300 
+          fixed inset-0 bg-black/40 z-30 md:hidden transition-opacity duration-300
           ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
         `}
                 onClick={onClose}
@@ -74,7 +103,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             {/* Sidebar */}
             <aside
                 className={`
-          fixed top-0 left-0 bottom-0 z-40 w-64 
+          fixed top-0 left-0 bottom-0 z-40 w-64
           bg-[var(--surface)] text-[var(--text-primary)]
           border-r border-[var(--text-muted)]/20
           transform transition-transform duration-300
@@ -83,18 +112,30 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         `}
             >
                 {/* Mobile header */}
-                <div className="flex items-center justify-between mb-6 md:hidden px-4">
+                <div className="flex items-center justify-between md:hidden px-4 py-3 border-b border-[var(--text-muted)]/20">
                     <div className="text-lg font-semibold">☕ Admin</div>
                     <button
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onClose}
+                        aria-label="Close sidebar"
                     >
                         <X size={18} />
                     </button>
                 </div>
 
+                {/* Current context */}
+                <div className="px-4 mt-4">
+                    <div className="rounded-xl border border-[var(--text-muted)]/20 bg-[var(--surface)] p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
+                            Current Context
+                        </div>
+                        <div className="mt-1 text-sm font-semibold truncate">{shopLabel}</div>
+                        <div className="text-xs text-[var(--text-secondary)] truncate">{branchLabel}</div>
+                    </div>
+                </div>
+
                 {/* Navigation Sections */}
-                <nav className="flex flex-col gap-6 px-3 mt-4">
+                <nav className="flex flex-col gap-6 px-3 mt-6">
                     {navSections.map((section) => (
                         <div key={section.title}>
                             {/* Section header */}
@@ -108,7 +149,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                                     const active = isActivePath(pathname, item.path);
                                     const hasChildren = Array.isArray(item.children) && item.children.length > 0;
 
-                                    // ถ้าอยู่หน้า child ให้ parent ดู active ด้วย
                                     const childActive =
                                         hasChildren && item.children!.some((c) => isActivePath(pathname, c.path));
 
@@ -137,7 +177,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                                                 </div>
                                             </Link>
 
-                                            {/* Children (nested) */}
+                                            {/* Children */}
                                             {hasChildren ? (
                                                 <div className="mt-1 ml-3 pl-2 border-l border-[var(--text-muted)]/20 flex flex-col gap-1">
                                                     {item.children!.map((child) => {
