@@ -177,7 +177,7 @@ async function resolveBranchId(
    GET /api/pos
 ========================================================= */
 export async function GET(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     try {
         const { searchParams } = new URL(req.url);
@@ -255,7 +255,7 @@ export async function GET(req: NextRequest) {
    POST /api/pos (Checkout)
 ========================================================= */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     try {
         const idempotencyKey = getIdempotencyKey(req);

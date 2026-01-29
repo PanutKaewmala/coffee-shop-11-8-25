@@ -45,7 +45,7 @@ function asStringOrNull(v: unknown): string | null {
    GET /api/news
 ========================= */
 export async function GET() {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("news")
@@ -63,7 +63,7 @@ export async function GET() {
    POST /api/news
 ========================= */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     let body: unknown;
     try {
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
    PUT /api/news
 ========================= */
 export async function PUT(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     let body: unknown;
     try {
@@ -178,7 +178,7 @@ export async function PUT(req: NextRequest) {
    DELETE /api/news?id=...
 ========================= */
 export async function DELETE(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const id = new URL(req.url).searchParams.get("id");
 
     if (!id) {

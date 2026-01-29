@@ -8,7 +8,7 @@ import { getSupabaseServer } from "@/lib/supabaseServer";
 
 // GET — list all
 export async function GET() {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const { data, error } = await supabase
         .from("menu_categories")
         .select("*")
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("menu_categories")
@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest) {
         );
     }
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("menu_categories")
@@ -78,7 +78,7 @@ export async function DELETE(req: NextRequest) {
         );
     }
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { error } = await supabase
         .from("menu_categories")

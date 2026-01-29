@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
         }
 
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
 
         const uploadTasks = files.map(async (file) => {
             if (!ALLOWED_TYPES.includes(file.type)) {

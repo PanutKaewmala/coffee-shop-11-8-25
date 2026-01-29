@@ -13,7 +13,7 @@ export async function GET(
     _req: NextRequest,
     { params }: { params: Promise<{ id?: string }> }
 ) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { id } = await params;
     const rawId = (id ?? "").trim();

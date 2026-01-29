@@ -117,7 +117,7 @@ function normalizeIngredient(row: IngredientRow) {
 ========================================================= */
 export async function GET(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const id = req.nextUrl.searchParams.get("id");
         const archived = req.nextUrl.searchParams.get("archived");
 
@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
 ========================================================= */
 export async function POST(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const body = await readJson(req);
 
         if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -246,7 +246,7 @@ export async function POST(req: NextRequest) {
 ========================================================= */
 export async function PUT(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const body = await readJson(req);
 
         if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -324,7 +324,7 @@ export async function PUT(req: NextRequest) {
 ========================================================= */
 export async function DELETE(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const id = req.nextUrl.searchParams.get("id");
 
         if (!id) return NextResponse.json({ error: "ต้องมี id เพื่อทำการลบ" }, { status: 400 });

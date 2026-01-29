@@ -36,7 +36,7 @@ function returnAsc() {
    - variant: ?variant_id=...
 ============================================================ */
 export async function GET(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const source = getSource(req);
 
     try {
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
      variant: { variant_id, ingredient_id, quantity }
 ============================================================ */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const source = getSource(req);
 
     try {
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
    - ?source=variant updates recipe_items
 ============================================================ */
 export async function PUT(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const source = getSource(req);
 
     try {
@@ -326,7 +326,7 @@ export async function PUT(req: NextRequest) {
    - ?source=variant deletes from recipe_items
 ============================================================ */
 export async function DELETE(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const source = getSource(req);
 
     try {

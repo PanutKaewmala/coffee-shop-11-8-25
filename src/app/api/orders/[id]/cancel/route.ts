@@ -149,7 +149,7 @@ export async function POST(
             return NextResponse.json({ error: "Note is required when reason is 'อื่นๆ'" }, { status: 400 });
         }
 
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const noteForRpc: string | undefined = cancelNote ?? undefined;
 
         const { data, error } = await supabase.rpc("cancel_order", {

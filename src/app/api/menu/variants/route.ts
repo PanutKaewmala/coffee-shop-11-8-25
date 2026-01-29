@@ -144,7 +144,7 @@ async function findReplacementVariantId(args: {
 ========================================================= */
 export async function GET(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const url = new URL(req.url);
 
         const id = url.searchParams.get("id");
@@ -196,7 +196,7 @@ export async function GET(req: NextRequest) {
 ========================================================= */
 export async function POST(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const raw = (await req.json().catch(() => null)) as unknown;
 
         if (!isRecord(raw)) {
@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
 ========================================================= */
 export async function PUT(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const raw = (await req.json().catch(() => null)) as unknown;
 
         if (!isRecord(raw)) {
@@ -375,7 +375,7 @@ export async function PUT(req: NextRequest) {
 ========================================================= */
 export async function DELETE(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const id = new URL(req.url).searchParams.get("id");
 
         if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

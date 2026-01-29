@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
    GET - ดึงข้อมูลสาขา (รองรับ search + primary + pagination)
 ---------------------------------------- */
 export async function GET(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const searchParams = req.nextUrl.searchParams;
 
     // Query params
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
    POST - เพิ่มสาขา
 ---------------------------------------- */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const body = await req.json();
 
     const { name, address, phone, mapLink, openingHours } = body;
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
    PUT - อัปเดตสาขา
 ---------------------------------------- */
 export async function PUT(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const body = await req.json();
 
     const { id, name, address, phone, mapLink, openingHours } = body;
@@ -162,7 +162,7 @@ export async function PUT(req: NextRequest) {
    DELETE - ลบสาขา
 ---------------------------------------- */
 export async function DELETE(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const id = new URL(req.url).searchParams.get("id");
 
     if (!id)

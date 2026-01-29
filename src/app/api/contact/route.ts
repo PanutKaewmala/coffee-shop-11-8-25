@@ -69,7 +69,7 @@ function checkRateLimit(req: NextRequest): boolean {
    GET  /api/contact
 =========================================== */
 export async function GET() {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("contact")
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
         ? categoryRaw
         : "other";
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("contact")
@@ -188,7 +188,7 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error } = await supabase
         .from("contact")
@@ -211,7 +211,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) return NextResponse.json({ error: "No id provided" }, { status: 400 });
 
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { error } = await supabase.from("contact").delete().eq("id", id);
 

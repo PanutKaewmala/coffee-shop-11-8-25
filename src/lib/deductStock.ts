@@ -1,4 +1,6 @@
 // src/lib/deductStock.ts
+import "server-only";
+
 import { getSupabaseServer } from "@/lib/supabaseServer";
 import type { Database } from "@/lib/database.types";
 
@@ -16,9 +18,8 @@ type DeductResult =
     | { success: false; error: string; items: DeductRow[] };
 
 export async function deductStock(input: DeductInput): Promise<DeductResult> {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer(); // ✅ ต้อง await
 
-    // ✅ สำคัญ: ทำให้ชื่อ function เป็น literal type (แก้ TS union error)
     const FN = "deduct_stock_atomic" as const;
 
     const { data, error } = await supabase.rpc(FN, {

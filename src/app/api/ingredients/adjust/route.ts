@@ -53,7 +53,7 @@ type AdjustRpcParams = {
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const body = await readJson(req);
 
         if (!body) {

@@ -172,7 +172,7 @@ function buildBucket(range: RangeType, startLocal: Date | null, now: Date): Reco
 
 export async function GET(req: Request) {
   try {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const { searchParams } = new URL(req.url);
     const range = (searchParams.get("range") || "today") as RangeType;
 

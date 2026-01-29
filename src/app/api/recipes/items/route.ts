@@ -152,7 +152,7 @@ const SELECT_JOIN = `
 ========================================================= */
 export async function GET(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
 
         const id = req.nextUrl.searchParams.get("id");
         const variant_id = req.nextUrl.searchParams.get("variant_id");
@@ -234,7 +234,7 @@ export async function GET(req: NextRequest) {
 ========================================================= */
 export async function POST(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
 
         const variant_id = toStringOrNull(body?.variant_id);
@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
 ========================================================= */
 export async function PUT(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
 
         const id = toStringOrNull(body?.id);
@@ -414,7 +414,7 @@ export async function PUT(req: NextRequest) {
 ========================================================= */
 export async function DELETE(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const id = req.nextUrl.searchParams.get("id");
 
         if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

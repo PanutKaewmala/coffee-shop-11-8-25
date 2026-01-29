@@ -357,7 +357,7 @@ async function countCriticalActiveIngredients(
 ========================= */
 export async function GET(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
         const url = new URL(req.url);
 
         const mode = (toStringOrNull(url.searchParams.get("mode")) ?? "events").toLowerCase();
@@ -694,7 +694,7 @@ function normalizeNote(reason: PostReason | null, note: string | null): string |
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = getSupabaseServer();
+        const supabase = await getSupabaseServer();
 
         const raw = (await req.json().catch(() => null)) as unknown;
         if (!isRecord(raw)) {

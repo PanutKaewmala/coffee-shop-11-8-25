@@ -53,7 +53,7 @@ function usageFromLog(l: StockLogRow): number {
 }
 
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     let body: unknown;
     try {

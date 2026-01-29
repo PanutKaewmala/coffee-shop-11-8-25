@@ -96,7 +96,7 @@ function getRanges(preset: Preset, todayKey: string) {
 }
 
 async function sumAndCountPaid(startISO: string, endISO: string) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data, error, count } = await supabase
         .from("orders")

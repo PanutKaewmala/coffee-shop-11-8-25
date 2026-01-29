@@ -161,7 +161,7 @@ function parseServePricing(v: unknown): ServePricingInputRow[] {
    includes serve_prices (from menu_variants)
 ========================================================= */
 export async function GET() {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const { data: menus, error } = await supabase
         .from("menu")
@@ -372,7 +372,7 @@ export async function GET() {
    Create menu + create 1 default variant per serveType
 ========================================================= */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const raw = await readJson(req);
     if (!isRecord(raw)) {
@@ -481,7 +481,7 @@ export async function POST(req: NextRequest) {
    Update menu fields only (do not touch variants here)
 ========================================================= */
 export async function PUT(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const raw = await readJson(req);
     if (!isRecord(raw)) {
@@ -667,7 +667,7 @@ export async function PUT(req: NextRequest) {
    DELETE /api/menu?id=...
 ========================================================= */
 export async function DELETE(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const id = new URL(req.url).searchParams.get("id");
 
     if (!id) {

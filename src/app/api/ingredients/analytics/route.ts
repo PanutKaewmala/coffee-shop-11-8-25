@@ -70,7 +70,7 @@ function usageFromLog(l: Pick<StockLogRow, "amount" | "type">): number {
 }
 
 export async function GET(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
 
     const ingredientId = req.nextUrl.searchParams.get("ingredient_id");
     if (!isUUID(ingredientId)) {

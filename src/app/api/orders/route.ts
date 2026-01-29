@@ -143,7 +143,7 @@ function buildVariantLabel(opts: { serveTypeName?: string | null; size?: string 
    - ✅ include cancel_* fields for admin detail/history
 ============================================ */
 export async function GET(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     const id = req.nextUrl.searchParams.get("id");
 
     const select = `
@@ -300,7 +300,7 @@ export async function GET(req: NextRequest) {
    - ✅ cleanup "default" in label
 ============================================ */
 export async function POST(req: NextRequest) {
-    const supabase = getSupabaseServer();
+    const supabase = await getSupabaseServer();
     let createdOrderId: string | null = null;
 
     try {
