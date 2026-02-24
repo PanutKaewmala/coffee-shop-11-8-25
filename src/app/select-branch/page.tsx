@@ -3,6 +3,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import SelectBranchClient from "./SelectBranchClient";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer, getServerIdentity } from "@/lib/supabaseServer";
 
 type Branch = {
@@ -36,7 +37,7 @@ export default async function SelectBranchPage({
     }
 
     if (!currentShopId) {
-        redirect(`/select-shop?next=${encodeURIComponent(next)}`);
+        redirect(`/admin/select-shop?next=${encodeURIComponent(next)}`);
     }
 
     const supabase = await getSupabaseServer();
@@ -49,10 +50,12 @@ export default async function SelectBranchPage({
         .maybeSingle();
 
     if (!member) {
-        redirect(`/select-shop?next=${encodeURIComponent(next)}`);
+        redirect(`/admin/select-shop?next=${encodeURIComponent(next)}`);
     }
 
-    const { data, error } = await supabase
+    const admin = getSupabaseAdmin();
+
+    const { data, error } = await admin
         .from("branch")
         .select("id,name,address,phone,is_primary")
         .eq("shop_id", currentShopId)

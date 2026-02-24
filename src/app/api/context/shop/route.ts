@@ -1,8 +1,9 @@
-// src/app/api/context/shop/route.ts
 import "server-only";
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getSupabaseServer, getCurrentContextFromCookies } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 
 type Body = { shop_id?: string };
 
@@ -20,13 +21,47 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const mode = url.searchParams.get("mode");
 
-    // 1) read current context from cookies
     if (mode !== "pick") {
         const { currentShopId } = await getCurrentContextFromCookies();
-        return NextResponse.json({ shop_id: currentShopId ?? null });
+        if (!currentShopId) {
+            return NextResponse.json({ shop_id: null });
+        }
+
+        const { data: member, error: mErr } = await supabase
+            .from("shop_members")
+            .select("shop_id")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return jsonError(mErr.message, 500);
+
+        if (!member) {
+            const cookieStore = await cookies();
+            cookieStore.set({
+                name: "current_shop_id",
+                value: "",
+                httpOnly: true,
+                sameSite: "lax",
+                secure: process.env.NODE_ENV === "production",
+                path: "/",
+                maxAge: 0,
+            });
+            cookieStore.set({
+                name: "current_branch_id",
+                value: "",
+                httpOnly: true,
+                sameSite: "lax",
+                secure: process.env.NODE_ENV === "production",
+                path: "/",
+                maxAge: 0,
+            });
+            return NextResponse.json({ shop_id: null });
+        }
+
+        return NextResponse.json({ shop_id: currentShopId });
     }
 
-    // 2) auto-pick shop if user has exactly one
     const { data: rows, error } = await supabase
         .from("shop_members")
         .select("shop_id, created_at")
@@ -59,7 +94,6 @@ export async function POST(req: Request) {
     const shopId = body.shop_id?.trim();
     if (!shopId) return jsonError("shop_id is required");
 
-    // ✅ verify membership
     const { data: member, error: mErr } = await supabase
         .from("shop_members")
         .select("shop_id")
@@ -70,7 +104,17 @@ export async function POST(req: Request) {
     if (mErr) return jsonError(mErr.message, 500);
     if (!member) return jsonError("Not a member of this shop", 403);
 
-    // ✅ set cookie
+    const admin = getSupabaseAdmin();
+    const { error: profileErr } = await admin
+        .from("profiles")
+        .update({
+            current_shop_id: shopId,
+            current_branch_id: null,
+        })
+        .eq("id", user.id);
+
+    if (profileErr) return jsonError(profileErr.message, 500);
+
     const cookieStore = await cookies();
     cookieStore.set({
         name: "current_shop_id",
@@ -82,7 +126,7 @@ export async function POST(req: Request) {
         maxAge: 60 * 60 * 24 * 30,
     });
 
-    // เปลี่ยนร้าน -> เคลียร์ branch ทิ้งเสมอ กัน branch ข้ามร้าน
+    // Clear branch context on shop switch.
     cookieStore.set({
         name: "current_branch_id",
         value: "",

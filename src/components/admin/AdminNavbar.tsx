@@ -18,6 +18,11 @@ export interface AdminNavbarProps {
 
 type ShopOption = { id: string; name: string };
 type BranchOption = { id: string; name: string };
+type NavbarResponse = {
+    me?: { id: string; email: string | null } | null;
+    shops?: ShopOption[];
+    branches?: BranchOption[];
+};
 
 async function postJSON<T extends Record<string, unknown>>(
     url: string,
@@ -49,12 +54,7 @@ export default function AdminNavbar({
 }: AdminNavbarProps) {
     const router = useRouter();
 
-    const [isDark, setIsDark] = useState(() => {
-        if (typeof document !== "undefined") {
-            return document.documentElement.classList.contains("dark");
-        }
-        return false;
-    });
+    const [isDark, setIsDark] = useState(false);
 
     const [meLabel, setMeLabel] = useState<string>("");
 
@@ -63,6 +63,14 @@ export default function AdminNavbar({
     const [loadingSwitchers, setLoadingSwitchers] = useState(true);
     const [switching, setSwitching] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+
+    const reloadAfterContextChange = () => {
+        if (typeof window !== "undefined") {
+            window.location.reload();
+            return;
+        }
+        router.refresh();
+    };
 
     const toggleTheme = () => {
         const root = document.documentElement;
@@ -82,15 +90,28 @@ export default function AdminNavbar({
 
     const shopLabel = useMemo(() => {
         if (currentShopName) return currentShopName;
+        const found = currentShopId ? shops.find((s) => s.id === currentShopId) : null;
+        if (found?.name) return found.name;
         if (currentShopId) return `Shop: ${currentShopId.slice(0, 8)}…`;
         return "No shop";
-    }, [currentShopId, currentShopName]);
+    }, [currentShopId, currentShopName, shops]);
 
     const branchLabel = useMemo(() => {
         if (currentBranchName) return currentBranchName;
+        const found = currentBranchId ? branches.find((b) => b.id === currentBranchId) : null;
+        if (found?.name) return found.name;
         if (currentBranchId) return `Branch: ${currentBranchId.slice(0, 8)}…`;
         return "Branch: -";
-    }, [currentBranchId, currentBranchName]);
+    }, [currentBranchId, currentBranchName, branches]);
+
+    const noBranchInCurrentShop = useMemo(() => {
+        return Boolean(currentShopId) && !loadingSwitchers && branches.length === 0;
+    }, [currentShopId, loadingSwitchers, branches.length]);
+
+    useEffect(() => {
+        if (typeof document === "undefined") return;
+        setIsDark(document.documentElement.classList.contains("dark"));
+    }, []);
 
     useEffect(() => {
         let alive = true;
@@ -99,73 +120,30 @@ export default function AdminNavbar({
             setLoadingSwitchers(true);
             setErr(null);
 
-            // 1) who am I
-            const { data: u, error: uErr } = await supabase.auth.getUser();
-            if (!alive) return;
-
-            if (uErr) {
-                setErr(uErr.message);
-                setLoadingSwitchers(false);
-                return;
-            }
-
-            const userId = u.user?.id ?? "";
-            const email = u.user?.email ?? "";
-            setMeLabel(email ? email : "Admin");
-
-            if (!userId) {
-                setErr("No user session");
-                setLoadingSwitchers(false);
-                return;
-            }
-
-            // 2) my shops (filter by user_id ✅)
-            const { data: sm, error: smErr } = await supabase
-                .from("shop_members")
-                .select("shop_id, shops(id,name), created_at")
-                .eq("user_id", userId)
-                .order("created_at", { ascending: true });
-
-            if (!alive) return;
-
-            if (smErr) {
-                setErr(smErr.message);
-                setLoadingSwitchers(false);
-                return;
-            }
-
-            const shopOptions: ShopOption[] = (sm ?? [])
-                .map((row) => {
-                    const shopsObj = (row as { shops: { id: string; name: string } | null }).shops;
-                    if (!shopsObj?.id) return null;
-                    return { id: shopsObj.id, name: shopsObj.name ?? shopsObj.id };
-                })
-                .filter((x): x is ShopOption => x !== null);
-
-            setShops(shopOptions);
-
-            // 3) branches in current shop
-            if (currentShopId) {
-                const { data: br, error: brErr } = await supabase
-                    .from("branch")
-                    .select("id,name,is_primary")
-                    .eq("shop_id", currentShopId)
-                    .order("is_primary", { ascending: false })
-                    .order("name", { ascending: true });
-
-                if (brErr) {
-                    setErr(brErr.message);
-                    setBranches([]);
-                    setLoadingSwitchers(false);
-                    return;
+            try {
+                const res = await fetch("/api/admin/navbar", { cache: "no-store" });
+                if (!res.ok) {
+                    const text = await res.text().catch(() => "");
+                    throw new Error(text || `Request failed: ${res.status}`);
                 }
 
-                setBranches((br ?? []).map((b) => ({ id: b.id, name: b.name })));
-            } else {
-                setBranches([]);
-            }
+                const data = (await res.json()) as NavbarResponse;
+                if (!alive) return;
 
-            setLoadingSwitchers(false);
+                const email = data.me?.email ?? null;
+                setMeLabel(email ? email : "Admin");
+                setShops(Array.isArray(data.shops) ? data.shops : []);
+                setBranches(Array.isArray(data.branches) ? data.branches : []);
+            } catch (e) {
+                if (!alive) return;
+                const msg = e instanceof Error ? e.message : "Failed to load navbar data";
+                setErr(msg);
+                setShops([]);
+                setBranches([]);
+            } finally {
+                if (!alive) return;
+                setLoadingSwitchers(false);
+            }
         }
 
         load();
@@ -189,8 +167,8 @@ export default function AdminNavbar({
         // เปลี่ยน shop -> เคลียร์ branch
         await postJSON("/api/context/branch", { branch_id: null });
 
-        router.refresh();
         setSwitching(false);
+        reloadAfterContextChange();
     };
 
     const onChangeBranch = async (branchId: string) => {
@@ -205,8 +183,8 @@ export default function AdminNavbar({
             return;
         }
 
-        router.refresh();
         setSwitching(false);
+        reloadAfterContextChange();
     };
 
     return (
@@ -239,7 +217,7 @@ export default function AdminNavbar({
                         <select
                             className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm min-w-[240px]"
                             value={currentShopId ?? ""}
-                            disabled={loadingSwitchers || switching || shops.length <= 1}
+                            disabled={loadingSwitchers || switching || shops.length === 0}
                             onChange={(e) => onChangeShop(e.target.value)}
                         >
                             <option value="" disabled>
@@ -247,7 +225,7 @@ export default function AdminNavbar({
                             </option>
                             {shops.map((s) => (
                                 <option key={s.id} value={s.id}>
-                                    {s.name}
+                                    {`${s.name} (${s.id.slice(0, 8)})`}
                                 </option>
                             ))}
                         </select>
@@ -258,7 +236,7 @@ export default function AdminNavbar({
                         <select
                             className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm min-w-[240px]"
                             value={currentBranchId ?? ""}
-                            disabled={loadingSwitchers || switching || !currentShopId || branches.length === 0}
+                            disabled={loadingSwitchers || switching || !currentShopId}
                             onChange={(e) => onChangeBranch(e.target.value)}
                         >
                             <option value="" disabled>
@@ -266,10 +244,19 @@ export default function AdminNavbar({
                             </option>
                             {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                    {b.name}
+                                    {`${b.name} (${b.id.slice(0, 8)})`}
                                 </option>
                             ))}
                         </select>
+                        {noBranchInCurrentShop ? (
+                            <button
+                                type="button"
+                                onClick={() => router.push("/admin/branch")}
+                                className="text-xs text-[var(--accent)] hover:underline"
+                            >
+                                Add branch
+                            </button>
+                        ) : null}
                     </div>
                 </div>
 
@@ -309,7 +296,7 @@ export default function AdminNavbar({
                     <select
                         className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full"
                         value={currentShopId ?? ""}
-                        disabled={loadingSwitchers || switching || shops.length <= 1}
+                        disabled={loadingSwitchers || switching || shops.length === 0}
                         onChange={(e) => onChangeShop(e.target.value)}
                     >
                         <option value="" disabled>
@@ -317,7 +304,7 @@ export default function AdminNavbar({
                         </option>
                         {shops.map((s) => (
                             <option key={s.id} value={s.id}>
-                                {s.name}
+                                {`${s.name} (${s.id.slice(0, 8)})`}
                             </option>
                         ))}
                     </select>
@@ -325,7 +312,7 @@ export default function AdminNavbar({
                     <select
                         className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full"
                         value={currentBranchId ?? ""}
-                        disabled={loadingSwitchers || switching || !currentShopId || branches.length === 0}
+                        disabled={loadingSwitchers || switching || !currentShopId}
                         onChange={(e) => onChangeBranch(e.target.value)}
                     >
                         <option value="" disabled>
@@ -333,11 +320,21 @@ export default function AdminNavbar({
                         </option>
                         {branches.map((b) => (
                             <option key={b.id} value={b.id}>
-                                {b.name}
+                                {`${b.name} (${b.id.slice(0, 8)})`}
                             </option>
                         ))}
                     </select>
                 </div>
+
+                {noBranchInCurrentShop ? (
+                    <button
+                        type="button"
+                        onClick={() => router.push("/admin/branch")}
+                        className="mt-2 text-xs text-[var(--accent)] hover:underline"
+                    >
+                        No branches in this shop. Add branch
+                    </button>
+                ) : null}
             </div>
 
             {err ? <div className="hidden lg:block px-6 pb-3 text-xs text-red-500">{err}</div> : null}

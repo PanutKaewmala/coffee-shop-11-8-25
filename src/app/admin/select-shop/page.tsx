@@ -16,7 +16,20 @@ export default async function SelectShopPage() {
 
     // ถ้ามี cookie อยู่แล้ว ไม่ต้องมาเลือกซ้ำ
     const { currentShopId } = await getCurrentContextFromCookies();
-    if (currentShopId) redirect("/admin");
+    if (currentShopId) {
+        const { data: member, error: mErr } = await supabase
+            .from("shop_members")
+            .select("shop_id")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) {
+            return <SelectShopClient shops={[]} error={mErr.message} />;
+        }
+
+        if (member) redirect("/admin");
+    }
 
     const { data, error } = await supabase
         .from("shop_members")
