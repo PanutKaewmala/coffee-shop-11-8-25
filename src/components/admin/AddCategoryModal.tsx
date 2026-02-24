@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/admin/Modal";
 import { Button } from "@/components/ui/button";
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
-    onAdded?: () => void; // notify parent to reload from DB
+    onAdded?: () => void;
 }
 
 interface CategoryRow {
@@ -16,31 +16,57 @@ interface CategoryRow {
     created_at: string;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+    try {
+        const data: unknown = await res.clone().json();
+        if (isRecord(data) && typeof data.error === "string" && data.error.trim()) {
+            return data.error;
+        }
+    } catch {
+        // ignore and fallback to text
+    }
+
+    try {
+        const text = await res.text();
+        if (text.trim()) return text;
+    } catch {
+        // ignore
+    }
+
+    return fallback;
+}
+
 export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
     const [items, setItems] = useState<CategoryRow[]>([]);
     const [filter, setFilter] = useState("");
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [actionError, setActionError] = useState("");
 
-    // inline edit
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingValue, setEditingValue] = useState("");
 
-    // ---- helpers / API calls (declare before useEffect so no TDZ error) ----
     async function loadCategories() {
         try {
             setLoading(true);
-            const res = await fetch("/api/menu/categories");
+            const res = await fetch("/api/menu/categories", { cache: "no-store" });
             if (!res.ok) {
-                console.error("fetch categories failed", await res.text());
+                const msg = await readApiError(res, "Failed to load categories");
+                setActionError(msg);
                 setItems([]);
                 return;
             }
-            const data: CategoryRow[] = await res.json();
-            setItems(Array.isArray(data) ? data : []);
+
+            const data: unknown = await res.json().catch(() => []);
+            setItems(Array.isArray(data) ? (data as CategoryRow[]) : []);
         } catch (err) {
-            console.error("loadCategories error", err);
+            void err;
             setItems([]);
+            setActionError("Unexpected error while loading categories");
         } finally {
             setLoading(false);
         }
@@ -48,122 +74,143 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
 
     async function handleAdd() {
         const name = input.trim();
-        if (!name) return alert("กรุณากรอกชื่อหมวดหมู่");
+        if (!name) {
+            setActionError("Please enter category name");
+            return;
+        }
+
+        setActionError("");
         try {
             const res = await fetch("/api/menu/categories", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
             });
+
             if (!res.ok) {
-                const txt = await res.text();
-                console.error("add category failed", txt);
-                alert("เพิ่มหมวดหมู่ไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to add category");
+                setActionError(msg);
                 return;
             }
+
             setInput("");
             await loadCategories();
             onAdded?.();
         } catch (err) {
-            console.error("handleAdd error", err);
-            alert("เกิดข้อผิดพลาดขณะเพิ่ม");
+            void err;
+            setActionError("Unexpected error while adding category");
         }
     }
 
     async function handleSaveEdit(id: string) {
         const name = editingValue.trim();
-        if (!name) return alert("กรุณากรอกชื่อ");
+        if (!name) {
+            setActionError("Please enter category name");
+            return;
+        }
+
+        setActionError("");
         try {
             const res = await fetch("/api/menu/categories", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id, name }),
             });
+
             if (!res.ok) {
-                console.error("edit failed", await res.text());
-                alert("แก้ไขไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to update category");
+                setActionError(msg);
                 return;
             }
+
             setEditingId(null);
             setEditingValue("");
             await loadCategories();
             onAdded?.();
         } catch (err) {
-            console.error("handleSaveEdit error", err);
-            alert("เกิดข้อผิดพลาดขณะแก้ไข");
+            void err;
+            setActionError("Unexpected error while updating category");
         }
     }
 
     async function handleDelete(id: string) {
-        if (!confirm("ต้องการลบหมวดหมู่นี้ใช่ไหม?")) return;
+        if (!confirm("Delete this category?")) return;
+
+        setActionError("");
         try {
             const res = await fetch(`/api/menu/categories?id=${id}`, { method: "DELETE" });
+
             if (!res.ok) {
-                console.error("delete failed", await res.text());
-                alert("ลบไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to delete category");
+                setActionError(msg);
                 return;
             }
-            // if editing this item, cancel edit
+
             if (editingId === id) {
                 setEditingId(null);
                 setEditingValue("");
             }
+
             await loadCategories();
             onAdded?.();
         } catch (err) {
-            console.error("handleDelete error", err);
-            alert("เกิดข้อผิดพลาดขณะลบ");
+            void err;
+            setActionError("Unexpected error while deleting category");
         }
     }
 
-    // ---- effects ----
     useEffect(() => {
         if (!isOpen) return;
-        // reset modal local state, then load from DB
+
         setFilter("");
         setInput("");
+        setActionError("");
         setEditingId(null);
         setEditingValue("");
-        loadCategories();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        void loadCategories();
     }, [isOpen]);
 
-    // derived
-    const filtered = items.filter((it) =>
-        it.name.toLowerCase().includes(filter.toLowerCase())
+    const filtered = useMemo(
+        () => items.filter((it) => it.name.toLowerCase().includes(filter.toLowerCase())),
+        [items, filter]
     );
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Manage Categories">
             <div className="max-w-xl w-full">
-                {/* add + search */}
                 <div className="flex gap-2 mb-3">
                     <input
                         className="flex-1 p-2 border rounded bg-transparent"
-                        placeholder="เพิ่มหมวดหมู่ใหม่"
+                        placeholder="Add new category..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === "Enter") handleAdd();
+                            if (e.key === "Enter") void handleAdd();
                         }}
                     />
-                    <Button onClick={handleAdd}>Add</Button>
+                    <Button onClick={() => void handleAdd()}>Add</Button>
                 </div>
 
                 <div className="mb-3">
                     <input
                         className="w-full p-2 border rounded bg-transparent"
-                        placeholder="ค้นหา..."
+                        placeholder="Search..."
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                     />
                 </div>
 
+                {actionError && (
+                    <div className="mb-3 rounded border border-red-400/60 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                        {actionError}
+                    </div>
+                )}
+
                 <div className="border rounded p-2 max-h-[360px] overflow-auto">
                     {loading ? (
                         <div className="p-4 text-sm text-[var(--text-secondary)]">Loading...</div>
                     ) : filtered.length === 0 ? (
-                        <div className="p-4 text-sm text-[var(--text-secondary)]">ไม่พบหมวดหมู่</div>
+                        <div className="p-4 text-sm text-[var(--text-secondary)]">No categories found</div>
                     ) : (
                         filtered.map((cat) => (
                             <div
@@ -177,7 +224,7 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
                                             value={editingValue}
                                             onChange={(e) => setEditingValue(e.target.value)}
                                             onKeyDown={(e) => {
-                                                if (e.key === "Enter") handleSaveEdit(cat.id);
+                                                if (e.key === "Enter") void handleSaveEdit(cat.id);
                                                 if (e.key === "Escape") {
                                                     setEditingId(null);
                                                     setEditingValue("");
@@ -195,7 +242,7 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
                                         <>
                                             <button
                                                 className="text-sm text-blue-500 hover:underline"
-                                                onClick={() => handleSaveEdit(cat.id)}
+                                                onClick={() => void handleSaveEdit(cat.id)}
                                             >
                                                 Save
                                             </button>
@@ -214,6 +261,7 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
                                             <button
                                                 className="text-sm text-blue-500 hover:underline"
                                                 onClick={() => {
+                                                    setActionError("");
                                                     setEditingId(cat.id);
                                                     setEditingValue(cat.name);
                                                 }}
@@ -222,7 +270,7 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
                                             </button>
                                             <button
                                                 className="text-sm text-red-500 hover:underline"
-                                                onClick={() => handleDelete(cat.id)}
+                                                onClick={() => void handleDelete(cat.id)}
                                             >
                                                 Delete
                                             </button>
@@ -235,7 +283,7 @@ export default function AddCategoryModal({ isOpen, onClose, onAdded }: Props) {
                 </div>
 
                 <div className="mt-3 text-xs text-[var(--text-secondary)]">
-                    ค้นหาเพื่อกรองรายการ — กด Edit เพื่อแก้แบบ inline — กด Enter เพื่อบันทึก
+                    Search to filter list. Use Edit for inline rename and press Enter to save.
                 </div>
             </div>
         </Modal>

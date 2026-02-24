@@ -93,6 +93,7 @@ export default function MenuFormModal({
 }: MenuFormModalProps) {
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<MenuFormErrors>({});
+    const [submitError, setSubmitError] = useState("");
 
     // ---- local states ----
     const [category, setCategory] = useState<string>("");
@@ -112,6 +113,7 @@ export default function MenuFormModal({
 
         const serves = uniqueStrings(normalizeServeTypes(initialValues?.serve_types));
         setErrors({});
+        setSubmitError("");
 
         setCategory((initialValues?.category ?? "") as string);
         setName(initialValues?.name ?? "");
@@ -278,10 +280,13 @@ export default function MenuFormModal({
             imageFile,
         };
 
+        setSubmitError("");
         try {
             setSubmitting(true);
             await onSubmit(payload);
             onClose();
+        } catch (e: unknown) {
+            setSubmitError(e instanceof Error ? e.message : "Save failed");
         } finally {
             setSubmitting(false);
         }
@@ -312,6 +317,11 @@ export default function MenuFormModal({
             maxWidthClassName="max-w-xl"
         >
             <div className="space-y-5">
+                {submitError && (
+                    <div className="rounded-md border border-red-400/60 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                        {submitError}
+                    </div>
+                )}
                 {/* CATEGORY */}
                 <div>
                     <label className="block text-sm font-medium mb-1">

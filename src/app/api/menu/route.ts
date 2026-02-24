@@ -1,7 +1,14 @@
 // app/api/menu/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolvePublicShopId } from "@/lib/publicShop";
 import type { MenuRow } from "@/lib/types";
+import {
+    isMenuEnabledInBranch,
+    loadBranchMenuAvailabilityMap,
+    upsertBranchMenuAvailability,
+} from "@/lib/branchMenuAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +17,12 @@ export const dynamic = "force-dynamic";
 ========================= */
 type UUID = string;
 
-type CategoryJoin = { id: UUID; name: string } | null;
-
-type MenuWithCategory = MenuRow & {
-    category: CategoryJoin;
-};
-
-type VariantServeJoinRow = {
+type VariantRow = {
     menu_id: UUID;
+    serve_type_id: UUID;
     price_override: number | null;
     is_default: boolean;
     size: string;
-    serve_type: { name: string } | null;
 };
 
 type ApiServePrice = {
@@ -40,6 +41,7 @@ type ApiMenuRow = {
     category: string | null;
     serve_types: string[];
     serve_prices: ApiServePrice[];
+    is_enabled_in_branch: boolean;
     created_at: string;
 };
 
@@ -54,14 +56,8 @@ type MenuPayload = {
     description?: unknown;
 };
 
-type SupabaseErrorLike = {
-    message: string;
-    details?: string | null;
-    hint?: string | null;
-    code?: string | null;
-};
-
 type ServeTypeRow = { id: UUID; name: string };
+type CategoryRow = { id: UUID; name: string };
 
 type ServePricingInputRow = {
     serveType: string;
@@ -70,6 +66,7 @@ type ServePricingInputRow = {
 
 type MenuVariantInsert = {
     menu_id: UUID;
+    shop_id: UUID;
     serve_type_id: UUID;
     size: string;
     price_override: number | null;
@@ -105,25 +102,32 @@ function normName(s: string) {
     return s.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+async function findDuplicateMenuByName(params: {
+    client: ReturnType<typeof getSupabaseAdmin>;
+    shopId: string;
+    name: string;
+    excludeMenuId?: string;
+}): Promise<{ id: UUID; name: string } | null> {
+    const { client, shopId, name, excludeMenuId } = params;
+
+    let q = client.from("menu").select("id,name").eq("shop_id", shopId).limit(500);
+    if (excludeMenuId) q = q.neq("id", excludeMenuId);
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+
+    const target = normName(name);
+    const found = (data ?? []).find((row) => normName(String(row.name ?? "")) === target);
+    if (!found) return null;
+    return { id: found.id as UUID, name: String(found.name ?? "") };
+}
+
 async function readJson(req: NextRequest): Promise<unknown> {
     try {
         return await req.json();
     } catch {
         return null;
     }
-}
-
-function toSupabaseErrorLike(err: unknown): SupabaseErrorLike {
-    if (typeof err === "object" && err !== null && "message" in err) {
-        const e = err as Record<string, unknown>;
-        return {
-            message: typeof e.message === "string" ? e.message : "Unknown error",
-            details: typeof e.details === "string" ? e.details : null,
-            hint: typeof e.hint === "string" ? e.hint : null,
-            code: typeof e.code === "string" ? e.code : null,
-        };
-    }
-    return { message: "Unknown error" };
 }
 
 function parseServePricing(v: unknown): ServePricingInputRow[] {
@@ -160,174 +164,173 @@ function parseServePricing(v: unknown): ServePricingInputRow[] {
    returns: { menu: ApiMenuRow[] }
    includes serve_prices (from menu_variants)
 ========================================================= */
-export async function GET() {
+export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    const includeDisabled =
+        (req.nextUrl.searchParams.get("include_disabled") ?? "").toLowerCase() === "1" ||
+        (req.nextUrl.searchParams.get("include_disabled") ?? "").toLowerCase() === "true";
 
-    const { data: menus, error } = await supabase
+    const { shopId: publicShopId, mismatch } = resolvePublicShopId(req.nextUrl.searchParams);
+    let selectedShopId: string | null = null;
+    let currentBranchId: string | null = null;
+
+    if (!user) {
+        if (mismatch) {
+            return NextResponse.json({ error: "shop_id mismatch" }, { status: 403 });
+        }
+        if (!publicShopId) {
+            return NextResponse.json(
+                { error: "Public shop not configured" },
+                { status: 409 }
+            );
+        }
+        selectedShopId = publicShopId;
+    } else {
+        const { currentShopId, currentBranchId: branchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json(
+                { error: "No current shop selected" },
+                { status: 409 }
+            );
+        }
+
+        const { data: member, error: memberErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (memberErr) {
+            return NextResponse.json({ error: memberErr.message }, { status: 500 });
+        }
+        if (!member) {
+            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+
+        selectedShopId = currentShopId;
+        currentBranchId = branchId;
+    }
+
+    const db = admin;
+
+    const { data: menus, error } = await db
         .from("menu")
-        .select(
-            `
-        id,
-        name,
-        price,
-        image_url,
-        description,
-        created_at,
-        category:menu_categories!menu_category_fk ( id, name )
-      `
-        )
-        .order("created_at", { ascending: false })
-        .returns<MenuWithCategory[]>();
+        .select("id,name,price,image_url,description,created_at,category_id")
+        .eq("shop_id", selectedShopId!)
+        .order("created_at", { ascending: false });
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const menuIds = (menus ?? []).map((m) => m.id);
+    const menusRaw = (menus ?? []) as MenuRow[];
+    const menuIdsAll = menusRaw.map((m) => m.id);
+    let availabilityMap = new Map<string, boolean>();
+
+    // Branch-level visibility is applied only in authenticated flow with selected branch.
+    if (user && currentBranchId && menuIdsAll.length > 0) {
+        try {
+            availabilityMap = await loadBranchMenuAvailabilityMap({
+                client: admin,
+                branchId: currentBranchId,
+                menuIds: menuIdsAll,
+            });
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : "Failed to load branch menu availability";
+            return NextResponse.json({ error: msg }, { status: 500 });
+        }
+    }
+
+    const menusScoped =
+        user && currentBranchId && !includeDisabled
+            ? menusRaw.filter((m) => isMenuEnabledInBranch(m.id, availabilityMap))
+            : menusRaw;
+
+    const menuIds = menusScoped.map((m) => m.id);
+    if (!menuIds.length) return NextResponse.json({ menu: [] });
+
+    const categoryIds = Array.from(
+        new Set(menusScoped.map((m) => m.category_id).filter(Boolean))
+    ) as UUID[];
+
+    const categoryMap = new Map<UUID, string>();
+    if (categoryIds.length) {
+        const { data: cats, error: cErr } = await db
+            .from("menu_categories")
+            .select("id,name")
+            .eq("shop_id", selectedShopId!)
+            .in("id", categoryIds);
+        if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+
+        const catsRows = (cats ?? []) as CategoryRow[];
+        for (const c of catsRows) {
+            if (c.id && c.name) categoryMap.set(c.id, c.name);
+        }
+    }
+
+    const { data: variants, error: vErr } = await db
+        .from("menu_variants")
+        .select("menu_id,serve_type_id,price_override,is_default,size")
+        .eq("shop_id", selectedShopId!)
+        .in("menu_id", menuIds);
+    if (vErr) {
+        return NextResponse.json({ error: vErr.message }, { status: 500 });
+    }
+
+    const variantRows = (variants ?? []) as VariantRow[];
+    const serveTypeIds = Array.from(
+        new Set(variantRows.map((v) => v.serve_type_id).filter(Boolean))
+    ) as UUID[];
+
+    const serveTypeMap = new Map<UUID, string>();
+    if (serveTypeIds.length) {
+        const { data: sts, error: stErr } = await db
+            .from("menu_serve_types")
+            .select("id,name")
+            .eq("shop_id", selectedShopId!)
+            .in("id", serveTypeIds);
+        if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
+
+        const serveRows = (sts ?? []) as ServeTypeRow[];
+        for (const s of serveRows) {
+            if (s.id && s.name) serveTypeMap.set(s.id, s.name);
+        }
+    }
+
+    const basePriceByMenu = new Map<UUID, number>();
+    for (const m of menusScoped) basePriceByMenu.set(m.id, Number(m.price));
+
     const byMenuId = new Map<
         UUID,
         {
-            serveNames: string[];
+            serveNames: Set<string>;
             servePrices: Map<string, ApiServePrice>;
         }
     >();
 
-    for (const m of menus ?? []) {
-        byMenuId.set(m.id, { serveNames: [], servePrices: new Map() });
+    for (const m of menusScoped) {
+        byMenuId.set(m.id, { serveNames: new Set(), servePrices: new Map() });
     }
 
-    if (menuIds.length) {
-        const { data: variants, error: vErr } = await supabase
-            .from("menu_variants")
-            .select(
-                `
-          menu_id,
-          size,
-          price_override,
-          is_default,
-          serve_type:menu_serve_types!menu_variants_serve_type_id_fkey ( name )
-        `
-            )
-            .in("menu_id", menuIds)
-            .returns<VariantServeJoinRow[]>();
-
-        if (vErr) {
-            return NextResponse.json({ error: vErr.message }, { status: 500 });
-        }
-
-        // Pick 1 representative variant per (menu_id, serve_type):
-        // prefer is_default = true, else first seen.
-        for (const r of variants ?? []) {
-            const serveName = r.serve_type?.name?.trim();
-            if (!serveName) continue;
-
-            const bucket = byMenuId.get(r.menu_id);
-            if (!bucket) continue;
-
-            bucket.serveNames.push(serveName);
-
-            // store best candidate per serveName
-            const existing = bucket.servePrices.get(serveName);
-            const candidate: ApiServePrice = {
-                serve_type: serveName,
-                price: 0, // filled later because need base price
-                is_default: Boolean(r.is_default),
-                has_override: r.price_override !== null,
-            };
-
-            if (!existing) {
-                bucket.servePrices.set(serveName, candidate);
-            } else {
-                // prefer default
-                if (!existing.is_default && candidate.is_default) {
-                    bucket.servePrices.set(serveName, candidate);
-                }
-            }
-        }
-    }
-
-    const result: ApiMenuRow[] = (menus ?? []).map((m) => {
-        const bucket = byMenuId.get(m.id);
-        const serveNames = uniqueStrings(bucket?.serveNames ?? []);
-
-        const servePrices: ApiServePrice[] = Array.from(
-            (bucket?.servePrices ?? new Map<string, ApiServePrice>()).values()
-        ).map((sp) => {
-            const price = sp.has_override ? (Number.isFinite(sp.price) ? sp.price : 0) : 0;
-            // price is unknown here; compute with base + override map using a second pass:
-            // We'll compute override from variants via has_override flag is true but we didn't store value.
-            // Fix: compute price using query data again? Not ideal.
-            // Better: store override value in map during loop.
-            return { ...sp, price };
-        });
-
-        return {
-            id: m.id,
-            name: m.name,
-            price: m.price,
-            image_url: m.image_url ?? "",
-            description: m.description ?? "",
-            category: m.category?.name ?? null,
-            serve_types: serveNames,
-            serve_prices: servePrices, // placeholder, will fill properly below
-            created_at: m.created_at!,
-        };
-    });
-
-    // Rebuild serve_prices with correct price values in one pass using variants again,
-    // without extra DB query: we already have variants? Not accessible here.
-    // So: do a single variants query above and keep a map of override values too.
-
-    // ✅ We'll redo minimal: query variants again with override values stored in-memory.
-    // To avoid extra query, we should have captured override values during the first loop.
-    // We'll do that by re-querying only if needed is worse; instead we adjust above:
-    // NOTE: We cannot access "variants" here since it was scoped. We'll restructure quickly:
-    // -> Simplest: return without second pass is wrong. So we restructure now:
-
-    // --- Re-run with a correct approach (still single DB hit): ---
-    // We'll do it properly by doing the whole GET construction again but correctly, without multiple DB calls.
-    // Since we already made the DB calls, we can just re-fetch variants once more is acceptable,
-    // but not ideal. We'll still keep it correct.
-
-    // If no menus, return.
-    if (!menuIds.length) return NextResponse.json({ menu: [] });
-
-    const { data: variants2, error: vErr2 } = await supabase
-        .from("menu_variants")
-        .select(
-            `
-        menu_id,
-        price_override,
-        is_default,
-        serve_type:menu_serve_types!menu_variants_serve_type_id_fkey ( name )
-      `
-        )
-        .in("menu_id", menuIds)
-        .returns<VariantServeJoinRow[]>();
-
-    if (vErr2) {
-        return NextResponse.json({ error: vErr2.message }, { status: 500 });
-    }
-
-    const basePriceByMenu = new Map<UUID, number>();
-    for (const m of menus ?? []) basePriceByMenu.set(m.id, Number(m.price));
-
-    // Build final serve_prices per menu with correct price
-    const servePricesByMenu = new Map<UUID, Map<string, ApiServePrice>>();
-    for (const mid of menuIds) servePricesByMenu.set(mid, new Map());
-
-    for (const r of variants2 ?? []) {
-        const serveName = r.serve_type?.name?.trim();
+    for (const r of variantRows) {
+        const serveName = serveTypeMap.get(r.serve_type_id)?.trim();
         if (!serveName) continue;
+
+        const bucket = byMenuId.get(r.menu_id);
+        if (!bucket) continue;
+
+        bucket.serveNames.add(serveName);
 
         const base = basePriceByMenu.get(r.menu_id) ?? 0;
         const override = r.price_override;
         const computed = override !== null ? Number(override) : Number(base);
 
-        const mp = servePricesByMenu.get(r.menu_id);
-        if (!mp) continue;
-
-        const existing = mp.get(serveName);
+        const existing = bucket.servePrices.get(serveName);
         const candidate: ApiServePrice = {
             serve_type: serveName,
             price: Number.isFinite(computed) ? computed : base,
@@ -336,20 +339,18 @@ export async function GET() {
         };
 
         if (!existing) {
-            mp.set(serveName, candidate);
-        } else {
-            // prefer default row per serve
-            if (!existing.is_default && candidate.is_default) {
-                mp.set(serveName, candidate);
-            }
+            bucket.servePrices.set(serveName, candidate);
+        } else if (!existing.is_default && candidate.is_default) {
+            bucket.servePrices.set(serveName, candidate);
         }
     }
 
-    const final: ApiMenuRow[] = (menus ?? []).map((m) => {
+    const final: ApiMenuRow[] = menusScoped.map((m) => {
         const bucket = byMenuId.get(m.id);
-        const serveNames = uniqueStrings(bucket?.serveNames ?? []);
-        const mp = servePricesByMenu.get(m.id) ?? new Map<string, ApiServePrice>();
-        const serve_prices = Array.from(mp.values());
+        const serve_prices = Array.from(bucket?.servePrices.values() ?? []);
+        const serve_types = bucket ? Array.from(bucket.serveNames.values()) : [];
+        const isEnabledInBranch =
+            user && currentBranchId ? isMenuEnabledInBranch(m.id, availabilityMap) : true;
 
         return {
             id: m.id,
@@ -357,22 +358,28 @@ export async function GET() {
             price: m.price,
             image_url: m.image_url ?? "",
             description: m.description ?? "",
-            category: m.category?.name ?? null,
-            serve_types: serveNames.length ? serveNames : serve_prices.map((x) => x.serve_type),
+            category: categoryMap.get(m.category_id) ?? null,
+            serve_types: serve_types.length ? serve_types : serve_prices.map((x) => x.serve_type),
             serve_prices,
+            is_enabled_in_branch: isEnabledInBranch,
             created_at: m.created_at!,
         };
     });
 
     return NextResponse.json({ menu: final });
 }
-
 /* =========================================================
    POST /api/menu
    Create menu + create 1 default variant per serveType
 ========================================================= */
 export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const raw = await readJson(req);
     if (!isRecord(raw)) {
@@ -397,23 +404,48 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing category" }, { status: 400 });
     if (!serveTypes.length)
         return NextResponse.json({ error: "Missing serveTypes" }, { status: 400 });
-
-    // 1) map category name -> category_id
-    const { data: cat, error: catErr } = await supabase
-        .from("menu_categories")
-        .select("id,name")
-        .ilike("name", categoryName)
+    if (!currentShopId) {
+        return NextResponse.json(
+            { error: "No current shop selected" },
+            { status: 409 }
+        );
+    }
+    if (!currentBranchId) {
+        return NextResponse.json(
+            { error: "No current branch selected" },
+            { status: 409 }
+        );
+    }
+    const { data: member, error: memberErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
         .maybeSingle();
 
-    if (catErr) return NextResponse.json({ error: catErr.message }, { status: 500 });
-    if (!cat?.id)
-        return NextResponse.json({ error: `Category not found: ${categoryName}` }, { status: 400 });
+    if (memberErr) return NextResponse.json({ error: memberErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
 
-    // 2) map serve names -> serve_type_ids
-    const { data: serves, error: serveErr } = await supabase
+    // 1) map category name -> category_id (shop-scoped, case-insensitive)
+    const { data: catRows, error: catErr } = await admin
+        .from("menu_categories")
+        .select("id,name")
+        .eq("shop_id", currentShopId)
+        .returns<CategoryRow[]>();
+
+    if (catErr) return NextResponse.json({ error: catErr.message }, { status: 500 });
+    const cat = (catRows ?? []).find((c) => normName(c.name) === normName(categoryName));
+    if (!cat?.id) {
+        return NextResponse.json({ error: `Category not found: ${categoryName}` }, { status: 400 });
+    }
+
+    // 2) map serve names -> serve_type_ids (shop-scoped, case-insensitive)
+    const { data: serves, error: serveErr } = await admin
         .from("menu_serve_types")
         .select("id,name")
-        .in("name", serveTypes)
+        .eq("shop_id", currentShopId)
         .returns<ServeTypeRow[]>();
 
     if (serveErr) return NextResponse.json({ error: serveErr.message }, { status: 500 });
@@ -433,8 +465,26 @@ export async function POST(req: NextRequest) {
     const priceByServeNorm = new Map<string, number | null>();
     for (const r of servePricing) priceByServeNorm.set(normName(r.serveType), r.price_override);
 
-    // 3) insert menu
-    const { data: createdMenu, error: mErr } = await supabase
+    // 3) duplicate name guard (shop-scoped, case/space-insensitive)
+    try {
+        const dup = await findDuplicateMenuByName({
+            client: admin,
+            shopId: currentShopId,
+            name,
+        });
+        if (dup) {
+            return NextResponse.json(
+                { error: `Menu name already exists in this shop: ${name}` },
+                { status: 409 }
+            );
+        }
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to validate menu duplicate";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+
+    // 4) insert menu
+    const { data: createdMenu, error: menuInsertErr } = await admin
         .from("menu")
         .insert({
             name,
@@ -442,15 +492,27 @@ export async function POST(req: NextRequest) {
             description,
             image_url: imageUrl || null,
             category_id: cat.id,
+            shop_id: currentShopId,
         })
-        .select("id")
+        .select("id,shop_id")
         .single();
 
-    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (menuInsertErr) {
+        if (menuInsertErr.code === "23505") {
+            return NextResponse.json(
+                { error: `Menu name already exists in this shop: ${name}` },
+                { status: 409 }
+            );
+        }
+        return NextResponse.json({ error: menuInsertErr.message }, { status: 500 });
+    }
     const menuId = createdMenu?.id as UUID | undefined;
-    if (!menuId) return NextResponse.json({ error: "Insert menu failed" }, { status: 500 });
+    const shopId = createdMenu?.shop_id as UUID | undefined;
+    if (!menuId || !shopId) {
+        return NextResponse.json({ error: "Insert menu failed" }, { status: 500 });
+    }
 
-    // 4) insert 1 default variant per serveType
+    // 5) insert 1 default variant per serveType
     const variantRows: MenuVariantInsert[] = serveTypes.map((serveName) => {
         const sid = serveIdByNorm.get(normName(serveName))!;
         const p = priceByServeNorm.has(normName(serveName))
@@ -459,6 +521,7 @@ export async function POST(req: NextRequest) {
 
         return {
             menu_id: menuId,
+            shop_id: shopId,
             serve_type_id: sid,
             size: "default",
             price_override: p,
@@ -467,10 +530,30 @@ export async function POST(req: NextRequest) {
         };
     });
 
-    const { error: vErr } = await supabase.from("menu_variants").insert(variantRows);
+    const { error: vErr } = await admin.from("menu_variants").insert(variantRows);
     if (vErr) {
-        await supabase.from("menu").delete().eq("id", menuId);
+        await admin.from("menu").delete().eq("id", menuId).eq("shop_id", currentShopId);
         return NextResponse.json({ error: vErr.message }, { status: 500 });
+    }
+
+    // New menu is enabled only in current branch by default.
+    // Other branches stay disabled until owner explicitly enables.
+    try {
+        await upsertBranchMenuAvailability({
+            client: admin,
+            branchId: currentBranchId,
+            menuId,
+            shopId,
+            isEnabled: true,
+        });
+    } catch (e: unknown) {
+        await admin.from("menu_variants").delete().eq("menu_id", menuId).eq("shop_id", currentShopId);
+        await admin.from("menu").delete().eq("id", menuId).eq("shop_id", currentShopId);
+        const errMsg =
+            e instanceof Error
+                ? e.message
+                : "Failed to set branch availability for new menu";
+        return NextResponse.json({ error: errMsg }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, id: menuId }, { status: 201 });
@@ -482,6 +565,12 @@ export async function POST(req: NextRequest) {
 ========================================================= */
 export async function PUT(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { currentShopId } = await getCurrentContextFromCookies();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const raw = await readJson(req);
     if (!isRecord(raw)) {
@@ -510,20 +599,57 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "Missing category" }, { status: 400 });
     if (!serveTypes.length)
         return NextResponse.json({ error: "Missing serveTypes" }, { status: 400 });
-
-    // map category name -> category_id
-    const { data: cat, error: catErr } = await supabase
-        .from("menu_categories")
-        .select("id,name")
-        .ilike("name", categoryName)
+    if (!currentShopId) {
+        return NextResponse.json(
+            { error: "No current shop selected" },
+            { status: 409 }
+        );
+    }
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
         .maybeSingle();
 
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
+    // map category name -> category_id (shop-scoped, case-insensitive)
+    const { data: catRows, error: catErr } = await admin
+        .from("menu_categories")
+        .select("id,name")
+        .eq("shop_id", currentShopId)
+        .returns<CategoryRow[]>();
+
     if (catErr) return NextResponse.json({ error: catErr.message }, { status: 500 });
+    const cat = (catRows ?? []).find((c) => normName(c.name) === normName(categoryName));
     if (!cat?.id)
         return NextResponse.json({ error: `Category not found: ${categoryName}` }, { status: 400 });
 
+    // duplicate name guard (shop-scoped, case/space-insensitive)
+    try {
+        const dup = await findDuplicateMenuByName({
+            client: admin,
+            shopId: currentShopId,
+            name,
+            excludeMenuId: id,
+        });
+        if (dup) {
+            return NextResponse.json(
+                { error: `Menu name already exists in this shop: ${name}` },
+                { status: 409 }
+            );
+        }
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to validate menu duplicate";
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
+
     // 1) update menu fields
-    const { data: updated, error: uErr } = await supabase
+    const { data: updated, error: uErr } = await admin
         .from("menu")
         .update({
             name,
@@ -533,10 +659,17 @@ export async function PUT(req: NextRequest) {
             category_id: cat.id,
         })
         .eq("id", id)
+        .eq("shop_id", currentShopId)
         .select("id")
-        .single();
+        .maybeSingle();
 
     if (uErr || !updated) {
+        if (uErr?.code === "23505") {
+            return NextResponse.json(
+                { error: `Menu name already exists in this shop: ${name}` },
+                { status: 409 }
+            );
+        }
         return NextResponse.json(
             { error: uErr?.message ?? "Failed to update menu" },
             { status: 500 }
@@ -544,10 +677,10 @@ export async function PUT(req: NextRequest) {
     }
 
     // 2) map serve names -> ids
-    const { data: serves, error: serveErr } = await supabase
+    const { data: serves, error: serveErr } = await admin
         .from("menu_serve_types")
         .select("id,name")
-        .in("name", serveTypes)
+        .eq("shop_id", currentShopId)
         .returns<ServeTypeRow[]>();
 
     if (serveErr) return NextResponse.json({ error: serveErr.message }, { status: 500 });
@@ -572,10 +705,11 @@ export async function PUT(req: NextRequest) {
     );
 
     // 3) read existing variants for this menu
-    const { data: existing, error: exErr } = await supabase
+    const { data: existing, error: exErr } = await admin
         .from("menu_variants")
         .select("id, serve_type_id, is_default")
-        .eq("menu_id", id);
+        .eq("menu_id", id)
+        .eq("shop_id", currentShopId);
 
     if (exErr) return NextResponse.json({ error: exErr.message }, { status: 500 });
 
@@ -593,9 +727,10 @@ export async function PUT(req: NextRequest) {
         if (!wantedServeIds.has(serveId)) toDeleteIds.push(row.id);
     }
     if (toDeleteIds.length) {
-        const { error: delErr } = await supabase
+        const { error: delErr } = await admin
             .from("menu_variants")
             .delete()
+            .eq("shop_id", currentShopId)
             .in("id", toDeleteIds);
 
         if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
@@ -613,6 +748,7 @@ export async function PUT(req: NextRequest) {
 
         toInsert.push({
             menu_id: id,
+            shop_id: currentShopId,
             serve_type_id: sid,
             size: "default",
             price_override: p,
@@ -622,7 +758,7 @@ export async function PUT(req: NextRequest) {
     }
 
     if (toInsert.length) {
-        const { error: insErr } = await supabase.from("menu_variants").insert(toInsert);
+        const { error: insErr } = await admin.from("menu_variants").insert(toInsert);
         if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
@@ -634,13 +770,14 @@ export async function PUT(req: NextRequest) {
             ? priceByServeNorm.get(normName(serveName))!
             : null;
 
-        const { error: upvErr } = await supabase
+        const { error: upvErr } = await admin
             .from("menu_variants")
             .update({
                 price_override: p,
                 image_url: imageUrl || null,
             })
             .eq("menu_id", id)
+            .eq("shop_id", currentShopId)
             .eq("serve_type_id", sid);
 
         if (upvErr) return NextResponse.json({ error: upvErr.message }, { status: 500 });
@@ -649,15 +786,17 @@ export async function PUT(req: NextRequest) {
     // 7) ensure there is exactly one default variant
     // เลือกตัวแรกของ serveTypes ให้เป็น default (คุณจะเปลี่ยน logic ทีหลังได้)
     const defaultSid = serveIdByNorm.get(normName(serveTypes[0]))!;
-    await supabase
+    await admin
         .from("menu_variants")
         .update({ is_default: false })
-        .eq("menu_id", id);
+        .eq("menu_id", id)
+        .eq("shop_id", currentShopId);
 
-    await supabase
+    await admin
         .from("menu_variants")
         .update({ is_default: true })
         .eq("menu_id", id)
+        .eq("shop_id", currentShopId)
         .eq("serve_type_id", defaultSid);
 
     return NextResponse.json({ success: true, id });
@@ -668,16 +807,167 @@ export async function PUT(req: NextRequest) {
 ========================================================= */
 export async function DELETE(req: NextRequest) {
     const supabase = await getSupabaseServer();
-    const id = new URL(req.url).searchParams.get("id");
+    const admin = getSupabaseAdmin();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: memberErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (memberErr) return NextResponse.json({ error: memberErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
+    const scope = (url.searchParams.get("scope") ?? "branch").toLowerCase();
 
     if (!id) {
         return NextResponse.json({ error: "No id provided" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("menu").delete().eq("id", id);
+    // Safe default: branch-only remove (disable menu in current branch).
+    // Global hard delete must explicitly pass ?scope=global.
+    if (scope !== "global") {
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: menuRow, error: menuErr } = await admin
+            .from("menu")
+            .select("id,shop_id")
+            .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (menuErr) {
+            return NextResponse.json({ error: menuErr.message }, { status: 500 });
+        }
+        if (!menuRow?.id) {
+            return NextResponse.json({ error: "Menu not found" }, { status: 404 });
+        }
+
+        try {
+            await upsertBranchMenuAvailability({
+                client: admin,
+                branchId: currentBranchId,
+                menuId: id,
+                shopId: currentShopId,
+                isEnabled: false,
+            });
+        } catch (e: unknown) {
+            const msg =
+                e instanceof Error ? e.message : "Failed to disable menu in current branch";
+            return NextResponse.json({ error: msg }, { status: 500 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            scope: "branch",
+            menu_id: id,
+            branch_id: currentBranchId,
+            is_enabled: false,
+        });
+    }
+
+    // Global hard delete across all branches.
+    // 1) find variants of this menu
+    const { data: variants, error: vErr } = await admin
+        .from("menu_variants")
+        .select("id")
+        .eq("menu_id", id)
+        .eq("shop_id", currentShopId);
+
+    if (vErr) {
+        return NextResponse.json({ error: vErr.message }, { status: 500 });
+    }
+
+    const variantIds = (variants ?? []).map((v) => v.id);
+
+    // 2) detach order history (keep order_items but drop FK to variants)
+    if (variantIds.length) {
+        const { error: oiErr } = await admin
+            .from("order_items")
+            .update({ variant_id: null })
+            .eq("shop_id", currentShopId)
+            .in("variant_id", variantIds);
+
+        if (oiErr) {
+            return NextResponse.json({ error: oiErr.message }, { status: 500 });
+        }
+
+        // 3) delete recipe_items that point to variants
+        const { error: riErr } = await admin
+            .from("recipe_items")
+            .delete()
+            .eq("shop_id", currentShopId)
+            .in("variant_id", variantIds);
+
+        if (riErr) {
+            return NextResponse.json({ error: riErr.message }, { status: 500 });
+        }
+
+        // 4) delete menu_variants
+        const { error: mvErr } = await admin
+            .from("menu_variants")
+            .delete()
+            .eq("shop_id", currentShopId)
+            .in("id", variantIds);
+
+        if (mvErr) {
+            return NextResponse.json({ error: mvErr.message }, { status: 500 });
+        }
+    }
+
+    // 5) delete menu_serves
+    const { error: msErr } = await admin
+        .from("menu_serves")
+        .delete()
+        .eq("menu_id", id)
+        .eq("shop_id", currentShopId);
+
+    if (msErr) {
+        return NextResponse.json({ error: msErr.message }, { status: 500 });
+    }
+
+    // 6) delete recipes linked to menu
+    const { error: rErr } = await admin
+        .from("recipes")
+        .delete()
+        .eq("menu_id", id)
+        .eq("shop_id", currentShopId);
+
+    if (rErr) {
+        return NextResponse.json({ error: rErr.message }, { status: 500 });
+    }
+
+    // 7) delete menu
+    const { data: deleted, error } = await admin
+        .from("menu")
+        .delete()
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .select("id")
+        .maybeSingle();
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!deleted) {
+        return NextResponse.json({ error: "Menu not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });
 }
+

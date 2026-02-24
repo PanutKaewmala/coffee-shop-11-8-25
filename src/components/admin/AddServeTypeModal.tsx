@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/admin/Modal";
 import { Button } from "@/components/ui/button";
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
-    onAdded?: () => void; // แจ้ง parent ว่ามีการเปลี่ยนแปลง
+    onAdded?: () => void;
 }
 
 interface ServeRow {
@@ -16,46 +16,70 @@ interface ServeRow {
     created_at: string;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+    try {
+        const data: unknown = await res.clone().json();
+        if (isRecord(data) && typeof data.error === "string" && data.error.trim()) {
+            return data.error;
+        }
+    } catch {
+        // ignore and fallback to text
+    }
+
+    try {
+        const text = await res.text();
+        if (text.trim()) return text;
+    } catch {
+        // ignore
+    }
+
+    return fallback;
+}
+
 export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
     const [items, setItems] = useState<ServeRow[]>([]);
     const [filter, setFilter] = useState("");
     const [input, setInput] = useState("");
-
     const [loading, setLoading] = useState(false);
+    const [actionError, setActionError] = useState("");
 
-    // inline edit
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingValue, setEditingValue] = useState("");
 
-    /* -----------------------------------------------------------
-     *  LOAD FROM DB  (ประกาศก่อนใช้)
-     * ----------------------------------------------------------- */
     async function loadServeTypes() {
         try {
             setLoading(true);
-            const res = await fetch("/api/menu/serves");
+            const res = await fetch("/api/menu/serves", { cache: "no-store" });
             if (!res.ok) {
-                console.error("Failed to fetch serve types", await res.text());
+                const msg = await readApiError(res, "Failed to load serve types");
+                setActionError(msg);
                 setItems([]);
                 return;
             }
-            const data: ServeRow[] = await res.json();
-            setItems(Array.isArray(data) ? data : []);
+
+            const data: unknown = await res.json().catch(() => []);
+            setItems(Array.isArray(data) ? (data as ServeRow[]) : []);
         } catch (err) {
-            console.error("loadServeTypes error", err);
+            void err;
             setItems([]);
+            setActionError("Unexpected error while loading serve types");
         } finally {
             setLoading(false);
         }
     }
 
-    /* -----------------------------------------------------------
-     * ADD SERVE TYPE
-     * ----------------------------------------------------------- */
     async function handleAdd() {
         const name = input.trim();
-        if (!name) return alert("กรุณากรอกประเภทเสิร์ฟ");
+        if (!name) {
+            setActionError("Please enter serve type name");
+            return;
+        }
 
+        setActionError("");
         try {
             const res = await fetch("/api/menu/serves", {
                 method: "POST",
@@ -64,8 +88,8 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             });
 
             if (!res.ok) {
-                console.error("Add serve type failed", await res.text());
-                alert("เพิ่มประเภทเสิร์ฟไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to add serve type");
+                setActionError(msg);
                 return;
             }
 
@@ -73,18 +97,19 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             await loadServeTypes();
             onAdded?.();
         } catch (err) {
-            console.error("handleAdd error", err);
-            alert("เกิดข้อผิดพลาดขณะเพิ่ม");
+            void err;
+            setActionError("Unexpected error while adding serve type");
         }
     }
 
-    /* -----------------------------------------------------------
-     * UPDATE SERVE TYPE
-     * ----------------------------------------------------------- */
     async function handleSaveEdit(id: string) {
         const name = editingValue.trim();
-        if (!name) return alert("กรุณากรอกชื่อ");
+        if (!name) {
+            setActionError("Please enter serve type name");
+            return;
+        }
 
+        setActionError("");
         try {
             const res = await fetch("/api/menu/serves", {
                 method: "PUT",
@@ -93,8 +118,8 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             });
 
             if (!res.ok) {
-                console.error("update failed", await res.text());
-                alert("แก้ไขไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to update serve type");
+                setActionError(msg);
                 return;
             }
 
@@ -103,25 +128,21 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             await loadServeTypes();
             onAdded?.();
         } catch (err) {
-            console.error("handleSaveEdit error", err);
-            alert("เกิดข้อผิดพลาดขณะแก้ไข");
+            void err;
+            setActionError("Unexpected error while updating serve type");
         }
     }
 
-    /* -----------------------------------------------------------
-     * DELETE SERVE TYPE
-     * ----------------------------------------------------------- */
     async function handleDelete(id: string) {
-        if (!confirm("ต้องการลบประเภทเสิร์ฟนี้ใช่ไหม?")) return;
+        if (!confirm("Delete this serve type?")) return;
 
+        setActionError("");
         try {
-            const res = await fetch(`/api/menu/serves?id=${id}`, {
-                method: "DELETE",
-            });
+            const res = await fetch(`/api/menu/serves?id=${id}`, { method: "DELETE" });
 
             if (!res.ok) {
-                console.error("delete failed", await res.text());
-                alert("ลบไม่สำเร็จ");
+                const msg = await readApiError(res, "Failed to delete serve type");
+                setActionError(msg);
                 return;
             }
 
@@ -133,105 +154,98 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             await loadServeTypes();
             onAdded?.();
         } catch (err) {
-            console.error("handleDelete error", err);
-            alert("เกิดข้อผิดพลาดขณะลบ");
+            void err;
+            setActionError("Unexpected error while deleting serve type");
         }
     }
 
-    /* -----------------------------------------------------------
-     * LOAD WHEN MODAL OPEN
-     * ----------------------------------------------------------- */
     useEffect(() => {
         if (!isOpen) return;
+
         setFilter("");
         setInput("");
+        setActionError("");
         setEditingId(null);
         setEditingValue("");
-
-        loadServeTypes();
+        void loadServeTypes();
     }, [isOpen]);
 
-    /* -----------------------------------------------------------
-     * FILTER LIST
-     * ----------------------------------------------------------- */
-    const filtered = items.filter((it) =>
-        it.name.toLowerCase().includes(filter.toLowerCase())
+    const filtered = useMemo(
+        () => items.filter((it) => it.name.toLowerCase().includes(filter.toLowerCase())),
+        [items, filter]
     );
 
-    /* -----------------------------------------------------------
-     * RENDER
-     * ----------------------------------------------------------- */
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Manage Serve Types">
             <div className="max-w-xl w-full">
-                {/* ADD INPUT */}
                 <div className="flex gap-2 mb-3">
                     <input
                         className="flex-1 p-2 border rounded bg-transparent"
-                        placeholder="เพิ่มประเภทเสิร์ฟใหม่"
+                        placeholder="Add new serve type..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") void handleAdd();
+                        }}
                     />
-                    <Button onClick={handleAdd}>Add</Button>
+                    <Button onClick={() => void handleAdd()}>Add</Button>
                 </div>
 
-                {/* SEARCH */}
                 <div className="mb-3">
                     <input
                         className="w-full p-2 border rounded bg-transparent"
-                        placeholder="ค้นหา..."
+                        placeholder="Search..."
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                     />
                 </div>
 
-                {/* LIST */}
+                {actionError && (
+                    <div className="mb-3 rounded border border-red-400/60 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                        {actionError}
+                    </div>
+                )}
+
                 <div className="border rounded p-2 max-h-[360px] overflow-auto">
                     {loading ? (
-                        <div className="p-4 text-sm text-[var(--text-secondary)]">
-                            Loading...
-                        </div>
+                        <div className="p-4 text-sm text-[var(--text-secondary)]">Loading...</div>
                     ) : filtered.length === 0 ? (
-                        <div className="p-4 text-sm text-[var(--text-secondary)]">
-                            ไม่พบประเภทเสิร์ฟ
-                        </div>
+                        <div className="p-4 text-sm text-[var(--text-secondary)]">No serve types found</div>
                     ) : (
-                        filtered.map((s) => (
+                        filtered.map((item) => (
                             <div
-                                key={s.id}
+                                key={item.id}
                                 className="flex items-center justify-between gap-3 py-2 px-1 border-b last:border-b-0"
                             >
                                 <div className="flex-1 min-w-0">
-                                    {editingId === s.id ? (
+                                    {editingId === item.id ? (
                                         <input
+                                            className="w-full p-2 border rounded bg-transparent"
                                             value={editingValue}
                                             onChange={(e) => setEditingValue(e.target.value)}
                                             onKeyDown={(e) => {
-                                                if (e.key === "Enter") handleSaveEdit(s.id);
+                                                if (e.key === "Enter") void handleSaveEdit(item.id);
                                                 if (e.key === "Escape") {
                                                     setEditingId(null);
                                                     setEditingValue("");
                                                 }
                                             }}
-                                            className="w-full p-2 border rounded bg-transparent"
                                             autoFocus
                                         />
                                     ) : (
-                                        <div className="truncate">{s.name}</div>
+                                        <div className="truncate">{item.name}</div>
                                     )}
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                    {editingId === s.id ? (
+                                    {editingId === item.id ? (
                                         <>
                                             <button
                                                 className="text-sm text-blue-500 hover:underline"
-                                                onClick={() => handleSaveEdit(s.id)}
+                                                onClick={() => void handleSaveEdit(item.id)}
                                             >
                                                 Save
                                             </button>
-
                                             <button
                                                 className="text-sm text-gray-400 hover:underline"
                                                 onClick={() => {
@@ -247,16 +261,16 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                                             <button
                                                 className="text-sm text-blue-500 hover:underline"
                                                 onClick={() => {
-                                                    setEditingId(s.id);
-                                                    setEditingValue(s.name);
+                                                    setActionError("");
+                                                    setEditingId(item.id);
+                                                    setEditingValue(item.name);
                                                 }}
                                             >
                                                 Edit
                                             </button>
-
                                             <button
                                                 className="text-sm text-red-500 hover:underline"
-                                                onClick={() => handleDelete(s.id)}
+                                                onClick={() => void handleDelete(item.id)}
                                             >
                                                 Delete
                                             </button>
@@ -269,7 +283,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                 </div>
 
                 <div className="mt-3 text-xs text-[var(--text-secondary)]">
-                    ค้นหาเพื่อกรองรายการ — กด Edit เพื่อแก้แบบ inline — กด Enter เพื่อบันทึก
+                    Search to filter list. Use Edit for inline rename and press Enter to save.
                 </div>
             </div>
         </Modal>
