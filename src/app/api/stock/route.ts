@@ -1,6 +1,8 @@
 // app/api/stock/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
 
@@ -261,7 +263,8 @@ type OrderItemJoinRow = {
 
 async function fetchOrderMenuLinesByOrderIds(
     supabase: ReturnType<typeof getSupabaseServer>,
-    orderIds: string[]
+    orderIds: string[],
+    currentShopId: string
 ): Promise<Map<string, OrderMenuLine[]>> {
     const map = new Map<string, OrderMenuLine[]>();
     if (orderIds.length === 0) return map;
@@ -291,6 +294,7 @@ async function fetchOrderMenuLinesByOrderIds(
             .from("order_items")
             .select(select)
             .in("order_id", batch)
+            .eq("shop_id", currentShopId)
             .returns<OrderItemJoinRow[]>();
 
         if (error) continue;
@@ -335,13 +339,20 @@ async function fetchOrderMenuLinesByOrderIds(
    Critical helpers
 ========================= */
 async function countCriticalActiveIngredients(
-    supabase: ReturnType<typeof getSupabaseServer>
+    admin: ReturnType<typeof getSupabaseAdmin>,
+    currentShopId: string,
+    currentBranchId: string | null
 ): Promise<number> {
-    const { data, error } = await supabase
+    let q = admin
         .from("ingredients")
         .select("stock,min_stock,is_active")
+        .eq("shop_id", currentShopId)
         .eq("is_active", true)
         .returns<IngredientCriticalRow[]>();
+
+    if (currentBranchId) q = q.filter("branch_id", "eq", currentBranchId);
+
+    const { data, error } = await q;
 
     if (error) return 0;
 
@@ -358,7 +369,31 @@ async function countCriticalActiveIngredients(
 export async function GET(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const url = new URL(req.url);
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member) {
+            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
 
         const mode = (toStringOrNull(url.searchParams.get("mode")) ?? "events").toLowerCase();
 
@@ -366,12 +401,17 @@ export async function GET(req: NextRequest) {
            MODE: CRITICAL
         ========================= */
         if (mode === "critical") {
-            const { data, error } = await supabase
+            let q = admin
                 .from("ingredients")
                 .select("id,name,unit,base_unit,stock,min_stock,is_active")
+                .eq("shop_id", currentShopId)
                 .eq("is_active", true)
                 .order("stock", { ascending: true })
                 .returns<IngredientCriticalListRow[]>();
+
+            if (currentBranchId) q = q.filter("branch_id", "eq", currentBranchId);
+
+            const { data, error } = await q;
 
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -429,10 +469,13 @@ export async function GET(req: NextRequest) {
         )
       `;
 
-            let q = supabase
+            let q = admin
                 .from("stock_logs")
                 .select(select2)
+                .eq("shop_id", currentShopId)
                 .order("created_at", { ascending: false });
+
+            if (currentBranchId) q = q.filter("branch_id", "eq", currentBranchId);
 
             if (from) q = q.gte("created_at", from);
             if (to) q = q.lte("created_at", to);
@@ -458,7 +501,11 @@ export async function GET(req: NextRequest) {
                 if (signed < 0) outflow[uKey] += Math.abs(signed);
             }
 
-            const criticalCount = await countCriticalActiveIngredients(supabase);
+            const criticalCount = await countCriticalActiveIngredients(
+                admin,
+                currentShopId,
+                currentBranchId
+            );
 
             const payload: KpiSummary = {
                 range: { from: from ?? null, to: to ?? null },
@@ -508,11 +555,14 @@ export async function GET(req: NextRequest) {
       )
     `;
 
-        let query = supabase
+        let query = admin
             .from("stock_logs")
             .select(select)
+            .eq("shop_id", currentShopId)
             .order("created_at", { ascending: false })
             .range(offset, offset + limit - 1);
+
+        if (currentBranchId) query = query.filter("branch_id", "eq", currentBranchId);
 
         if (ingredient_id) query = query.eq("ingredient_id", ingredient_id);
         if (order_id) query = query.eq("order_id", order_id);
@@ -618,7 +668,7 @@ export async function GET(req: NextRequest) {
 
         // attach order menu lines (best-effort)
         const orderIds = Array.from(orderIdsSet);
-        const orderLinesMap = await fetchOrderMenuLinesByOrderIds(supabase, orderIds);
+        const orderLinesMap = await fetchOrderMenuLinesByOrderIds(supabase, orderIds, currentShopId);
 
         events = events.map((e) => {
             if (!e.order_id) return e;
@@ -695,6 +745,31 @@ function normalizeNote(reason: PostReason | null, note: string | null): string |
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
+
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
 
         const raw = (await req.json().catch(() => null)) as unknown;
         if (!isRecord(raw)) {
@@ -720,10 +795,15 @@ export async function POST(req: NextRequest) {
         const finalNote = normalizeNote(reason, note);
 
         // read ingredient current stock
-        const { data: ing, error: ingErr } = await supabase
+        let ingQ = admin
             .from("ingredients")
             .select("id,stock,is_active")
             .eq("id", ingredient_id)
+            .eq("shop_id", currentShopId);
+
+        if (currentBranchId) ingQ = ingQ.filter("branch_id", "eq", currentBranchId);
+
+        const { data: ing, error: ingErr } = await ingQ
             .maybeSingle<{ id: UUID; stock: number | string | null; is_active: boolean | null }>();
 
         if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
@@ -770,18 +850,23 @@ export async function POST(req: NextRequest) {
         }
 
         // update ingredient stock + updated_at
-        const { error: upErr } = await supabase
+        let upQ = admin
             .from("ingredients")
             .update({
                 stock: after_stock,
                 updated_at: new Date().toISOString(),
             })
-            .eq("id", ingredient_id);
+            .eq("id", ingredient_id)
+            .eq("shop_id", currentShopId);
+
+        if (currentBranchId) upQ = upQ.filter("branch_id", "eq", currentBranchId);
+
+        const { error: upErr } = await upQ;
 
         if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
         // insert stock log
-        const { error: logErr } = await supabase.from("stock_logs").insert({
+        const logPayloadBase: Database["public"]["Tables"]["stock_logs"]["Insert"] = {
             ingredient_id,
             order_id: null,
             amount,
@@ -789,7 +874,17 @@ export async function POST(req: NextRequest) {
             note: finalNote,
             before_stock,
             after_stock,
-        });
+            shop_id: currentShopId,
+        };
+
+        const logPayload = currentBranchId
+            ? ({
+                ...logPayloadBase,
+                branch_id: currentBranchId,
+            } as unknown as Database["public"]["Tables"]["stock_logs"]["Insert"])
+            : logPayloadBase;
+
+        const { error: logErr } = await admin.from("stock_logs").insert(logPayload);
 
         if (logErr) {
             return NextResponse.json({ error: logErr.message }, { status: 500 });

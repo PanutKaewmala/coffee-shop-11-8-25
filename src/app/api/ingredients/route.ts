@@ -1,6 +1,7 @@
 // app/api/ingredients/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseServer, getCurrentContextFromCookies } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { IngredientUpdatePayload, UUID, BaseUnit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,19 @@ function isUuid(v: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+function mapIngredientDbError(msg: string): string {
+    if (msg.includes('column ingredients.branch_id does not exist')) {
+        return "Database schema is outdated: missing ingredients.branch_id. Run migration 20260218_add_branch_id_to_ingredients.sql";
+    }
+    if (msg.includes("ingredients_active_name_key_uniq")) {
+        return "Ingredient name conflict from legacy unique rule. Run migration 20260219_fix_ingredients_active_name_unique_scope.sql to scope by branch.";
+    }
+    if (msg.includes("ingredients_active_name_branch_key_uniq")) {
+        return "Ingredient name already exists in this branch";
+    }
+    return msg;
+}
+
 /* =========================================================
    base_unit helpers
 ========================================================= */
@@ -118,19 +132,48 @@ function normalizeIngredient(row: IngredientRow) {
 export async function GET(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const id = req.nextUrl.searchParams.get("id");
         const archived = req.nextUrl.searchParams.get("archived");
+
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member) {
+            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
 
         if (id) {
             if (!isUuid(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-            const { data, error } = await supabase
+            let oneQ = admin
                 .from("ingredients")
                 .select("*")
                 .eq("id", id)
-                .single();
+                .eq("shop_id", currentShopId);
 
-            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+            oneQ = oneQ.filter("branch_id", "eq", currentBranchId);
+
+            const { data, error } = await oneQ.maybeSingle();
+
+            if (error) return NextResponse.json({ error: mapIngredientDbError(error.message) }, { status: 500 });
             if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
             return NextResponse.json({ ingredient: normalizeIngredient(data as IngredientRow) });
@@ -139,7 +182,11 @@ export async function GET(req: NextRequest) {
         // ✅ archived=1 => is_active=false
         const isArchivedList = archived === "1" || archived === "true";
 
-        let query = supabase.from("ingredients").select("*");
+        let query = admin
+            .from("ingredients")
+            .select("*")
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId);
 
         // ถ้า DB ยังไม่มี is_active: query นี้อาจ error
         // แต่โปรเจกต์มึงน่าจะเพิ่มแล้ว (ตาม flow archive) — ถ้ายังไม่เพิ่ม ให้เพิ่มคอลัมน์ก่อน
@@ -147,7 +194,7 @@ export async function GET(req: NextRequest) {
 
         const { data, error } = await query.order("name", { ascending: true });
 
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        if (error) return NextResponse.json({ error: mapIngredientDbError(error.message) }, { status: 500 });
 
         const list = Array.isArray(data) ? (data as IngredientRow[]) : [];
         return NextResponse.json({ ingredients: list.map(normalizeIngredient) });
@@ -164,9 +211,34 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const body = await readJson(req);
 
         if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
 
         const name = toStringOrNull(body.name);
         const stock = toNumber(body.stock, 0);
@@ -186,22 +258,25 @@ export async function POST(req: NextRequest) {
         }
 
         // ✅ กันชื่อซ้ำ (ignore case)
-        const { data: existing, error: existErr } = await supabase
+        const { data: existing, error: existErr } = await admin
             .from("ingredients")
             .select("id")
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId)
             .ilike("name", name)
             .limit(1);
 
-        if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+        if (existErr) return NextResponse.json({ error: mapIngredientDbError(existErr.message) }, { status: 500 });
         if (existing && existing.length > 0) {
             return NextResponse.json({ error: "มีวัตถุดิบชื่อนี้อยู่แล้ว" }, { status: 409 });
         }
 
-        const payload = {
+        const payloadBase = {
             name,
             stock,
             base_unit,
             unit: base_unit, // legacy mirror
+            shop_id: currentShopId,
             category: category ?? null,
             cost_per_unit: cost_per_unit ?? null,
 
@@ -210,19 +285,24 @@ export async function POST(req: NextRequest) {
             archived_at: null,
 
             updated_at: new Date().toISOString(),
-        };
+        } as const;
 
-        const { data, error } = await supabase
+        const payload = {
+            ...payloadBase,
+            branch_id: currentBranchId,
+        } as unknown as Record<string, unknown>;
+
+        const { data, error } = await admin
             .from("ingredients")
-            .insert(payload)
+            .insert(payload as never)
             .select("*")
             .single();
 
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        if (error) return NextResponse.json({ error: mapIngredientDbError(error.message) }, { status: 500 });
         if (!data) return NextResponse.json({ error: "Insert failed" }, { status: 500 });
 
         // ✅ log add
-        await supabase.from("stock_logs").insert({
+        const logPayload = {
             ingredient_id: (data as IngredientRow).id,
             order_id: null,
             amount: toNumber(stock, 0),
@@ -230,7 +310,11 @@ export async function POST(req: NextRequest) {
             note: "create ingredient",
             before_stock: 0,
             after_stock: toNumber(stock, 0),
-        });
+            shop_id: currentShopId,
+            branch_id: currentBranchId,
+        } as unknown as Record<string, unknown>;
+
+        await admin.from("stock_logs").insert(logPayload as never);
 
         return NextResponse.json({ ingredient: normalizeIngredient(data as IngredientRow) }, { status: 201 });
     } catch (err: unknown) {
@@ -247,9 +331,34 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const body = await readJson(req);
 
         if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
 
         const id = toStringOrNull(body.id);
         if (!id) return NextResponse.json({ error: "ต้องมี id เพื่ออัพเดตวัตถุดิบ" }, { status: 400 });
@@ -281,14 +390,16 @@ export async function PUT(req: NextRequest) {
 
         // กันชื่อซ้ำตอน rename
         if (updateData.name) {
-            const { data: existing, error: existErr } = await supabase
+            const { data: existing, error: existErr } = await admin
                 .from("ingredients")
                 .select("id")
+                .eq("shop_id", currentShopId)
+                .filter("branch_id", "eq", currentBranchId)
                 .ilike("name", updateData.name)
                 .neq("id", id)
                 .limit(1);
 
-            if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+            if (existErr) return NextResponse.json({ error: mapIngredientDbError(existErr.message) }, { status: 500 });
             if (existing && existing.length > 0) {
                 return NextResponse.json({ error: "มีวัตถุดิบชื่อนี้อยู่แล้ว" }, { status: 409 });
             }
@@ -299,14 +410,17 @@ export async function PUT(req: NextRequest) {
             return NextResponse.json({ error: "No fields to update" }, { status: 400 });
         }
 
-        const { data, error } = await supabase
+        const updateQ = admin
             .from("ingredients")
             .update(updateData)
             .eq("id", id)
-            .select("*")
-            .single();
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId)
+            .select("*");
 
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        const { data, error } = await updateQ.single();
+
+        if (error) return NextResponse.json({ error: mapIngredientDbError(error.message) }, { status: 500 });
         if (!data) return NextResponse.json({ error: "Update failed" }, { status: 500 });
 
         return NextResponse.json({ ingredient: normalizeIngredient(data as IngredientRow) });
@@ -325,46 +439,72 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const id = req.nextUrl.searchParams.get("id");
 
-        if (!id) return NextResponse.json({ error: "ต้องมี id เพื่อทำการลบ" }, { status: 400 });
+        if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
         if (!isUuid(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-        // load ingredient
-        const { data: ing, error: ingErr } = await supabase
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        // owner-only archive
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
+
+        // load ingredient in current shop
+        const { data: ing, error: ingErr } = await admin
             .from("ingredients")
-            .select("id,name,stock,is_active")
+            .select("id,name,stock,is_active,shop_id")
             .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId)
             .single();
 
         if (ingErr || !ing) {
-            return NextResponse.json({ error: ingErr?.message ?? "Not found" }, { status: 404 });
+            return NextResponse.json({ error: mapIngredientDbError(ingErr?.message ?? "Not found") }, { status: 404 });
         }
 
         const wasActive = (ing as IngredientRow).is_active ?? true;
         if (!wasActive) {
-            // already archived
             return NextResponse.json({ success: true, archived: true });
         }
 
         const before = toNumber((ing as IngredientRow).stock, 0);
-
-        // archive
         const archived_at = new Date().toISOString();
 
-        const { error: updErr } = await supabase
+        const { error: updErr } = await admin
             .from("ingredients")
             .update({
                 is_active: false,
                 archived_at,
                 updated_at: archived_at,
             })
-            .eq("id", id);
+            .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId);
 
-        if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+        if (updErr) return NextResponse.json({ error: mapIngredientDbError(updErr.message) }, { status: 500 });
 
-        // log delete
-        await supabase.from("stock_logs").insert({
+        const archivedLogPayload = {
             ingredient_id: id,
             order_id: null,
             amount: 0,
@@ -372,7 +512,11 @@ export async function DELETE(req: NextRequest) {
             note: "archived ingredient",
             before_stock: before,
             after_stock: before,
-        });
+            shop_id: currentShopId,
+            branch_id: currentBranchId,
+        } as unknown as Record<string, unknown>;
+
+        await admin.from("stock_logs").insert(archivedLogPayload as never);
 
         return NextResponse.json({ success: true, archived: true });
     } catch (err: unknown) {

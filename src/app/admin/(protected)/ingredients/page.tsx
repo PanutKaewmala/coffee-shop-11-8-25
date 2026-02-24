@@ -89,6 +89,18 @@ type AnalyticsRow = {
     unit: string | null;
 };
 
+function isSameAnalyticsRow(a: AnalyticsRow | undefined, b: AnalyticsRow): boolean {
+    if (!a) return false;
+    return (
+        a.ingredient_id === b.ingredient_id &&
+        a.avgDailyUsage7 === b.avgDailyUsage7 &&
+        a.todayUsage === b.todayUsage &&
+        a.daysLeft === b.daysLeft &&
+        a.abnormalToday === b.abnormalToday &&
+        a.unit === b.unit
+    );
+}
+
 function isLowByDaysLeft(a: AnalyticsRow | undefined): boolean {
     if (!a) return false;
     if (a.daysLeft === null) return false;
@@ -131,6 +143,9 @@ function getRiskLevel(item: IngredientRow, a: AnalyticsRow | undefined): RiskLev
 export default function IngredientsAdminPage() {
     const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [actionNotice, setActionNotice] = useState<string | null>(null);
+    const [flashIngredientId, setFlashIngredientId] = useState<string | null>(null);
 
     // filters
     const [search, setSearch] = useState("");
@@ -168,13 +183,22 @@ export default function IngredientsAdminPage() {
     const fetchIngredients = async () => {
         try {
             setLoading(true);
-            const res = await fetch("/api/ingredients");
-            const data: unknown = await res.json();
+            setLoadError(null);
+
+            const res = await fetch("/api/ingredients", { cache: "no-store" });
+            const data: unknown = await res.json().catch(() => null);
+            if (!res.ok) {
+                setIngredients([]);
+                setLoadError(getErrorMessage(data) ?? "โหลดรายการวัตถุดิบไม่สำเร็จ");
+                return;
+            }
+
             const list = extractArray(data) as IngredientRow[];
             setIngredients(Array.isArray(list) ? list : []);
         } catch (err) {
             console.error("fetchIngredients error:", err);
             setIngredients([]);
+            setLoadError("โหลดรายการวัตถุดิบไม่สำเร็จ");
         } finally {
             setLoading(false);
         }
@@ -183,6 +207,18 @@ export default function IngredientsAdminPage() {
     useEffect(() => {
         fetchIngredients();
     }, []);
+
+    useEffect(() => {
+        if (!actionNotice) return;
+        const t = setTimeout(() => setActionNotice(null), 2600);
+        return () => clearTimeout(t);
+    }, [actionNotice]);
+
+    useEffect(() => {
+        if (!flashIngredientId) return;
+        const t = setTimeout(() => setFlashIngredientId(null), 2600);
+        return () => clearTimeout(t);
+    }, [flashIngredientId]);
 
     const refreshAfterAdjust = async (ingredientId?: string) => {
         setAdjustItem(null);
@@ -250,6 +286,10 @@ export default function IngredientsAdminPage() {
 
     const totalPages = Math.ceil(sortedItems.length / rowsPerPage) || 1;
 
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages);
+    }, [page, totalPages]);
+
     const paginatedItems = useMemo(() => {
         const start = (page - 1) * rowsPerPage;
         return sortedItems.slice(start, start + rowsPerPage);
@@ -299,7 +339,22 @@ export default function IngredientsAdminPage() {
                     };
                 }
 
-                setAnalyticsMap((prev) => ({ ...prev, ...next }));
+                const nextEntries = Object.entries(next);
+                if (nextEntries.length === 0) return;
+
+                setAnalyticsMap((prev) => {
+                    let changed = false;
+                    const merged = { ...prev };
+
+                    for (const [id, row] of nextEntries) {
+                        if (!isSameAnalyticsRow(prev[id], row)) {
+                            merged[id] = row;
+                            changed = true;
+                        }
+                    }
+
+                    return changed ? merged : prev;
+                });
             } catch {
                 // ignore
             } finally {
@@ -405,8 +460,19 @@ export default function IngredientsAdminPage() {
                     return;
                 }
 
-                await fetchIngredients();
+                const editedId = editingItem!.id;
+                const now = new Date().toISOString();
+                setIngredients((prev) =>
+                    prev.map((row) => (row.id === editedId ? { ...row, name: trimmed, updated_at: now } : row))
+                );
+                setSearch(trimmed);
+                setUnitFilter("all");
+                setOnlyLow(false);
+                setPage(1);
+                setFlashIngredientId(editedId);
+                setActionNotice(`เปลี่ยนชื่อเป็น "${trimmed}" แล้ว`);
                 setShowModal(false);
+                setEditingItem(null);
                 return;
             }
 
@@ -435,6 +501,7 @@ export default function IngredientsAdminPage() {
             }
 
             await fetchIngredients();
+            setActionNotice(`เพิ่ม "${trimmed}" แล้ว`);
             setShowModal(false);
         } catch (err) {
             console.error("saveIngredient error:", err);
@@ -457,6 +524,7 @@ export default function IngredientsAdminPage() {
 
         try {
             setDeletingId(id);
+            const deletedName = ingredients.find((x) => x.id === id)?.name ?? "วัตถุดิบ";
 
             const res = await fetch(`/api/ingredients?id=${id}`, { method: "DELETE" });
             const data: unknown = await res.json().catch(() => null);
@@ -466,13 +534,15 @@ export default function IngredientsAdminPage() {
                 return;
             }
 
-            await fetchIngredients();
+            setIngredients((prev) => prev.filter((row) => row.id !== id));
 
             setAnalyticsMap((prev) => {
                 const next = { ...prev };
                 delete next[id];
                 return next;
             });
+
+            setActionNotice(`ลบ "${deletedName}" แล้ว (ย้ายไป Archived)`);
         } catch (err) {
             console.error("deleteIngredient error:", err);
             alert("เกิดข้อผิดพลาดในการเชื่อมต่อ");
@@ -615,16 +685,26 @@ export default function IngredientsAdminPage() {
 
                 {showEmptyLowHint ? (
                     <div className="py-8 text-center text-sm text-text-muted">
-                        กำลังคำนวณ “ใกล้หมด” จากการใช้ 7 วันล่าสุด...
+                        กำลังคำนวณ “ของใกล้หมด” จากการใช้ 7 วันล่าสุด...
                     </div>
                 ) : null}
 
                 {/* Table */}
+                {loadError ? (
+                    <div className="mb-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                        {loadError}
+                    </div>
+                ) : null}
                 {loading ? (
                     <p className="text-text-muted">Loading...</p>
                 ) : (
                     <Table
                         headers={headers}
+                        rowClassName={(rowIndex) =>
+                            paginatedItems[rowIndex]?.id === flashIngredientId
+                                ? "bg-emerald-500/10"
+                                : undefined
+                        }
                         data={paginatedItems.map((item) => {
                             const base = getRowBaseUnit(item);
                             const unitLabel = BASE_UNIT_LABEL[base];
@@ -784,6 +864,26 @@ export default function IngredientsAdminPage() {
                     onUpdated={() => refreshAfterAdjust(adjustItem.id)}
                 />
             )}
+
+            {actionNotice ? (
+                <div
+                    className="fixed bottom-5 right-5 z-[70] rounded-xl border border-green-500/30 bg-surface/95 px-4 py-3 text-sm text-text-primary shadow-lg backdrop-blur"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div className="flex items-start gap-3">
+                        <span>{actionNotice}</span>
+                        <button
+                            type="button"
+                            onClick={() => setActionNotice(null)}
+                            className="text-text-muted hover:text-text-secondary"
+                            aria-label="close notice"
+                        >
+                            x
+                        </button>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
