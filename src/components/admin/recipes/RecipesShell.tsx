@@ -6,7 +6,6 @@ import type { Ingredient } from "@/lib/types";
 import MenuPickerPanel from "./MenuPickerPanel";
 import RecipeEditorPanel from "./RecipeEditorPanel";
 
-
 type UUID = string;
 
 type MenuView = {
@@ -32,6 +31,18 @@ type VariantView = {
     created_at: string;
 };
 
+type RecipeItemLite = {
+    variant_id: UUID;
+    menu_id: UUID | null;
+};
+
+type MenuRecipeCoverage = {
+    variantCount: number;
+    recipeVariantCount: number;
+};
+
+type RecipeCoverageStatus = "empty_variant" | "no_recipe" | "partial_recipe" | "full_recipe";
+
 export type VariantOption = {
     variant_id: UUID;
     menu_id: UUID;
@@ -39,19 +50,33 @@ export type VariantOption = {
     is_default: boolean;
 };
 
+type MenuCardView = {
+    id: UUID;
+    name: string;
+    category: string | null;
+    created_at: string;
+    variantCount: number;
+    recipeItemCount: number;
+    coverageStatus: RecipeCoverageStatus;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null;
 }
+
 function asString(v: unknown, fb = ""): string {
     return typeof v === "string" ? v : fb;
 }
+
 function toNumber(v: unknown, fb = 0): number {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fb;
 }
+
 function extractArray<T>(v: unknown): T[] {
     return Array.isArray(v) ? (v as T[]) : [];
 }
+
 function normalizeServeNames(v: unknown): string[] {
     if (!Array.isArray(v) || v.length === 0) return [];
     if (typeof v[0] === "string") return (v as string[]).filter(Boolean);
@@ -62,6 +87,7 @@ function normalizeServeNames(v: unknown): string[] {
     }
     return [];
 }
+
 function normalizeSizeLabel(sizeRaw: unknown): string {
     const s = typeof sizeRaw === "string" ? sizeRaw.trim() : "";
     if (!s) return "";
@@ -69,17 +95,19 @@ function normalizeSizeLabel(sizeRaw: unknown): string {
     return ` • ${s}`;
 }
 
-/* ===== smart variant ordering ===== */
-const SERVE_PRIORITY = ["เย็น", "ร้อน", "ปั่น", "hot", "iced", "blend", "frappe"];
+const SERVE_PRIORITY = ["iced", "hot", "blend", "frappe"];
+
 function extractServeFromLabel(label: string): string {
-    const parts = label.split("•").map((s) => s.trim()).filter(Boolean);
+    const parts = label.split(/•|โ€ข/g).map((s) => s.trim()).filter(Boolean);
     return parts[1] ?? "";
 }
+
 function serveRank(label: string): number {
     const serve = extractServeFromLabel(label).toLowerCase();
-    const idx = SERVE_PRIORITY.findIndex((p) => p.toLowerCase() === serve);
+    const idx = SERVE_PRIORITY.findIndex((p) => p === serve);
     return idx === -1 ? 999 : idx;
 }
+
 function sortVariantsSmart(a: VariantOption, b: VariantOption): number {
     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
     const ra = serveRank(a.label);
@@ -88,7 +116,6 @@ function sortVariantsSmart(a: VariantOption, b: VariantOption): number {
     return a.label.localeCompare(b.label);
 }
 
-/* ===== API extractors ===== */
 function extractIngredients(raw: unknown): Ingredient[] {
     if (Array.isArray(raw)) return raw as Ingredient[];
     if (isRecord(raw)) {
@@ -97,6 +124,7 @@ function extractIngredients(raw: unknown): Ingredient[] {
     }
     return [];
 }
+
 function extractMenus(raw: unknown): MenuView[] {
     const list = Array.isArray(raw) ? raw : (isRecord(raw) && Array.isArray(raw.menu) ? raw.menu : []);
     return extractArray<unknown>(list)
@@ -118,6 +146,7 @@ function extractMenus(raw: unknown): MenuView[] {
         })
         .filter((x): x is MenuView => Boolean(x));
 }
+
 function extractVariants(raw: unknown): VariantView[] {
     const list = Array.isArray(raw) ? raw : (isRecord(raw) && Array.isArray(raw.variants) ? raw.variants : []);
     return extractArray<unknown>(list)
@@ -146,35 +175,87 @@ function extractVariants(raw: unknown): VariantView[] {
         .filter((x): x is VariantView => Boolean(x));
 }
 
+function extractRecipeItems(raw: unknown): RecipeItemLite[] {
+    const list = Array.isArray(raw) ? raw : (isRecord(raw) && Array.isArray(raw.items) ? raw.items : []);
+    return extractArray<unknown>(list)
+        .map((it): RecipeItemLite | null => {
+            if (!isRecord(it)) return null;
+            const variant_id = asString(it.variant_id);
+            if (!variant_id) return null;
+            return {
+                variant_id,
+                menu_id: asString(it.menu_id, "") || null,
+            };
+        })
+        .filter((x): x is RecipeItemLite => Boolean(x));
+}
+
+function addToSetMap(map: Map<string, Set<string>>, key: string, value: string): void {
+    const current = map.get(key);
+    if (current) {
+        current.add(value);
+        return;
+    }
+    map.set(key, new Set([value]));
+}
+
+function getCoverageStatus(variantCount: number, recipeVariantCount: number): RecipeCoverageStatus {
+    if (variantCount === 0) return "empty_variant";
+    if (recipeVariantCount === 0) return "no_recipe";
+    if (recipeVariantCount < variantCount) return "partial_recipe";
+    return "full_recipe";
+}
+
 export default function RecipesShell() {
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
     const [menuItems, setMenuItems] = useState<MenuView[]>([]);
     const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
+    const [recipeItems, setRecipeItems] = useState<RecipeItemLite[]>([]);
 
     const [selectedMenuId, setSelectedMenuId] = useState<string>("");
     const [selectedVariantId, setSelectedVariantId] = useState<string>("");
 
     const [searchMenu, setSearchMenu] = useState("");
-    const [leftFilter, setLeftFilter] = useState<"all" | "empty">("all"); // MVP: all/empty (ยังไม่ทำ coverage จริง)
+    const [leftFilter, setLeftFilter] = useState<"all" | "empty" | "no_recipe" | "partial_recipe" | "has_recipe">(
+        "all"
+    );
+
+    const fetchJsonStrict = useCallback(async (url: string): Promise<unknown> => {
+        const res = await fetch(url, { cache: "no-store" });
+        const raw: unknown = await res.json().catch(() => null);
+        if (!res.ok) {
+            const msg =
+                isRecord(raw) && typeof raw.error === "string"
+                    ? raw.error
+                    : `Request failed (${res.status})`;
+            throw new Error(`${url}: ${msg}`);
+        }
+        return raw;
+    }, []);
 
     const fetchBase = useCallback(async () => {
         try {
             setLoading(true);
+            setLoadError(null);
 
-            const [ingRaw, menuRaw, variantsRaw] = await Promise.all([
-                fetch("/api/ingredients", { cache: "no-store" }).then((r) => r.json() as Promise<unknown>),
-                fetch("/api/menu", { cache: "no-store" }).then((r) => r.json() as Promise<unknown>),
-                fetch("/api/menu/variants", { cache: "no-store" }).then((r) => r.json() as Promise<unknown>),
+            const [ingRaw, menuRaw, variantsRaw, recipeRaw] = await Promise.all([
+                fetchJsonStrict("/api/ingredients"),
+                fetchJsonStrict("/api/menu"),
+                fetchJsonStrict("/api/menu/variants"),
+                fetchJsonStrict("/api/recipes/items"),
             ]);
 
             const ingList = extractIngredients(ingRaw);
             const menus = extractMenus(menuRaw);
             const vList = extractVariants(variantsRaw);
+            const rList = extractRecipeItems(recipeRaw);
 
             setIngredients(ingList);
             setMenuItems(menus);
+            setRecipeItems(rList);
 
             const menuNameMap = new Map<UUID, string>(menus.map((m) => [m.id, m.name]));
             const opts: VariantOption[] = vList.map((v) => {
@@ -191,21 +272,88 @@ export default function RecipesShell() {
 
             opts.sort(sortVariantsSmart);
             setVariantOptions(opts);
-
-            if (!selectedMenuId && menus[0]?.id) setSelectedMenuId(menus[0].id);
         } catch (e) {
             console.error("fetchBase:", e);
+            setLoadError(e instanceof Error ? e.message : "Failed to load recipe data");
             setIngredients([]);
             setMenuItems([]);
             setVariantOptions([]);
+            setRecipeItems([]);
         } finally {
             setLoading(false);
         }
-    }, [selectedMenuId]);
+    }, [fetchJsonStrict]);
 
     useEffect(() => {
         void fetchBase();
     }, [fetchBase]);
+
+    const menuCards = useMemo(() => {
+        const q = searchMenu.trim().toLowerCase();
+
+        const variantIdsByMenu = new Map<string, Set<string>>();
+        const variantIdToMenu = new Map<string, string>();
+        for (const v of variantOptions) {
+            addToSetMap(variantIdsByMenu, v.menu_id, v.variant_id);
+            variantIdToMenu.set(v.variant_id, v.menu_id);
+        }
+
+        const recipeVariantIdsByMenu = new Map<string, Set<string>>();
+        for (const r of recipeItems) {
+            const menuId = variantIdToMenu.get(r.variant_id) ?? r.menu_id ?? "";
+            if (!menuId) continue;
+
+            const variantsOfMenu = variantIdsByMenu.get(menuId);
+            if (!variantsOfMenu || !variantsOfMenu.has(r.variant_id)) continue;
+
+            addToSetMap(recipeVariantIdsByMenu, menuId, r.variant_id);
+        }
+
+        const coverageByMenu = new Map<string, MenuRecipeCoverage>();
+        for (const m of menuItems) {
+            const variantCount = variantIdsByMenu.get(m.id)?.size ?? 0;
+            const recipeVariantCount = recipeVariantIdsByMenu.get(m.id)?.size ?? 0;
+            coverageByMenu.set(m.id, { variantCount, recipeVariantCount });
+        }
+
+        let list: MenuCardView[] = menuItems
+            .filter((m) => (q ? m.name.toLowerCase().includes(q) : true))
+            .map((m) => {
+                const variantCount = coverageByMenu.get(m.id)?.variantCount ?? 0;
+                const recipeVariantCount = coverageByMenu.get(m.id)?.recipeVariantCount ?? 0;
+                return {
+                    id: m.id,
+                    name: m.name,
+                    category: m.category,
+                    created_at: m.created_at,
+                    variantCount,
+                    recipeItemCount: recipeVariantCount,
+                    coverageStatus: getCoverageStatus(variantCount, recipeVariantCount),
+                };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (leftFilter === "empty") {
+            list = list.filter((m) => m.coverageStatus === "empty_variant");
+        } else if (leftFilter === "no_recipe") {
+            list = list.filter((m) => m.coverageStatus === "no_recipe");
+        } else if (leftFilter === "partial_recipe") {
+            list = list.filter((m) => m.coverageStatus === "partial_recipe");
+        } else if (leftFilter === "has_recipe") {
+            list = list.filter((m) => m.coverageStatus === "full_recipe");
+        }
+
+        return list;
+    }, [menuItems, variantOptions, recipeItems, searchMenu, leftFilter]);
+
+    useEffect(() => {
+        if (menuCards.length === 0) {
+            setSelectedMenuId("");
+            return;
+        }
+        const exists = menuCards.some((m) => m.id === selectedMenuId);
+        if (!exists) setSelectedMenuId(menuCards[0].id);
+    }, [menuCards, selectedMenuId]);
 
     const variantsForSelectedMenu = useMemo(() => {
         if (!selectedMenuId) return [];
@@ -225,34 +373,14 @@ export default function RecipesShell() {
         if (!stillValid) setSelectedVariantId(variantsForSelectedMenu[0].variant_id);
     }, [selectedMenuId, variantsForSelectedMenu, selectedVariantId]);
 
-    const menuCards = useMemo(() => {
-        const q = searchMenu.trim().toLowerCase();
-
-        const variantCountByMenu = new Map<string, number>();
-        for (const v of variantOptions) {
-            variantCountByMenu.set(v.menu_id, (variantCountByMenu.get(v.menu_id) ?? 0) + 1);
-        }
-
-        let list = menuItems
-            .filter((m) => (q ? m.name.toLowerCase().includes(q) : true))
-            .map((m) => ({
-                id: m.id,
-                name: m.name,
-                category: m.category,
-                created_at: m.created_at,
-                variantCount: variantCountByMenu.get(m.id) ?? 0,
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-
-        if (leftFilter === "empty") {
-            list = list.filter((m) => m.variantCount === 0);
-        }
-        return list;
-    }, [menuItems, variantOptions, searchMenu, leftFilter]);
-
     return (
         <div className="p-6">
             <Card title="Recipes">
+                {loadError ? (
+                    <div className="mb-4 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                        {loadError}
+                    </div>
+                ) : null}
                 <div className="grid grid-cols-12 gap-4">
                     <div className="col-span-12 lg:col-span-4">
                         <MenuPickerPanel

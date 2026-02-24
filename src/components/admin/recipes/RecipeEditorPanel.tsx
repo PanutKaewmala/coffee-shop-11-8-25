@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/admin/Pagination";
 import SearchBox from "@/components/admin/search/SearchBox";
@@ -53,6 +54,8 @@ type Draft = {
     variant_id: string;
     ingredient_id: string;
     quantity: number;
+    ingredient_name?: string | null;
+    ingredient_unit?: string | null;
 };
 
 export default function RecipeEditorPanel({
@@ -72,6 +75,7 @@ export default function RecipeEditorPanel({
     setSelectedVariantId: (id: string) => void;
     onRefreshBase: () => Promise<void>;
 }) {
+    const router = useRouter();
     const [loading, setLoading] = useState(false);
 
     const [items, setItems] = useState<RecipeItemView[]>([]);
@@ -163,6 +167,8 @@ export default function RecipeEditorPanel({
         variant_id: selectedVariantId,
         ingredient_id: "",
         quantity: 1,
+        ingredient_name: null,
+        ingredient_unit: null,
     });
 
     useEffect(() => {
@@ -176,7 +182,13 @@ export default function RecipeEditorPanel({
             return;
         }
         setMode("add");
-        setDraft({ variant_id: selectedVariantId, ingredient_id: "", quantity: 1 });
+        setDraft({
+            variant_id: selectedVariantId,
+            ingredient_id: "",
+            quantity: 1,
+            ingredient_name: null,
+            ingredient_unit: null,
+        });
         setOpen(true);
     };
 
@@ -187,6 +199,8 @@ export default function RecipeEditorPanel({
             variant_id: row.variant_id,
             ingredient_id: row.ingredient_id,
             quantity: row.quantity ?? 1,
+            ingredient_name: row.ingredient_name,
+            ingredient_unit: row.unit,
         });
         setOpen(true);
     };
@@ -265,7 +279,10 @@ export default function RecipeEditorPanel({
         return (
             <div className="rounded-2xl border border-[var(--text-muted)]/15 bg-[var(--surface)] p-6 text-center text-[var(--text-secondary)]">
                 เมนูนี้ยังไม่มี Variant — ไปสร้าง Variant ก่อน แล้วกลับมาที่นี่
-                <div className="mt-4">
+                <div className="mt-4 flex items-center justify-center gap-2">
+                    <Button onClick={() => router.push("/admin/menu")}>
+                        ไปสร้าง Variant
+                    </Button>
                     <Button variant="outline" onClick={() => void onRefreshBase()}>
                         Refresh
                     </Button>
@@ -327,6 +344,7 @@ export default function RecipeEditorPanel({
             )}
 
             <AddIngredientModal
+                key={`${mode}-${draft.id ?? "new"}-${draft.variant_id}-${draft.ingredient_id}-${open ? "open" : "closed"}`}
                 open={open}
                 onClose={close}
                 mode={mode}

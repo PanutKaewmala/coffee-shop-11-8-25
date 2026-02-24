@@ -1,6 +1,7 @@
 // app/api/recipes/items/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,85 @@ function parsePositiveNumber(
     return { ok: true, value: n };
 }
 
+type ResolvedContext =
+    | { ok: false; response: NextResponse }
+    | {
+        ok: true;
+        admin: ReturnType<typeof getSupabaseAdmin>;
+        currentShopId: string;
+        currentBranchId: string;
+    };
+
+async function resolveContext(ownerOnly = false): Promise<ResolvedContext> {
+    const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return { ok: false, response: NextResponse.json({ error: authErr.message }, { status: 500 }) };
+    if (!auth.user) return { ok: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return {
+            ok: false,
+            response: NextResponse.json({ error: "No current shop selected" }, { status: 409 }),
+        };
+    }
+    if (!currentBranchId) {
+        return {
+            ok: false,
+            response: NextResponse.json({ error: "No current branch selected" }, { status: 409 }),
+        };
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", auth.user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return { ok: false, response: NextResponse.json({ error: mErr.message }, { status: 500 }) };
+    if (!member) {
+        return {
+            ok: false,
+            response: NextResponse.json({ error: "Not a member of current shop" }, { status: 403 }),
+        };
+    }
+    if (ownerOnly && member.role !== "owner") {
+        return { ok: false, response: NextResponse.json({ error: "Owner only" }, { status: 403 }) };
+    }
+
+    return { ok: true, admin, currentShopId, currentBranchId };
+}
+
+async function getBranchIngredientIds(params: {
+    admin: ReturnType<typeof getSupabaseAdmin>;
+    currentShopId: string;
+    currentBranchId: string;
+}): Promise<{ ok: true; ids: UUID[] } | { ok: false; response: NextResponse }> {
+    const { admin, currentShopId, currentBranchId } = params;
+
+    const { data, error } = await admin
+        .from("ingredients")
+        .select("id")
+        .eq("shop_id", currentShopId)
+        .filter("branch_id", "eq", currentBranchId)
+        .returns<Array<{ id: UUID }>>();
+
+    if (error) {
+        return {
+            ok: false,
+            response: NextResponse.json({ error: error.message }, { status: 500 }),
+        };
+    }
+
+    return {
+        ok: true,
+        ids: (data ?? []).map((x) => x.id),
+    };
+}
+
 function toView(row: RecipeItemJoinRow): RecipeItemView {
     return {
         id: row.id,
@@ -152,7 +232,18 @@ const SELECT_JOIN = `
 ========================================================= */
 export async function GET(req: NextRequest) {
     try {
-        const supabase = await getSupabaseServer();
+        const ctx = await resolveContext(false);
+        if (!ctx.ok) return ctx.response;
+        const { admin, currentShopId, currentBranchId } = ctx;
+
+        const branchIng = await getBranchIngredientIds({
+            admin,
+            currentShopId,
+            currentBranchId,
+        });
+        if (!branchIng.ok) return branchIng.response;
+        const branchIngredientIds = branchIng.ids;
+        const branchIngredientSet = new Set(branchIngredientIds);
 
         const id = req.nextUrl.searchParams.get("id");
         const variant_id = req.nextUrl.searchParams.get("variant_id");
@@ -160,10 +251,11 @@ export async function GET(req: NextRequest) {
 
         // ---- single by id
         if (id) {
-            const { data, error } = await supabase
+            const { data, error } = await admin
                 .from("recipe_items")
                 .select(SELECT_JOIN)
                 .eq("id", id)
+                .eq("shop_id", currentShopId)
                 .limit(1)
                 .single()
                 .overrideTypes<RecipeItemJoinRow, { merge: false }>();
@@ -175,6 +267,9 @@ export async function GET(req: NextRequest) {
                     { status }
                 );
             }
+            if (!branchIngredientSet.has(data.ingredient_id)) {
+                return NextResponse.json({ error: "Recipe item not found" }, { status: 404 });
+            }
 
             return NextResponse.json({ item: toView(data) });
         }
@@ -183,10 +278,11 @@ export async function GET(req: NextRequest) {
         let variantIdsForMenu: UUID[] | null = null;
 
         if (menu_id) {
-            const { data: variants, error: vErr } = await supabase
+            const { data: variants, error: vErr } = await admin
                 .from("menu_variants")
                 .select("id")
                 .eq("menu_id", menu_id)
+                .eq("shop_id", currentShopId)
                 .overrideTypes<Array<{ id: UUID }>, { merge: false }>();
 
             if (vErr) {
@@ -203,9 +299,15 @@ export async function GET(req: NextRequest) {
         }
 
         // ---- list
-        let q = supabase
+        if (branchIngredientIds.length === 0) {
+            return NextResponse.json({ items: [] });
+        }
+
+        let q = admin
             .from("recipe_items")
             .select(SELECT_JOIN)
+            .eq("shop_id", currentShopId)
+            .in("ingredient_id", branchIngredientIds)
             .order("created_at", { ascending: false });
 
         if (variant_id) q = q.eq("variant_id", variant_id);
@@ -234,7 +336,10 @@ export async function GET(req: NextRequest) {
 ========================================================= */
 export async function POST(req: NextRequest) {
     try {
-        const supabase = await getSupabaseServer();
+        const ctx = await resolveContext(true);
+        if (!ctx.ok) return ctx.response;
+        const { admin, currentShopId, currentBranchId } = ctx;
+
         const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
 
         const variant_id = toStringOrNull(body?.variant_id);
@@ -248,10 +353,41 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const { data: variantRow, error: variantErr } = await admin
+            .from("menu_variants")
+            .select("id")
+            .eq("id", variant_id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle()
+            .overrideTypes<{ id: UUID } | null, { merge: false }>();
+
+        if (variantErr) {
+            return NextResponse.json({ error: variantErr.message }, { status: 500 });
+        }
+        if (!variantRow?.id) {
+            return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
+        }
+
+        const { data: ingRow, error: ingErr } = await admin
+            .from("ingredients")
+            .select("id")
+            .eq("id", ingredient_id)
+            .eq("shop_id", currentShopId)
+            .filter("branch_id", "eq", currentBranchId)
+            .maybeSingle()
+            .overrideTypes<{ id: UUID } | null, { merge: false }>();
+
+        if (ingErr) {
+            return NextResponse.json({ error: ingErr.message }, { status: 500 });
+        }
+        if (!ingRow?.id) {
+            return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
+        }
+
         // 1) Try INSERT first (fast path)
-        const ins = await supabase
+        const ins = await admin
             .from("recipe_items")
-            .insert([{ variant_id, ingredient_id, quantity: qty.value }])
+            .insert([{ variant_id, ingredient_id, quantity: qty.value, shop_id: currentShopId }])
             .select(SELECT_JOIN)
             .limit(1)
             .single()
@@ -266,11 +402,12 @@ export async function POST(req: NextRequest) {
 
         // 2) If duplicate (unique violation) -> UPDATE (replace policy)
         if (isUniqueViolation(ins.error)) {
-            const upd = await supabase
+            const upd = await admin
                 .from("recipe_items")
                 .update({ quantity: qty.value })
                 .eq("variant_id", variant_id)
                 .eq("ingredient_id", ingredient_id)
+                .eq("shop_id", currentShopId)
                 .select(SELECT_JOIN)
                 .limit(1)
                 .single()
@@ -310,11 +447,42 @@ export async function POST(req: NextRequest) {
 ========================================================= */
 export async function PUT(req: NextRequest) {
     try {
-        const supabase = await getSupabaseServer();
+        const ctx = await resolveContext(true);
+        if (!ctx.ok) return ctx.response;
+        const { admin, currentShopId, currentBranchId } = ctx;
+
         const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
 
         const id = toStringOrNull(body?.id);
         if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+        const branchIng = await getBranchIngredientIds({
+            admin,
+            currentShopId,
+            currentBranchId,
+        });
+        if (!branchIng.ok) return branchIng.response;
+        const branchIngredientSet = new Set(branchIng.ids);
+
+        const { data: cur, error: curErr } = await admin
+            .from("recipe_items")
+            .select("variant_id,ingredient_id")
+            .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .limit(1)
+            .single()
+            .overrideTypes<RecipeItemPair, { merge: false }>();
+
+        if (curErr) {
+            const status = isNotFoundSingle(curErr) ? 404 : 500;
+            return NextResponse.json(
+                { error: curErr.message ?? "Recipe item not found" },
+                { status }
+            );
+        }
+        if (!branchIngredientSet.has(cur.ingredient_id)) {
+            return NextResponse.json({ error: "Recipe item not found" }, { status: 404 });
+        }
 
         const update: Partial<Pick<RecipeItemRow, "variant_id" | "ingredient_id" | "quantity">> = {};
 
@@ -323,6 +491,41 @@ export async function PUT(req: NextRequest) {
 
         if (variant_id) update.variant_id = variant_id;
         if (ingredient_id) update.ingredient_id = ingredient_id;
+
+        if (variant_id) {
+            const { data: variantRow, error: variantErr } = await admin
+                .from("menu_variants")
+                .select("id")
+                .eq("id", variant_id)
+                .eq("shop_id", currentShopId)
+                .maybeSingle()
+                .overrideTypes<{ id: UUID } | null, { merge: false }>();
+
+            if (variantErr) {
+                return NextResponse.json({ error: variantErr.message }, { status: 500 });
+            }
+            if (!variantRow?.id) {
+                return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
+            }
+        }
+
+        if (ingredient_id) {
+            const { data: ingRow, error: ingErr } = await admin
+                .from("ingredients")
+                .select("id")
+                .eq("id", ingredient_id)
+                .eq("shop_id", currentShopId)
+                .filter("branch_id", "eq", currentBranchId)
+                .maybeSingle()
+                .overrideTypes<{ id: UUID } | null, { merge: false }>();
+
+            if (ingErr) {
+                return NextResponse.json({ error: ingErr.message }, { status: 500 });
+            }
+            if (!ingRow?.id) {
+                return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
+            }
+        }
 
         // quantity: if present -> must be valid (>0)
         const hasQuantity = Object.prototype.hasOwnProperty.call(body ?? {}, "quantity");
@@ -343,32 +546,16 @@ export async function PUT(req: NextRequest) {
         const willChangeIngredient = typeof update.ingredient_id === "string";
 
         if (willChangeVariant || willChangeIngredient) {
-            // fetch current row to know final pair
-            const { data: cur, error: curErr } = await supabase
-                .from("recipe_items")
-                .select("variant_id,ingredient_id")
-                .eq("id", id)
-                .limit(1)
-                .single()
-                .overrideTypes<RecipeItemPair, { merge: false }>();
-
-            if (curErr) {
-                const status = isNotFoundSingle(curErr) ? 404 : 500;
-                return NextResponse.json(
-                    { error: curErr.message ?? "Recipe item not found" },
-                    { status }
-                );
-            }
-
             const finalVariantId = update.variant_id ?? cur.variant_id;
             const finalIngredientId = update.ingredient_id ?? cur.ingredient_id;
 
             // dup check: query as list then pick first (avoid maybeSingle typings)
-            const { data: dupList, error: dupErr } = await supabase
+            const { data: dupList, error: dupErr } = await admin
                 .from("recipe_items")
                 .select("id")
                 .eq("variant_id", finalVariantId)
                 .eq("ingredient_id", finalIngredientId)
+                .eq("shop_id", currentShopId)
                 .neq("id", id)
                 .limit(1)
                 .overrideTypes<RecipeItemIdOnly[], { merge: false }>();
@@ -385,10 +572,11 @@ export async function PUT(req: NextRequest) {
             }
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await admin
             .from("recipe_items")
             .update(update)
             .eq("id", id)
+            .eq("shop_id", currentShopId)
             .select(SELECT_JOIN)
             .limit(1)
             .single()
@@ -414,15 +602,47 @@ export async function PUT(req: NextRequest) {
 ========================================================= */
 export async function DELETE(req: NextRequest) {
     try {
-        const supabase = await getSupabaseServer();
+        const ctx = await resolveContext(true);
+        if (!ctx.ok) return ctx.response;
+        const { admin, currentShopId, currentBranchId } = ctx;
         const id = req.nextUrl.searchParams.get("id");
 
         if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-        const { error } = await supabase.from("recipe_items").delete().eq("id", id);
+        const branchIng = await getBranchIngredientIds({
+            admin,
+            currentShopId,
+            currentBranchId,
+        });
+        if (!branchIng.ok) return branchIng.response;
+        const branchIngredientSet = new Set(branchIng.ids);
+
+        const { data: cur, error: curErr } = await admin
+            .from("recipe_items")
+            .select("id,ingredient_id")
+            .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle()
+            .overrideTypes<{ id: UUID; ingredient_id: UUID } | null, { merge: false }>();
+
+        if (curErr) return NextResponse.json({ error: curErr.message }, { status: 500 });
+        if (!cur || !branchIngredientSet.has(cur.ingredient_id)) {
+            return NextResponse.json({ error: "Recipe item not found" }, { status: 404 });
+        }
+
+        const { data: deleted, error } = await admin
+            .from("recipe_items")
+            .delete()
+            .eq("id", id)
+            .eq("shop_id", currentShopId)
+            .select("id")
+            .maybeSingle();
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        if (!deleted?.id) {
+            return NextResponse.json({ error: "Recipe item not found" }, { status: 404 });
         }
 
         return NextResponse.json({ success: true });
