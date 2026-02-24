@@ -23,7 +23,6 @@ import {
     SelectTrigger,
     SelectContent,
     SelectItem,
-    SelectValue,
 } from "@/components/ui/select";
 
 /* ======================================================================
@@ -49,6 +48,12 @@ function getFirstUrl(data: unknown): string {
     if (!Array.isArray(urls)) return "";
     const first = urls[0];
     return typeof first === "string" ? first : "";
+}
+
+function getErrorMessage(data: unknown): string {
+    if (!isRecord(data)) return "";
+    const raw = data.error;
+    return typeof raw === "string" ? raw : "";
 }
 
 function formatPriceTHB(v: unknown): string {
@@ -102,6 +107,7 @@ function normalizeServePricesFromItem(item: MenuItem): ServePrice[] {
    MAIN PAGE
 ====================================================================== */
 export default function MenuAdminPage() {
+    const [showDisabled, setShowDisabled] = useState(false);
     const {
         loading,
         paginatedItems,
@@ -117,7 +123,7 @@ export default function MenuAdminPage() {
         serveFilter,
         setServeFilter,
         refreshData,
-    } = useMenuSearch({ rowsPerPage: 20 });
+    } = useMenuSearch({ rowsPerPage: 20, includeDisabled: showDisabled });
 
     /* ======================================================================
        LOAD CATEGORY + SERVE TYPES FROM DB
@@ -225,9 +231,10 @@ export default function MenuAdminPage() {
 
             const uploadData: unknown = await uploadRes.json().catch(() => ({}));
             const url = getFirstUrl(uploadData);
+            const uploadError = getErrorMessage(uploadData);
 
             if (!uploadRes.ok || !url) {
-                throw new Error("Image upload failed");
+                throw new Error(uploadError || "Image upload failed");
             }
 
             imageUrl = url;
@@ -267,10 +274,14 @@ export default function MenuAdminPage() {
     /* ======================================================================
        DELETE MENU
     ====================================================================== */
-    const deleteMenu = async (id: string) => {
-        if (!confirm("Delete this item?")) return;
+    const deleteMenu = async (id: string, name: string) => {
+        const ok = confirm(
+            `ยืนยันลบเมนู "${name}" ทั้งร้านทุกสาขา?\n\n` +
+            `ถ้าต้องการปิดเฉพาะสาขา ให้ใช้ปุ่ม "ปิดสาขานี้"`
+        );
+        if (!ok) return;
 
-        const res = await fetch(`/api/menu?id=${id}`, { method: "DELETE" });
+        const res = await fetch(`/api/menu?id=${id}&scope=global`, { method: "DELETE" });
         if (!res.ok) {
             let msg = "ลบไม่สำเร็จ";
             try {
@@ -282,6 +293,37 @@ export default function MenuAdminPage() {
         }
 
         refreshData();
+    };
+
+    const [availabilitySavingId, setAvailabilitySavingId] = useState<string | null>(null);
+
+    const setMenuAvailabilityForCurrentBranch = async (menuId: string, isEnabled: boolean) => {
+        if (availabilitySavingId) return;
+
+        setAvailabilitySavingId(menuId);
+        try {
+            const res = await fetch("/api/menu/availability", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ menu_id: menuId, is_enabled: isEnabled }),
+            });
+
+            if (!res.ok) {
+                let msg = "ปรับสถานะเมนูของสาขาไม่สำเร็จ";
+                try {
+                    const t: unknown = await res.json();
+                    if (isRecord(t) && typeof t.error === "string") msg = t.error;
+                } catch {
+                    // ignore json parse
+                }
+                alert(msg);
+                return;
+            }
+
+            refreshData();
+        } finally {
+            setAvailabilitySavingId(null);
+        }
     };
 
     /* ======================================================================
@@ -417,6 +459,14 @@ export default function MenuAdminPage() {
                                     Clear
                                 </Button>
 
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setShowDisabled((prev) => !prev)}
+                                    className="h-10"
+                                >
+                                    {showDisabled ? "ซ่อนเมนูที่ปิดสาขา" : "แสดงเมนูที่ปิดสาขา"}
+                                </Button>
+
                                 <Button onClick={() => openModal()} className="h-10">
                                     + Add Menu
                                 </Button>
@@ -477,13 +527,14 @@ export default function MenuAdminPage() {
                             </div>
                         </div>
                     ) : (
-                        <div className="[&_th:last-child]:text-left [&_th:last-child]:w-[220px] [&_td:last-child]:w-[220px] [&_td:last-child]:align-middle">
+                        <div className="[&_th:last-child]:text-left [&_th:last-child]:w-[340px] [&_td:last-child]:w-[340px] [&_td:last-child]:align-middle">
                             <div className="overflow-x-auto">
                                 <Table
                                     headers={headers}
                                     data={paginatedItems.map((item) => {
                                         const servePrices = sortServePrices(normalizeServePricesFromItem(item));
                                         const isExpanded = expandedId === item.id;
+                                        const isEnabledInBranch = item.is_enabled_in_branch !== false;
 
                                         const visible = isExpanded ? servePrices : servePrices.slice(0, 3);
                                         const hiddenCount = Math.max(0, servePrices.length - visible.length);
@@ -549,29 +600,52 @@ export default function MenuAdminPage() {
                                                     <div className="text-xs text-[var(--text-secondary)] truncate">
                                                         {shortText(item.description, 54) || "—"}
                                                     </div>
+                                                    {!isEnabledInBranch && (
+                                                        <div className="text-[11px] text-amber-400">
+                                                            ปิดขายในสาขาที่เลือก
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>,
                                             item.category ?? "-",
                                             serveCell,
                                             <div
                                                 key={item.id}
-                                                className="w-full h-full flex items-center justify-start gap-2 py-2"
+                                                className="w-full h-full flex items-center justify-start gap-2 py-2 flex-nowrap"
                                             >
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-9 px-4"
+                                                    className="h-9 px-3 whitespace-nowrap"
+                                                    disabled={availabilitySavingId === item.id}
+                                                    onClick={() =>
+                                                        void setMenuAvailabilityForCurrentBranch(
+                                                            item.id,
+                                                            !isEnabledInBranch
+                                                        )
+                                                    }
+                                                >
+                                                    {availabilitySavingId === item.id
+                                                        ? "กำลังบันทึก"
+                                                        : isEnabledInBranch
+                                                            ? "ปิดสาขา"
+                                                            : "เปิดสาขา"}
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-9 px-3 whitespace-nowrap"
                                                     onClick={() => openModal(item)}
                                                 >
-                                                    Edit
+                                                    แก้ไข
                                                 </Button>
                                                 <Button
                                                     variant="destructive"
                                                     size="sm"
-                                                    className="h-9 px-4"
-                                                    onClick={() => deleteMenu(item.id)}
+                                                    className="h-9 px-3 whitespace-nowrap"
+                                                    onClick={() => deleteMenu(item.id, item.name)}
                                                 >
-                                                    Delete
+                                                    ลบทั้งร้าน
                                                 </Button>
                                             </div>,
                                         ];
