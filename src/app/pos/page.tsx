@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* =========================
    Types (match /api/pos response)
@@ -24,8 +24,6 @@ type PosMenuItem = {
     variants: PosVariant[];
 };
 
-type PosFeedResponse = { menu: PosMenuItem[] };
-
 /* =========================
    Checkout types
 ========================= */
@@ -39,6 +37,20 @@ type PosCheckoutResponse = {
     order?: unknown;
     deducted?: unknown;
     debug?: unknown;
+};
+
+type PosContextResponse = {
+    currentShopId?: unknown;
+    currentBranchId?: unknown;
+    shops?: unknown;
+    branches?: unknown;
+};
+
+type PosContextView = {
+    shopId: string | null;
+    shopName: string | null;
+    branchId: string | null;
+    branchName: string | null;
 };
 
 /* =========================
@@ -68,6 +80,10 @@ function asArray<T>(v: unknown): T[] {
 function toNumber(v: unknown, fallback = 0): number {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+
+function toNonEmptyString(v: unknown): string | null {
+    return typeof v === "string" && v.trim().length > 0 ? v : null;
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -129,6 +145,43 @@ function parsePosFeed(data: unknown): PosMenuItem[] {
         .filter((x): x is PosMenuItem => x !== null);
 }
 
+function parsePosContext(data: unknown): PosContextView {
+    if (!isRecord(data)) {
+        return { shopId: null, shopName: null, branchId: null, branchName: null };
+    }
+
+    const raw = data as PosContextResponse;
+    const shopId = toNonEmptyString(raw.currentShopId);
+    const branchId = toNonEmptyString(raw.currentBranchId);
+
+    const shops = asArray<unknown>(raw.shops);
+    const branches = asArray<unknown>(raw.branches);
+
+    const shopName =
+        shops
+            .map((x) => (isRecord(x) ? x : null))
+            .find(
+                (x) =>
+                    x &&
+                    typeof x.id === "string" &&
+                    x.id === shopId &&
+                    typeof x.name === "string"
+            )?.name ?? null;
+
+    const branchName =
+        branches
+            .map((x) => (isRecord(x) ? x : null))
+            .find(
+                (x) =>
+                    x &&
+                    typeof x.id === "string" &&
+                    x.id === branchId &&
+                    typeof x.name === "string"
+            )?.name ?? null;
+
+    return { shopId, shopName, branchId, branchName };
+}
+
 /* =========================
    UI helpers
 ========================= */
@@ -160,6 +213,11 @@ export default function POSPage() {
     const [menu, setMenu] = useState<PosMenuItem[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const [feedError, setFeedError] = useState<string | null>(null);
+    const [feedbackText, setFeedbackText] = useState<string | null>(null);
+    const [lastTouchedVariantId, setLastTouchedVariantId] = useState<string | null>(null);
+    const feedbackTimerRef = useRef<number | null>(null);
+    const lineFlashTimerRef = useRef<number | null>(null);
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -167,6 +225,35 @@ export default function POSPage() {
     // filters
     const [query, setQuery] = useState("");
     const [activeCatId, setActiveCatId] = useState<string>("all");
+    const [context, setContext] = useState<PosContextView>({
+        shopId: null,
+        shopName: null,
+        branchId: null,
+        branchName: null,
+    });
+
+    /* -------------------- LOAD CONTEXT (SHOP/BRANCH) -------------------- */
+    useEffect(() => {
+        let alive = true;
+
+        async function fetchContext() {
+            try {
+                const res = await fetch("/api/admin/navbar", { cache: "no-store" });
+                if (!res.ok) return;
+
+                const raw: unknown = await res.json().catch(() => null);
+                if (!alive) return;
+                setContext(parsePosContext(raw));
+            } catch {
+                // ignore context fetch errors on POS page
+            }
+        }
+
+        void fetchContext();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     /* -------------------- LOAD MENU (POS FEED) -------------------- */
     useEffect(() => {
@@ -179,6 +266,8 @@ export default function POSPage() {
                 if (!res.ok) {
                     const raw = await res.text();
                     console.error("❌ /api/pos error:", res.status, raw);
+                    if (!alive) return;
+                    setFeedError(`โหลดเมนูไม่สำเร็จ (HTTP ${res.status})`);
                     return;
                 }
 
@@ -191,9 +280,12 @@ export default function POSPage() {
                 const menuList = parsePosFeed(raw);
 
                 if (!alive) return;
+                setFeedError(null);
                 setMenu(menuList);
             } catch (err) {
                 console.error("โหลดเมนู (POS feed) ล้มเหลว:", err);
+                if (!alive) return;
+                setFeedError("โหลดเมนูไม่สำเร็จ กรุณาลองรีเฟรช");
             }
         }
 
@@ -262,38 +354,75 @@ export default function POSPage() {
         [variantPick]
     );
 
-    /* -------------------- CART OPS -------------------- */
-    const addVariantToCart = useCallback((item: PosMenuItem, variantId: string) => {
-        const variants = Array.isArray(item.variants) ? item.variants : [];
-        const v = variants.find((x) => x.id === variantId) ?? null;
-        if (!v) return;
+    const pushFeedback = useCallback((text: string, variantId?: string) => {
+        setFeedbackText(text);
+        if (feedbackTimerRef.current !== null) {
+            window.clearTimeout(feedbackTimerRef.current);
+        }
+        feedbackTimerRef.current = window.setTimeout(() => {
+            setFeedbackText(null);
+            feedbackTimerRef.current = null;
+        }, 1400);
 
-        const base = toNumber(item.price, 0);
-        const price = toNumber(v.price, base);
-
-        setCart((prev) => {
-            const exists = prev.find((c) => c.variant_id === variantId);
-            if (exists) {
-                return prev.map((c) =>
-                    c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c
-                );
+        if (variantId) {
+            setLastTouchedVariantId(variantId);
+            if (lineFlashTimerRef.current !== null) {
+                window.clearTimeout(lineFlashTimerRef.current);
             }
-
-            const next: CartItem = {
-                id: variantId,
-                variant_id: variantId,
-                menu_id: item.id,
-                menu_name: item.name,
-                variant_label: serveLabel(v),
-                price,
-                qty: 1,
-            };
-
-            return [...prev, next];
-        });
+            lineFlashTimerRef.current = window.setTimeout(() => {
+                setLastTouchedVariantId(null);
+                lineFlashTimerRef.current = null;
+            }, 1100);
+        }
     }, []);
 
-    // ✅ add จากการ์ดเท่านั้น (serve ไม่ add)
+    useEffect(() => {
+        return () => {
+            if (feedbackTimerRef.current !== null) {
+                window.clearTimeout(feedbackTimerRef.current);
+            }
+            if (lineFlashTimerRef.current !== null) {
+                window.clearTimeout(lineFlashTimerRef.current);
+            }
+        };
+    }, []);
+
+    /* -------------------- CART OPS -------------------- */
+    const addVariantToCart = useCallback(
+        (item: PosMenuItem, variantId: string) => {
+            const variants = Array.isArray(item.variants) ? item.variants : [];
+            const v = variants.find((x) => x.id === variantId) ?? null;
+            if (!v) return;
+
+            const base = toNumber(item.price, 0);
+            const price = toNumber(v.price, base);
+
+            setCart((prev) => {
+                const exists = prev.find((c) => c.variant_id === variantId);
+                if (exists) {
+                    return prev.map((c) =>
+                        c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c
+                    );
+                }
+
+                const next: CartItem = {
+                    id: variantId,
+                    variant_id: variantId,
+                    menu_id: item.id,
+                    menu_name: item.name,
+                    variant_label: serveLabel(v),
+                    price,
+                    qty: 1,
+                };
+
+                return [...prev, next];
+            });
+
+            pushFeedback(`เพิ่ม ${item.name} (${serveLabel(v)})`, variantId);
+        },
+        [pushFeedback]
+    );
+
     const addToCart = useCallback(
         (item: PosMenuItem) => {
             const variants = Array.isArray(item.variants) ? item.variants : [];
@@ -377,6 +506,16 @@ export default function POSPage() {
     /* -------------------- KEYBOARD SHORTCUTS -------------------- */
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName?.toLowerCase();
+            const isTypingTarget =
+                tag === "input" ||
+                tag === "textarea" ||
+                tag === "select" ||
+                Boolean(target?.isContentEditable);
+
+            if (isTypingTarget) return;
+
             if (e.key === "Escape") {
                 if (cart.length > 0 && !loading) clearCart();
             }
@@ -407,23 +546,37 @@ export default function POSPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
+            const debugText = await res.clone().text().catch(() => "");
 
-            const raw: unknown = await res.json().catch(async () => {
-                const txt = await res.text();
+            const raw: unknown = await res.json().catch(() => {
+                const txt = debugText;
                 console.error("⚠️ /api/pos returned non-JSON:", txt);
-                throw new Error("Server returned invalid JSON");
+                return {};
             });
 
             const data: PosCheckoutResponse = isRecord(raw) ? (raw as PosCheckoutResponse) : {};
 
             if (!res.ok) {
-                console.error("❌ POS checkout failed:", { status: res.status, data });
+                const rawDump = (() => {
+                    try {
+                        return JSON.stringify(raw);
+                    } catch {
+                        return String(raw);
+                    }
+                })();
+                console.error(
+                    `POS checkout failed: HTTP ${res.status} ${res.statusText}; data=${JSON.stringify(
+                        data
+                    )}; raw=${rawDump}; text=${debugText}`
+                );
 
                 const msg =
                     (typeof data.error === "string" && data.error) ||
+                    (isRecord(raw) && typeof raw.message === "string" ? raw.message : "") ||
+                    (debugText.trim() ? debugText : "") ||
                     (res.status === 400
                         ? "ข้อมูลไม่ครบ/สต็อกไม่พอ/ไม่มีสูตร (เช็ค recipe_items)"
-                        : "ปิดบิลล้มเหลว (server error)");
+                        : `ปิดบิลล้มเหลว (HTTP ${res.status})`);
 
                 alert(msg);
                 return;
@@ -442,8 +595,22 @@ export default function POSPage() {
     /* -------------------- RENDER -------------------- */
     return (
         <div className="flex h-screen bg-background text-text-primary">
+            {feedbackText ? (
+                <div className="fixed right-4 top-4 z-50 rounded-lg border border-accent/50 bg-surface/95 px-3 py-2 text-sm text-text-primary shadow-xl backdrop-blur pointer-events-none">
+                    {feedbackText}
+                </div>
+            ) : null}
+
             {/* LEFT: Menu List */}
             <div className="w-2/3 border-r border-[var(--text-muted)]/20 p-4 overflow-y-auto">
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                    <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
+                        Shop: {context.shopName ?? context.shopId ?? "-"}
+                    </span>
+                    <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
+                        Branch: {context.branchName ?? context.branchId ?? "Not selected"}
+                    </span>
+                </div>
                 <div className="flex items-center justify-between gap-3 mb-4">
                     <h2 className="text-2xl font-bold text-text-primary">เมนูทั้งหมด</h2>
 
@@ -469,6 +636,20 @@ export default function POSPage() {
                         </select>
                     </div>
                 </div>
+
+                {feedError ? (
+                    <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+                        {feedError}
+                    </div>
+                ) : null}
+
+                {filteredMenu.length === 0 ? (
+                    <div className="rounded-xl border border-[var(--text-muted)]/20 bg-surface p-4 text-sm text-text-secondary">
+                        {menu.length === 0
+                            ? "ยังไม่มีเมนูที่พร้อมขายในสาขานี้ (ต้องเปิดเมนูในสาขา และมีสูตรใน variant อย่างน้อย 1 ตัว)"
+                            : "ไม่พบเมนูตามตัวกรองที่เลือก"}
+                    </div>
+                ) : null}
 
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {filteredMenu.map((item) => {
@@ -498,7 +679,7 @@ export default function POSPage() {
                                     </div>
                                 </div>
 
-                                {/* pills: เลือก serve อย่างเดียว (ไม่ add) */}
+                                {/* pills: แตะเพื่อเลือก+เพิ่มทันที */}
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     {variants.length === 0 ? (
                                         <span className="text-sm text-text-muted">ไม่มี Serve</span>
@@ -511,12 +692,12 @@ export default function POSPage() {
                                                     key={v.id}
                                                     type="button"
                                                     onClick={(e) => {
-                                                        // ✅ กันไม่ให้ bubble ไป addToCart
                                                         e.stopPropagation();
                                                         setVariantPick((prev) => ({
                                                             ...prev,
                                                             [item.id]: v.id,
                                                         }));
+                                                        addVariantToCart(item, v.id);
                                                     }}
                                                     className={[
                                                         "px-3 py-1 rounded-full text-sm border transition",
@@ -537,7 +718,7 @@ export default function POSPage() {
                                 </div>
 
                                 <div className="mt-2 text-xs text-text-muted">
-                                    เลือกประเภทก่อน แล้วค่อยคลิกการ์ดเพื่อเพิ่ม
+                                    แตะปุ่มเสิร์ฟเพื่อเพิ่มทันที หรือแตะการ์ดเพื่อเพิ่มตัวที่เลือก
                                 </div>
                             </div>
                         );
@@ -583,7 +764,12 @@ export default function POSPage() {
                                         .map((it) => (
                                             <div
                                                 key={it.variant_id}
-                                                className="flex items-center justify-between gap-3"
+                                                className={[
+                                                    "flex items-center justify-between gap-3 rounded-md px-1 py-1 transition",
+                                                    lastTouchedVariantId === it.variant_id
+                                                        ? "bg-accent/15 ring-1 ring-accent/50"
+                                                        : "",
+                                                ].join(" ")}
                                             >
                                                 <div className="min-w-0">
                                                     <div className="text-sm text-text-secondary truncate">
@@ -601,6 +787,10 @@ export default function POSPage() {
                                                     >
                                                         -
                                                     </button>
+
+                                                    <span className="min-w-6 text-center text-sm text-text-primary">
+                                                        {it.qty}
+                                                    </span>
 
                                                     <button
                                                         onClick={() => increaseQty(it.variant_id)}

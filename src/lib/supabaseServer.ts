@@ -3,6 +3,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Database } from "@/lib/database.types";
 
 const SHOP_COOKIE = "current_shop_id";
@@ -51,15 +52,46 @@ export async function getServerIdentity(): Promise<{
     currentBranchId: string | null;
 }> {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
 
     const { data } = await supabase.auth.getUser();
     const u = data.user ?? null;
 
     const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
 
+    let effectiveShopId: string | null = currentShopId;
+    let effectiveBranchId: string | null = currentBranchId;
+
+    // Validate context cookies against current user membership.
+    if (u && effectiveShopId) {
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("shop_id")
+            .eq("user_id", u.id)
+            .eq("shop_id", effectiveShopId)
+            .maybeSingle();
+
+        if (mErr || !member) {
+            effectiveShopId = null;
+            effectiveBranchId = null;
+        }
+    }
+
+    if (u && effectiveShopId && effectiveBranchId) {
+        const { data: br, error: bErr } = await admin
+            .from("branch")
+            .select("id, shop_id")
+            .eq("id", effectiveBranchId)
+            .maybeSingle();
+
+        if (bErr || !br || br.shop_id !== effectiveShopId) {
+            effectiveBranchId = null;
+        }
+    }
+
     return {
         user: u ? { id: u.id, email: u.email ?? null } : null,
-        currentShopId,
-        currentBranchId,
+        currentShopId: effectiveShopId,
+        currentBranchId: effectiveBranchId,
     };
 }
