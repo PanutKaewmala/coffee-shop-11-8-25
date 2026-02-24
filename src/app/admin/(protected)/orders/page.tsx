@@ -512,7 +512,7 @@ export default function AdminOrdersPage() {
                             ) : (
                                 <>
                                     {/* TABLE */}
-                                    <div className="rounded-xl overflow-hidden">
+                                    <div className="rounded-xl overflow-visible">
                                         <Table headers={headers} data={rows} />
                                     </div>
 

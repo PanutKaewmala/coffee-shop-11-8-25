@@ -68,7 +68,7 @@ export default function OrderItemsTooltip({
     const trigger = children ? (
         <>{children}</>
     ) : (
-        <span className="inline-block cursor-default underline decoration-dotted text-left">
+        <span className="inline-block cursor-help underline decoration-dotted text-left">
             {label ?? `${count} รายการ`}
         </span>
     );
@@ -85,21 +85,21 @@ export default function OrderItemsTooltip({
                 ref={tooltipRef}
                 className={`
           absolute ${alignClass}
-          w-[260px]
-          opacity-0 group-hover:opacity-100
+          w-[280px] max-w-[min(88vw,280px)] max-h-72 overflow-auto
+          invisible opacity-0 group-hover:visible group-hover:opacity-100
           transform transition-all duration-200
-          pointer-events-none z-50
+          pointer-events-none z-[200]
 
           ${flip ? "bottom-full mb-2" : "top-full mt-2"}
 
-          bg-[rgba(30,30,30,0.85)]
+          bg-[var(--surface)] text-[var(--text-primary)]
           backdrop-blur-xl
-          border border-white/10
-          shadow-xl shadow-black/40
-          rounded-xl p-4 text-white
+          border border-[var(--text-muted)]/18 dark:border-white/15 ring-1 ring-black/[0.03] dark:ring-black/40
+          shadow-[0_10px_24px_rgba(60,47,47,0.12)] dark:shadow-2xl dark:shadow-black/60
+          rounded-xl p-4
         `}
             >
-                <div className="mb-2 text-sm font-semibold opacity-90">รายละเอียดรายการ</div>
+                <div className="mb-2 text-sm font-semibold text-[var(--text-primary)]">รายละเอียดรายการ</div>
 
                 <div className="space-y-1 text-sm">
                     {items.map((it, idx) => {
@@ -109,10 +109,10 @@ export default function OrderItemsTooltip({
                             <div key={idx} className="flex justify-between gap-4">
                                 <div className="min-w-0">
                                     <div className="truncate">{it.name}</div>
-                                    {sub && <div className="text-xs opacity-70 truncate">{sub}</div>}
+                                    {sub && <div className="text-xs text-[var(--text-muted)] truncate">{sub}</div>}
                                 </div>
 
-                                <span className="whitespace-nowrap opacity-80">
+                                <span className="whitespace-nowrap text-[var(--text-primary)] font-semibold">
                                     ×{it.qty ?? 1} — {it.price ?? 0} บาท
                                 </span>
                             </div>
