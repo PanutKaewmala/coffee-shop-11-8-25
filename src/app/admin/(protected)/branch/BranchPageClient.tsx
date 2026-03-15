@@ -31,6 +31,7 @@ export default function BranchPageClient() {
     const {
         branches,
         loading,
+        error,
         search,
         setSearch,
         primary,
@@ -168,6 +169,12 @@ export default function BranchPageClient() {
                 <div className="flex justify-end mb-4">
                     <Button onClick={openModalNew}>+ Add Branch</Button>
                 </div>
+
+                {error ? (
+                    <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                        {error}
+                    </div>
+                ) : null}
 
                 {loading ? (
                     <p>Loading...</p>
