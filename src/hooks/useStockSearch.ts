@@ -224,43 +224,70 @@ function buildOrderMenuHint(
 /* =========================
    Date range helper
 ========================= */
+const BANGKOK_TZ = "Asia/Bangkok";
+const BANGKOK_OFFSET = "+07:00";
+
+function bangkokDateKey(date: Date): string {
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: BANGKOK_TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(date);
+}
+
+function addDaysBangkok(dateKey: string, days: number): string {
+    const d = new Date(`${dateKey}T00:00:00${BANGKOK_OFFSET}`);
+    d.setDate(d.getDate() + days);
+    return bangkokDateKey(d);
+}
+
+function monthStartKey(dateKey: string): string {
+    return `${dateKey.slice(0, 7)}-01`;
+}
+
+function nextMonthStartKey(dateKey: string): string {
+    const d = new Date(`${monthStartKey(dateKey)}T00:00:00${BANGKOK_OFFSET}`);
+    d.setMonth(d.getMonth() + 1);
+    return `${bangkokDateKey(d).slice(0, 7)}-01`;
+}
+
+function bangkokStartIso(dateKey: string): string {
+    return `${dateKey}T00:00:00.000${BANGKOK_OFFSET}`;
+}
+
+function bangkokEndIso(dateKey: string): string {
+    return `${dateKey}T23:59:59.999${BANGKOK_OFFSET}`;
+}
+
 function buildFromTo(filter: DateFilter): { from?: string; to?: string } {
     if (filter === "all") return {};
+    const todayKey = bangkokDateKey(new Date());
 
-    const now = new Date();
-    const start = new Date(now);
-    const end = new Date(now);
+    let startKey = todayKey;
+    let endKey = todayKey;
 
     switch (filter) {
-        case "today": {
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+        case "today":
             break;
-        }
-        case "yesterday": {
-            start.setDate(now.getDate() - 1);
-            start.setHours(0, 0, 0, 0);
-            end.setDate(now.getDate() - 1);
-            end.setHours(23, 59, 59, 999);
+        case "yesterday":
+            startKey = addDaysBangkok(todayKey, -1);
+            endKey = startKey;
             break;
-        }
-        case "7days": {
-            start.setDate(now.getDate() - 7);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+        case "7days":
+            // Inclusive 7 calendar days (today + previous 6), aligned with Orders page.
+            startKey = addDaysBangkok(todayKey, -6);
+            endKey = todayKey;
             break;
-        }
-        case "month": {
-            start.setDate(1);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
+        case "month":
+            startKey = monthStartKey(todayKey);
+            endKey = addDaysBangkok(nextMonthStartKey(todayKey), -1);
             break;
-        }
         default:
             break;
     }
 
-    return { from: start.toISOString(), to: end.toISOString() };
+    return { from: bangkokStartIso(startKey), to: bangkokEndIso(endKey) };
 }
 
 /* =========================

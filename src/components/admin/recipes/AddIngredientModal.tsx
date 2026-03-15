@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import IngredientCombobox from "@/components/admin/ingredients/IngredientCombobox";
 import type { Ingredient } from "@/lib/types";
+import { BASE_UNIT_LABEL } from "@/lib/units";
 import type { VariantOption } from "./RecipesShell";
 
 type UUID = string;
@@ -13,6 +14,8 @@ type EditDraft = {
     variant_id: UUID;
     ingredient_id: UUID;
     quantity: number;
+    ingredient_name?: string | null;
+    ingredient_unit?: string | null;
 };
 
 function sanitizeDecimalInput(raw: string): string {
@@ -21,6 +24,7 @@ function sanitizeDecimalInput(raw: string): string {
     if (!/^\d*\.?\d*$/.test(v)) return "";
     return v;
 }
+
 function parsePositiveNumber(raw: string): number | null {
     if (!raw.trim()) return null;
     const n = Number(raw);
@@ -29,10 +33,22 @@ function parsePositiveNumber(raw: string): number | null {
     if (n > 999999) return null;
     return n;
 }
+
 function displayVariantLabel(full: string): string {
-    const parts = full.split("•").map((s) => s.trim()).filter(Boolean);
+    const parts = full
+        .split(/•|โ€ข/g)
+        .map((s) => s.trim())
+        .filter(Boolean);
     if (parts.length <= 1) return full;
     return parts.slice(1).join(" • ");
+}
+
+function unitLabelOf(ingredient: Ingredient | undefined): string {
+    if (!ingredient) return "";
+    if (ingredient.base_unit && ingredient.base_unit in BASE_UNIT_LABEL) {
+        return BASE_UNIT_LABEL[ingredient.base_unit];
+    }
+    return (ingredient.unit ?? "").trim();
 }
 
 export default function AddIngredientModal({
@@ -51,61 +67,59 @@ export default function AddIngredientModal({
 }: {
     open: boolean;
     onClose: () => void;
-
     mode: "add" | "edit";
     draft: EditDraft;
     setDraft: (next: EditDraft) => void;
-
     variantsForMenu: VariantOption[];
     ingredients: Ingredient[];
-
     disabledIds: Set<string>;
     recentIds: string[];
     onPickRecent: (id: string) => void;
-
     onSave: (payload: { id?: string; variant_id: string; ingredient_id: string; quantity: number }) => void;
     lockIngredient?: boolean;
 }) {
     const [qtyInput, setQtyInput] = useState(String(draft.quantity ?? 1));
+    const [qtyTouched, setQtyTouched] = useState(false);
 
     const isAdd = mode === "add";
     const duplicateSelected = isAdd && draft.ingredient_id ? disabledIds.has(draft.ingredient_id) : false;
 
-    const variantLabelById = useMemo(
-        () => new Map(variantsForMenu.map((v) => [v.variant_id, v.label])),
-        [variantsForMenu]
-    );
+    const selectedIngredient = ingredients.find((x) => x.id === draft.ingredient_id);
+    const selectedIngredientName = selectedIngredient?.name ?? draft.ingredient_name ?? draft.ingredient_id;
+    const selectedIngredientUnitLabel = unitLabelOf(selectedIngredient) || (draft.ingredient_unit ?? "").trim();
+
+    const qty = parsePositiveNumber(qtyInput);
+    const quantityError = qtyTouched && qty == null ? "Quantity must be greater than 0" : null;
+    const canSave = Boolean(draft.variant_id && draft.ingredient_id && qty != null);
 
     if (!open) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-lg rounded-2xl bg-[var(--surface)] border border-[var(--text-muted)]/20 shadow-xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="text-lg font-semibold">{isAdd ? "Add Ingredient" : "Edit Ingredient"}</div>
-                </div>
+                <div className="mb-4 text-lg font-semibold">{isAdd ? "Add Ingredient" : "Edit Ingredient"}</div>
 
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Variant</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">Variant</label>
                 <select
-                    className="w-full p-2 rounded-lg bg-background border border-text-muted/40 mb-3"
+                    className="mb-3 w-full rounded-lg border border-text-muted/40 bg-background p-2 disabled:cursor-not-allowed disabled:opacity-70"
                     value={draft.variant_id}
                     onChange={(e) => setDraft({ ...draft, variant_id: e.target.value })}
+                    disabled={!isAdd}
                 >
                     {variantsForMenu.map((v) => (
                         <option key={v.variant_id} value={v.variant_id}>
-                            {displayVariantLabel(v.label)} {v.is_default ? "(default)" : ""}
+                            {displayVariantLabel(v.label)}
                         </option>
                     ))}
                 </select>
 
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Ingredient</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">Ingredient</label>
                 {lockIngredient ? (
-                    <div className="mb-2 rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm">
-                        {draft.ingredient_id}
-                        <span className="ml-2 text-xs text-[var(--text-secondary)]">(แก้จำนวนอย่างเดียว)</span>
+                    <div className="mb-3 rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm">
+                        <div className="font-medium">{selectedIngredientName}</div>
                     </div>
                 ) : (
-                    <div className="mb-2">
+                    <div className="mb-3">
                         <IngredientCombobox
                             ingredients={ingredients}
                             value={draft.ingredient_id}
@@ -116,23 +130,23 @@ export default function AddIngredientModal({
                             disabledIds={disabledIds}
                             recentIds={recentIds}
                             onPickRecent={onPickRecent}
-                            emptyHint="ไม่เจอวัตถุดิบ — ไปเพิ่มที่ Ingredients"
+                            emptyHint="No ingredient found - create it in Ingredients first"
                         />
                     </div>
                 )}
 
                 {duplicateSelected ? (
                     <div className="mb-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm">
-                        วัตถุดิบนี้มีในสูตรแล้ว — กด Save แล้วระบบจะ <b>อัปเดตจำนวน</b> ให้ (ไม่เพิ่มซ้ำ)
+                        This ingredient already exists in this recipe. Saving will update quantity.
                     </div>
                 ) : null}
 
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Quantity (per drink)</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">Quantity (per drink)</label>
                 <input
                     type="text"
                     inputMode="decimal"
-                    placeholder="เช่น 1, 0.5, 12.5"
-                    className="w-full p-2 rounded-lg bg-background border border-text-muted/40 mb-2"
+                    placeholder="e.g. 1, 0.5, 12.5"
+                    className="mb-1 w-full rounded-lg border border-text-muted/40 bg-background p-2"
                     value={qtyInput}
                     onChange={(e) => {
                         if (e.target.value.trim() === "") {
@@ -142,23 +156,25 @@ export default function AddIngredientModal({
                         const cleaned = sanitizeDecimalInput(e.target.value);
                         if (cleaned !== "") setQtyInput(cleaned);
                     }}
-                    onBlur={() => setQtyInput((v) => v.trim())}
+                    onBlur={() => {
+                        setQtyTouched(true);
+                        setQtyInput((v) => v.trim());
+                    }}
                 />
-                <div className="text-xs text-[var(--text-secondary)] mb-4">
-                    ระบบจะเช็คตอนกด Save ว่าต้องมากกว่า 0
-                </div>
+                {selectedIngredientUnitLabel ? (
+                    <div className="mb-1 text-xs text-[var(--text-secondary)]">Unit: {selectedIngredientUnitLabel}</div>
+                ) : null}
+                {quantityError ? <div className="mb-2 text-xs text-red-400">{quantityError}</div> : null}
 
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2 pt-1">
                     <Button variant="outline" onClick={onClose}>
                         Cancel
                     </Button>
                     <Button
+                        disabled={!canSave}
                         onClick={() => {
-                            const qty = parsePositiveNumber(qtyInput);
-                            if (!draft.variant_id || !draft.ingredient_id || qty == null) {
-                                alert("กรอกให้ครบ: variant + วัตถุดิบ + quantity (>0)");
-                                return;
-                            }
+                            setQtyTouched(true);
+                            if (!draft.variant_id || !draft.ingredient_id || qty == null) return;
                             onSave({
                                 id: draft.id,
                                 variant_id: draft.variant_id,

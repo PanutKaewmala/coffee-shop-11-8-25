@@ -1,6 +1,7 @@
 // app/api/ingredients/analytics/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -71,10 +72,35 @@ function usageFromLog(l: Pick<StockLogRow, "amount" | "type">): number {
 
 export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
 
     const ingredientId = req.nextUrl.searchParams.get("ingredient_id");
     if (!isUUID(ingredientId)) {
         return NextResponse.json({ error: "Missing ingredient_id" }, { status: 400 });
+    }
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+    if (!currentBranchId) {
+        return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", auth.user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) {
+        return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
     }
 
     const now = new Date();
@@ -83,10 +109,12 @@ export async function GET(req: NextRequest) {
     const sinceToday = startOfBangkokDayISO(now);
 
     // 1) ingredient current stock (ดึง min_stock ด้วย)
-    const ingRes = await supabase
+    const ingRes = await admin
         .from("ingredients")
         .select("id,name,stock,min_stock,base_unit,unit,updated_at")
         .eq("id", ingredientId)
+        .eq("shop_id", currentShopId)
+        .filter("branch_id", "eq", currentBranchId)
         .single<IngredientRow>();
 
     if (ingRes.error || !ingRes.data) {
@@ -101,10 +129,12 @@ export async function GET(req: NextRequest) {
     const minStock = num((ingredient as unknown as { min_stock?: unknown }).min_stock);
 
     // 2) stock_logs (7 วันล่าสุด)
-    const logsRes = await supabase
+    const logsRes = await admin
         .from("stock_logs")
         .select("id,ingredient_id,amount,type,created_at")
         .eq("ingredient_id", ingredientId)
+        .eq("shop_id", currentShopId)
+        .filter("branch_id", "eq", currentBranchId)
         .gte("created_at", since7d)
         .order("created_at", { ascending: false });
 
@@ -143,9 +173,10 @@ export async function GET(req: NextRequest) {
 
     // 10) Top Menu Consumers (30 days)
     // A) recipe_items -> perUnit usage per variant
-    const recipeRes = await supabase
+    const recipeRes = await admin
         .from("recipe_items")
         .select("variant_id,ingredient_id,quantity")
+        .eq("shop_id", currentShopId)
         .eq("ingredient_id", ingredientId);
 
     if (recipeRes.error) {
@@ -172,9 +203,10 @@ export async function GET(req: NextRequest) {
         // B) order_items last 30 days (sum qty per variant)
         const variantOrderQty = new Map<UUID, number>();
         for (const c of chunk(variantIds, 200)) {
-            const oiRes = await supabase
+            const oiRes = await admin
                 .from("order_items")
                 .select("variant_id,qty,created_at")
+                .eq("shop_id", currentShopId)
                 .in("variant_id", c)
                 .gte("created_at", since30d);
 
@@ -195,9 +227,10 @@ export async function GET(req: NextRequest) {
         }
 
         // C) menu_variants join menu (ชื่อเมนู)
-        const mvRes = await supabase
+        const mvRes = await admin
             .from("menu_variants")
             .select("id,menu_id,menu:menu_id(id,name)")
+            .eq("shop_id", currentShopId)
             .in("id", variantIds);
 
         if (mvRes.error) {

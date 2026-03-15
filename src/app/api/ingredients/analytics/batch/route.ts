@@ -1,6 +1,7 @@
 // app/api/ingredients/analytics/batch/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,29 @@ function usageFromLog(l: StockLogRow): number {
 
 export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+    if (!currentBranchId) {
+        return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", auth.user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
 
     let body: unknown;
     try {
@@ -76,9 +100,11 @@ export async function POST(req: NextRequest) {
     const sinceToday = startOfLocalDayISO();
 
     // 1) fetch ingredients (current stock)
-    const ingRes = await supabase
+    const ingRes = await admin
         .from("ingredients")
         .select("id,name,stock,base_unit,unit")
+        .eq("shop_id", currentShopId)
+        .filter("branch_id", "eq", currentBranchId)
         .in("id", ids);
 
     if (ingRes.error) {
@@ -88,9 +114,11 @@ export async function POST(req: NextRequest) {
     const ingredients = (ingRes.data ?? []) as IngredientRow[];
 
     // 2) fetch logs last 7d for these ingredients
-    const logsRes = await supabase
+    const logsRes = await admin
         .from("stock_logs")
         .select("ingredient_id,amount,type,created_at")
+        .eq("shop_id", currentShopId)
+        .filter("branch_id", "eq", currentBranchId)
         .in("ingredient_id", ids)
         .gte("created_at", since7d);
 
