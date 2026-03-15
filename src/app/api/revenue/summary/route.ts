@@ -1,6 +1,6 @@
 // app/api/revenue/summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -95,16 +95,21 @@ function getRanges(preset: Preset, todayKey: string) {
     };
 }
 
-async function sumAndCountPaid(startISO: string, endISO: string) {
+async function sumAndCountPaid(startISO: string, endISO: string, currentBranchId: string | null) {
     const supabase = await getSupabaseServer();
 
-    const { data, error, count } = await supabase
+    let query = supabase
         .from("orders")
         .select("total", { count: "exact" })
         .eq("status", "paid")
         .gte("paid_at", startISO)
-        .lt("paid_at", endISO)
-        .returns<PaidOrderRow[]>();
+        .lt("paid_at", endISO);
+
+    if (currentBranchId) {
+        query = query.filter("branch_id", "eq", currentBranchId);
+    }
+
+    const { data, error, count } = await query.returns<PaidOrderRow[]>();
 
     if (error) throw new Error(error.message);
 
@@ -116,6 +121,7 @@ async function sumAndCountPaid(startISO: string, endISO: string) {
 
 export async function GET(req: NextRequest) {
     try {
+        const { currentBranchId } = await getCurrentContextFromCookies();
         const presetRaw = req.nextUrl.searchParams.get("preset");
         const preset: Preset =
             presetRaw === "today" || presetRaw === "7days" || presetRaw === "month"
@@ -126,8 +132,8 @@ export async function GET(req: NextRequest) {
         const { current, previous } = getRanges(preset, todayKey);
 
         const [cur, prev] = await Promise.all([
-            sumAndCountPaid(current.startISO, current.endISO),
-            sumAndCountPaid(previous.startISO, previous.endISO),
+            sumAndCountPaid(current.startISO, current.endISO, currentBranchId),
+            sumAndCountPaid(previous.startISO, previous.endISO, currentBranchId),
         ]);
 
         const out: Summary = {

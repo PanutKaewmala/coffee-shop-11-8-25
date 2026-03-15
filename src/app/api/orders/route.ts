@@ -1,7 +1,9 @@
 // app/api/orders/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { deductStock } from "@/lib/deductStock";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
 
@@ -144,7 +146,32 @@ function buildVariantLabel(opts: { serveTypeName?: string | null; size?: string 
 ============================================ */
 export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
     const id = req.nextUrl.searchParams.get("id");
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+    if (!currentBranchId) {
+        return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", auth.user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) {
+        return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+    }
 
     const select = `
     id,
@@ -181,12 +208,15 @@ export async function GET(req: NextRequest) {
   `;
 
     if (id) {
-        const { data, error } = await supabase
+        const q = admin
             .from("orders")
             .select(select)
+            .eq("shop_id", currentShopId)
             .eq("id", id)
-            .single()
-            .returns<OrderWithItemsRow>();
+            .filter("branch_id", "eq", currentBranchId)
+            .single();
+
+        const { data, error } = await q.returns<OrderWithItemsRow>();
 
         if (error || !data) {
             return NextResponse.json(
@@ -237,11 +267,15 @@ export async function GET(req: NextRequest) {
         });
     }
 
-    const { data, error } = await supabase
+    let listQ = admin
         .from("orders")
         .select(select)
-        .order("created_at", { ascending: false })
-        .returns<OrderWithItemsRow[]>();
+        .eq("shop_id", currentShopId)
+        .order("created_at", { ascending: false });
+
+    listQ = listQ.filter("branch_id", "eq", currentBranchId);
+
+    const { data, error } = await listQ.returns<OrderWithItemsRow[]>();
 
     if (error || !data) {
         return NextResponse.json(
@@ -301,9 +335,36 @@ export async function GET(req: NextRequest) {
 ============================================ */
 export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
     let createdOrderId: string | null = null;
+    let scopedShopId: string | null = null;
 
     try {
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+        scopedShopId = currentShopId;
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member) {
+            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+
         const raw = (await req.json().catch(() => null)) as IncomingBody | null;
         const rawItems = raw?.items;
 
@@ -338,9 +399,10 @@ export async function POST(req: NextRequest) {
 
         const menuIds = Array.from(new Set(normalized.map((i) => i.menu_id)));
 
-        const { data: menus, error: menuErr } = await supabase
+        const { data: menus, error: menuErr } = await admin
             .from("menu")
             .select("id, name, price")
+            .eq("shop_id", currentShopId)
             .in("id", menuIds)
             .returns<MenuRow[]>();
 
@@ -358,9 +420,10 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const { data: menuVariantsMini, error: mvMiniErr } = await supabase
+        const { data: menuVariantsMini, error: mvMiniErr } = await admin
             .from("menu_variants")
             .select("id, menu_id")
+            .eq("shop_id", currentShopId)
             .in("menu_id", menuIds)
             .returns<MenuVariantMiniRow[]>();
 
@@ -368,9 +431,10 @@ export async function POST(req: NextRequest) {
 
         const menusWithVariants = new Set<string>((menuVariantsMini ?? []).map((v) => v.menu_id));
 
-        const { data: defaultsMini, error: defErr } = await supabase
+        const { data: defaultsMini, error: defErr } = await admin
             .from("menu_variants")
             .select("id, menu_id")
+            .eq("shop_id", currentShopId)
             .in("menu_id", menuIds)
             .eq("is_default", true)
             .returns<MenuVariantMiniRow[]>();
@@ -412,9 +476,10 @@ export async function POST(req: NextRequest) {
 
         const variantIds = Array.from(new Set(items.map((i) => i.variant_id))) as string[];
 
-        const { data: variants, error: vErr } = await supabase
+        const { data: variants, error: vErr } = await admin
             .from("menu_variants")
             .select("id, menu_id, price_override, serve_type_id, size")
+            .eq("shop_id", currentShopId)
             .in("id", variantIds)
             .returns<VariantRow[]>();
 
@@ -438,9 +503,10 @@ export async function POST(req: NextRequest) {
 
         const serveTypeIds = Array.from(new Set((variants ?? []).map((v) => v.serve_type_id).filter(Boolean)));
 
-        const { data: serveTypes, error: stErr } = await supabase
+        const { data: serveTypes, error: stErr } = await admin
             .from("menu_serve_types")
             .select("id, name")
+            .eq("shop_id", currentShopId)
             .in("id", serveTypeIds)
             .returns<ServeTypeRow[]>();
 
@@ -472,17 +538,23 @@ export async function POST(req: NextRequest) {
 
         const total = itemsToInsert.reduce((sum, i) => sum + i.price * i.qty, 0);
 
-        const { data: createdOrder, error: orderErr } = await supabase
+        const orderPayloadBase: Database["public"]["Tables"]["orders"]["Insert"] = {
+            total,
+            status: "paid",
+            payment_method,
+            paid_at: new Date().toISOString(),
+            note,
+            shop_id: currentShopId,
+        };
+
+        const orderPayload = {
+            ...orderPayloadBase,
+            branch_id: currentBranchId,
+        } as unknown as Database["public"]["Tables"]["orders"]["Insert"];
+
+        const { data: createdOrder, error: orderErr } = await admin
             .from("orders")
-            .insert([
-                {
-                    total,
-                    status: "paid",
-                    payment_method,
-                    paid_at: new Date().toISOString(),
-                    note,
-                },
-            ])
+            .insert([orderPayload])
             .select("id,total,created_at,status,payment_method,paid_at,note")
             .single()
             .returns<
@@ -501,20 +573,25 @@ export async function POST(req: NextRequest) {
 
         createdOrderId = createdOrder.id;
 
-        const { error: itemErr } = await supabase.from("order_items").insert(
-            itemsToInsert.map((i) => ({
-                order_id: createdOrderId,
-                menu_id: i.menu_id,
-                variant_id: i.variant_id,
-                variant_label: i.variant_label,
-                name: i.name,
-                price: i.price,
-                qty: i.qty,
-            }))
-        );
+        const orderItemPayload = itemsToInsert.map((i) => ({
+            order_id: createdOrderId,
+            menu_id: i.menu_id,
+            variant_id: i.variant_id,
+            variant_label: i.variant_label,
+            name: i.name,
+            price: i.price,
+            qty: i.qty,
+            shop_id: currentShopId,
+        })) as Database["public"]["Tables"]["order_items"]["Insert"][];
+
+        const { error: itemErr } = await admin.from("order_items").insert(orderItemPayload);
 
         if (itemErr) {
-            await supabase.from("orders").delete().eq("id", createdOrderId);
+            await admin
+                .from("orders")
+                .delete()
+                .eq("id", createdOrderId)
+                .eq("shop_id", currentShopId);
             createdOrderId = null;
             return NextResponse.json({ error: itemErr.message }, { status: 500 });
         }
@@ -526,8 +603,16 @@ export async function POST(req: NextRequest) {
         });
 
         if (!result.success) {
-            await supabase.from("order_items").delete().eq("order_id", createdOrderId);
-            await supabase.from("orders").delete().eq("id", createdOrderId);
+            await admin
+                .from("order_items")
+                .delete()
+                .eq("order_id", createdOrderId)
+                .eq("shop_id", currentShopId);
+            await admin
+                .from("orders")
+                .delete()
+                .eq("id", createdOrderId)
+                .eq("shop_id", currentShopId);
             createdOrderId = null;
 
             return NextResponse.json(
@@ -545,9 +630,21 @@ export async function POST(req: NextRequest) {
         console.error(err);
 
         if (createdOrderId) {
-            const supa = getSupabaseServer();
-            await supa.from("order_items").delete().eq("order_id", createdOrderId);
-            await supa.from("orders").delete().eq("id", createdOrderId);
+            if (scopedShopId) {
+                await admin
+                    .from("order_items")
+                    .delete()
+                    .eq("order_id", createdOrderId)
+                    .eq("shop_id", scopedShopId);
+                await admin
+                    .from("orders")
+                    .delete()
+                    .eq("id", createdOrderId)
+                    .eq("shop_id", scopedShopId);
+            } else {
+                await admin.from("order_items").delete().eq("order_id", createdOrderId);
+                await admin.from("orders").delete().eq("id", createdOrderId);
+            }
         }
 
         const msg = err instanceof Error ? err.message : "Server error while creating order";

@@ -1,6 +1,6 @@
 // app/api/revenue/route.ts
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 
 /* =========================
    Helpers
@@ -173,6 +173,7 @@ function buildBucket(range: RangeType, startLocal: Date | null, now: Date): Reco
 export async function GET(req: Request) {
   try {
     const supabase = await getSupabaseServer();
+    const { currentBranchId } = await getCurrentContextFromCookies();
     const { searchParams } = new URL(req.url);
     const range = (searchParams.get("range") || "today") as RangeType;
 
@@ -215,6 +216,7 @@ export async function GET(req: Request) {
       .order("paid_at", { ascending: false })
       .range(0, 99999);
 
+    if (currentBranchId) paidQuery = paidQuery.filter("branch_id", "eq", currentBranchId);
     if (startUTCISO) paidQuery = paidQuery.gte("paid_at", startUTCISO);
 
     let allQuery = supabase
@@ -223,6 +225,7 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false })
       .range(0, 200); // recent enough for dashboard
 
+    if (currentBranchId) allQuery = allQuery.filter("branch_id", "eq", currentBranchId);
     if (startUTCISO) allQuery = allQuery.gte("created_at", startUTCISO);
 
     const [{ data: paidRaw, error: paidErr }, { data: allRaw, error: allErr }] = await Promise.all([
