@@ -38,7 +38,6 @@ export default function VariantSelector({
             {variants.map((v) => (
                 <option key={v.variant_id} value={v.variant_id}>
                     {displayVariantLabel(v.label)}
-                    {v.is_default ? " (default)" : ""}
                 </option>
             ))}
         </select>

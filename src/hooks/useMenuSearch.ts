@@ -6,6 +6,7 @@ import type { MenuItem } from "@/lib/types";
 
 interface UseMenuSearchOptions {
     rowsPerPage?: number;
+    includeDisabled?: boolean;
 }
 
 /* =========================
@@ -120,7 +121,10 @@ type NormalizedMenuItem = Omit<MenuItem, "serve_types" | "category"> & {
 /* =========================
    Main hook
 ========================= */
-export default function useMenuSearch({ rowsPerPage = 20 }: UseMenuSearchOptions = {}) {
+export default function useMenuSearch({
+    rowsPerPage = 20,
+    includeDisabled = false,
+}: UseMenuSearchOptions = {}) {
     const [menuItems, setMenuItems] = useState<NormalizedMenuItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -136,7 +140,10 @@ export default function useMenuSearch({ rowsPerPage = 20 }: UseMenuSearchOptions
         setLoading(true);
 
         try {
-            const res = await fetch("/api/menu", { cache: "no-store" });
+            const params = new URLSearchParams();
+            if (includeDisabled) params.set("include_disabled", "1");
+            const url = params.size > 0 ? `/api/menu?${params.toString()}` : "/api/menu";
+            const res = await fetch(url, { cache: "no-store" });
             const raw: unknown = await res.json().catch(() => null);
             const list = parseMenuResponse(raw);
 
@@ -154,12 +161,17 @@ export default function useMenuSearch({ rowsPerPage = 20 }: UseMenuSearchOptions
                     serve_types_from_prices.length > 0
                         ? Array.from(new Set(serve_types_from_prices))
                         : serve_types_fallback;
+                const is_enabled_in_branch =
+                    typeof rec.is_enabled_in_branch === "boolean"
+                        ? rec.is_enabled_in_branch
+                        : true;
 
                 return {
                     ...(m as unknown as Omit<MenuItem, "serve_types" | "category">),
                     category,
                     serve_types,
                     serve_prices,
+                    is_enabled_in_branch,
                 };
             });
 
@@ -170,7 +182,7 @@ export default function useMenuSearch({ rowsPerPage = 20 }: UseMenuSearchOptions
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [includeDisabled]);
 
     useEffect(() => {
         loadMenu();

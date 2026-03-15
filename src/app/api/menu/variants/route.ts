@@ -1,6 +1,7 @@
 // app/api/menu/variants/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +9,6 @@ export const dynamic = "force-dynamic";
    Types
 ========================= */
 type UUID = string;
-
-type ServeTypeJoined = { id: UUID; name: string };
 
 type MenuVariantRow = {
     id: UUID;
@@ -22,15 +21,10 @@ type MenuVariantRow = {
     created_at: string;
 };
 
-type MenuVariantJoinedRow = MenuVariantRow & {
-    serve_type: ServeTypeJoined | null; // many-to-one join -> object|null
-};
-
 type VariantView = {
     id: UUID;
     menu_id: UUID;
     serve_type_id: UUID;
-    serve_type: ServeTypeJoined | null;
     serve_type_name: string | null;
     size: string;
     price_override: number | null;
@@ -80,13 +74,12 @@ function toNumberOrNull(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
-function toView(row: MenuVariantJoinedRow): VariantView {
+function toView(row: MenuVariantRow, serveTypeName: string | null): VariantView {
     return {
         id: row.id,
         menu_id: row.menu_id,
         serve_type_id: row.serve_type_id,
-        serve_type: row.serve_type ?? null,
-        serve_type_name: row.serve_type?.name ?? null,
+        serve_type_name: serveTypeName,
         size: row.size,
         price_override: row.price_override ?? null,
         image_url: row.image_url ?? null,
@@ -95,11 +88,7 @@ function toView(row: MenuVariantJoinedRow): VariantView {
     };
 }
 
-/**
- * FK name ใน join ต้องตรงกับของจริงใน DB
- * ของคุณ: menu_variants_serve_type_id_fkey
- */
-const SELECT_JOIN = `
+const SELECT_BASE = `
   id,
   menu_id,
   serve_type_id,
@@ -107,11 +96,34 @@ const SELECT_JOIN = `
   price_override,
   image_url,
   is_default,
-  created_at,
-  serve_type:menu_serve_types!menu_variants_serve_type_id_fkey (
-    id, name
-  )
+  created_at
 `;
+
+async function loadServeTypeNameMap(args: {
+    supabase: Awaited<ReturnType<typeof getSupabaseServer>>;
+    serveTypeIds: UUID[];
+    shopId?: string | null;
+}) {
+    const { supabase, serveTypeIds, shopId } = args;
+    const map = new Map<UUID, string>();
+    if (!serveTypeIds.length) return map;
+
+    let q = supabase
+        .from("menu_serve_types")
+        .select("id,name")
+        .in("id", serveTypeIds);
+    if (shopId) q = q.eq("shop_id", shopId);
+
+    const { data, error } = await q;
+
+    if (error) return map;
+
+    for (const row of data ?? []) {
+        if (row.id && row.name) map.set(row.id, row.name);
+    }
+
+    return map;
+}
 
 /**
  * หา "ตัวแทน default" ในกลุ่มเดียวกัน (menu_id, serve_type_id) โดยไม่เอาตัวเดิม
@@ -145,6 +157,7 @@ async function findReplacementVariantId(args: {
 export async function GET(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
         const url = new URL(req.url);
 
         const id = url.searchParams.get("id");
@@ -152,28 +165,59 @@ export async function GET(req: NextRequest) {
         const serve_type_id = url.searchParams.get("serve_type_id");
         const is_default_q = url.searchParams.get("is_default");
 
-        if (id) {
-            const { data, error } = await supabase
-                .from("menu_variants")
-                .select(SELECT_JOIN)
-                .eq("id", id)
-                .single();
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-            if (error || !data) {
+        const { currentShopId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+
+        const { data: member, error: memberErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", auth.user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (memberErr) return NextResponse.json({ error: memberErr.message }, { status: 500 });
+        if (!member) {
+            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+
+        if (id) {
+            const { data, error } = await admin
+                .from("menu_variants")
+                .select(SELECT_BASE)
+                .eq("id", id)
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (error) {
                 return NextResponse.json(
-                    { error: error?.message ?? "Variant not found" },
-                    { status: 404 }
+                    { error: error.message },
+                    { status: 500 }
                 );
             }
+            if (!data) return NextResponse.json({ error: "Variant not found" }, { status: 404 });
+
+            const row = data as unknown as MenuVariantRow;
+            const serveTypeMap = await loadServeTypeNameMap({
+                supabase: admin,
+                serveTypeIds: row.serve_type_id ? [row.serve_type_id] : [],
+                shopId: currentShopId,
+            });
 
             return NextResponse.json({
-                variant: toView(data as unknown as MenuVariantJoinedRow),
+                variant: toView(row, serveTypeMap.get(row.serve_type_id) ?? null),
             });
         }
 
-        let q = supabase
+        let q = admin
             .from("menu_variants")
-            .select(SELECT_JOIN)
+            .select(SELECT_BASE)
+            .eq("shop_id", currentShopId)
             .order("created_at", { ascending: false });
 
         if (menu_id) q = q.eq("menu_id", menu_id);
@@ -183,8 +227,19 @@ export async function GET(req: NextRequest) {
         const { data, error } = await q;
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-        const list = (data ?? []) as unknown as MenuVariantJoinedRow[];
-        return NextResponse.json({ variants: list.map(toView) });
+        const list = (data ?? []) as unknown as MenuVariantRow[];
+        const serveTypeIds = Array.from(
+            new Set(list.map((r) => r.serve_type_id).filter(Boolean))
+        ) as UUID[];
+        const serveTypeMap = await loadServeTypeNameMap({
+            supabase: admin,
+            serveTypeIds,
+            shopId: currentShopId,
+        });
+
+        return NextResponse.json({
+            variants: list.map((row) => toView(row, serveTypeMap.get(row.serve_type_id) ?? null)),
+        });
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Server error";
         return NextResponse.json({ error: msg }, { status: 500 });
@@ -240,7 +295,7 @@ export async function POST(req: NextRequest) {
         const { data, error } = await supabase
             .from("menu_variants")
             .insert(payload)
-            .select(SELECT_JOIN)
+            .select(SELECT_BASE)
             .single();
 
         if (error || !data) {
@@ -250,8 +305,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const row = data as unknown as MenuVariantRow;
+        const serveTypeMap = await loadServeTypeNameMap({
+            supabase,
+            serveTypeIds: row.serve_type_id ? [row.serve_type_id] : [],
+        });
+
         return NextResponse.json(
-            { variant: toView(data as unknown as MenuVariantJoinedRow) },
+            { variant: toView(row, serveTypeMap.get(row.serve_type_id) ?? null) },
             { status: 201 }
         );
     } catch (err) {
@@ -350,7 +411,7 @@ export async function PUT(req: NextRequest) {
             .from("menu_variants")
             .update(update)
             .eq("id", id)
-            .select(SELECT_JOIN)
+            .select(SELECT_BASE)
             .single();
 
         if (error || !data) {
@@ -360,8 +421,14 @@ export async function PUT(req: NextRequest) {
             );
         }
 
+        const row = data as unknown as MenuVariantRow;
+        const serveTypeMap = await loadServeTypeNameMap({
+            supabase,
+            serveTypeIds: row.serve_type_id ? [row.serve_type_id] : [],
+        });
+
         return NextResponse.json({
-            variant: toView(data as unknown as MenuVariantJoinedRow),
+            variant: toView(row, serveTypeMap.get(row.serve_type_id) ?? null),
         });
     } catch (err) {
         const msg = err instanceof Error ? err.message : "Server error";

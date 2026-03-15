@@ -10,7 +10,14 @@ type MenuCard = {
     category: string | null;
     created_at: string;
     variantCount: number;
+    recipeItemCount: number;
+    coverageStatus: "empty_variant" | "no_recipe" | "partial_recipe" | "full_recipe";
 };
+
+function coverageText(item: MenuCard): string {
+    if (item.coverageStatus === "empty_variant") return "No variant";
+    return `${item.recipeItemCount}/${item.variantCount} variants with recipe`;
+}
 
 export default function MenuPickerPanel({
     loading,
@@ -28,11 +35,13 @@ export default function MenuPickerPanel({
     onSelectMenu: (id: string) => void;
     search: string;
     setSearch: (v: string) => void;
-    filter: "all" | "empty";
-    setFilter: (v: "all" | "empty") => void;
+    filter: "all" | "empty" | "no_recipe" | "partial_recipe" | "has_recipe";
+    setFilter: (v: "all" | "empty" | "no_recipe" | "partial_recipe" | "has_recipe") => void;
 }) {
+    const showEmptyFilter = process.env.NEXT_PUBLIC_SHOW_EMPTY_VARIANT_FILTER === "true";
+
     return (
-        <div className="rounded-2xl border border-[var(--text-muted)]/15 bg-[var(--surface)] p-4 space-y-3">
+        <div className="space-y-3 rounded-2xl border border-[var(--text-muted)]/15 bg-[var(--surface)] p-4">
             <div className="flex items-center justify-between">
                 <div className="font-semibold">Menus</div>
                 <div className="text-xs text-[var(--text-secondary)]">{items.length}</div>
@@ -40,24 +49,42 @@ export default function MenuPickerPanel({
 
             <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาเมนู..." />
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                 <button
                     onClick={() => setFilter("all")}
-                    className={`px-3 py-1 rounded-full text-sm border ${filter === "all" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"
-                        }`}
+                    className={`rounded-full border px-3 py-1 text-sm ${filter === "all" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"}`}
                 >
                     ทั้งหมด
                 </button>
                 <button
-                    onClick={() => setFilter("empty")}
-                    className={`px-3 py-1 rounded-full text-sm border ${filter === "empty" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"
-                        }`}
+                    onClick={() => setFilter("no_recipe")}
+                    className={`rounded-full border px-3 py-1 text-sm ${filter === "no_recipe" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"}`}
                 >
-                    ไม่มี Variant
+                    ไม่มีสูตร
                 </button>
+                <button
+                    onClick={() => setFilter("partial_recipe")}
+                    className={`rounded-full border px-3 py-1 text-sm ${filter === "partial_recipe" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"}`}
+                >
+                    สูตรไม่ครบ
+                </button>
+                <button
+                    onClick={() => setFilter("has_recipe")}
+                    className={`rounded-full border px-3 py-1 text-sm ${filter === "has_recipe" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"}`}
+                >
+                    สูตรครบแล้ว
+                </button>
+                {showEmptyFilter ? (
+                    <button
+                        onClick={() => setFilter("empty")}
+                        className={`rounded-full border px-3 py-1 text-sm ${filter === "empty" ? "border-[var(--accent)]" : "border-[var(--text-muted)]/25"}`}
+                    >
+                        ไม่มี Variant
+                    </button>
+                ) : null}
             </div>
 
-            <div className="space-y-2 max-h-[65vh] overflow-auto pr-1">
+            <div className="max-h-[65vh] space-y-2 overflow-auto pr-1">
                 {loading ? (
                     <div className="text-sm text-[var(--text-secondary)]">Loading...</div>
                 ) : items.length === 0 ? (
@@ -69,19 +96,17 @@ export default function MenuPickerPanel({
                             <button
                                 key={m.id}
                                 onClick={() => onSelectMenu(m.id)}
-                                className={`w-full text-left rounded-xl p-3 border transition ${active
-                                        ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                                        : "border-[var(--text-muted)]/15 hover:border-[var(--text-muted)]/30"
-                                    }`}
+                                className={`w-full rounded-xl border p-3 text-left transition ${active ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--text-muted)]/15 hover:border-[var(--text-muted)]/30"}`}
                             >
                                 <div className="flex items-center justify-between gap-3">
-                                    <div className="font-medium truncate">{m.name}</div>
-                                    <div className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                                    <div className="truncate font-medium">{m.name}</div>
+                                    <div className="whitespace-nowrap text-xs text-[var(--text-secondary)]">
                                         {m.variantCount} variants
                                     </div>
                                 </div>
+                                <div className="mt-1 text-xs text-[var(--text-secondary)]">{coverageText(m)}</div>
                                 {m.category ? (
-                                    <div className="text-xs text-[var(--text-secondary)] mt-1">{m.category}</div>
+                                    <div className="mt-1 text-xs text-[var(--text-secondary)]">{m.category}</div>
                                 ) : null}
                             </button>
                         );
