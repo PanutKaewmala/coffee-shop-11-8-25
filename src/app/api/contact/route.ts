@@ -1,4 +1,6 @@
 import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolvePublicShopId } from "@/lib/publicShop";
 import { NextRequest, NextResponse } from "next/server";
 
 /* ===========================================
@@ -117,6 +119,7 @@ export async function POST(req: NextRequest) {
     const email = str(body.email).trim();
     const message = str(body.message).trim();
     const categoryRaw: unknown = body.category;
+    const bodyShopId = str(body.shop_id).trim();
 
     if (!name || !email || !message) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -127,6 +130,35 @@ export async function POST(req: NextRequest) {
         : "other";
 
     const supabase = await getSupabaseServer();
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+
+    if (!user) {
+        const { shopId, mismatch } = resolvePublicShopId(req.nextUrl.searchParams, bodyShopId);
+        if (mismatch) {
+            return NextResponse.json({ error: "shop_id mismatch" }, { status: 403 });
+        }
+        if (!shopId) {
+            return NextResponse.json(
+                { error: "Public shop not configured" },
+                { status: 409 }
+            );
+        }
+
+        const admin = getSupabaseAdmin();
+        const { data, error } = await admin
+            .from("contact")
+            .insert([{ name, email, message, category: safeCategory, shop_id: shopId }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Supabase Insert Error →", error);
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json(data, { status: 201 });
+    }
 
     const { data, error } = await supabase
         .from("contact")

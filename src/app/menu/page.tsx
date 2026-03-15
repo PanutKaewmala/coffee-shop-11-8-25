@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import MenuCard from "@/components/MenuCard";
 import type { MenuWithRelations } from "@/lib/types";
+import { withPublicShopId } from "@/lib/publicShop";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null;
@@ -38,7 +39,7 @@ export default function MenuSection() {
             try {
                 setLoading(true);
 
-                const res = await fetch("/api/menu", { cache: "no-store" });
+                const res = await fetch(withPublicShopId("/api/menu"), { cache: "no-store" });
                 const data: unknown = await res.json();
 
                 const list = asMenuList(data);

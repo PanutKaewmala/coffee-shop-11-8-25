@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { withPublicShopId } from "@/lib/publicShop";
 
 export interface NewsItem {
     id: string;
@@ -19,7 +20,7 @@ export default function NewsSection() {
     useEffect(() => {
         const fetchNews = async () => {
             try {
-                const res = await fetch("/api/news");
+                const res = await fetch(withPublicShopId("/api/news"), { cache: "no-store" });
                 const data = await res.json();
 
                 // Optional: sort by date desc

@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { Branch } from "@/lib/types";
+import { withPublicShopId } from "@/lib/publicShop";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
+
+function pickBranchFromResponse(v: unknown): Branch | null {
+    if (!v) return null;
+    if (isRecord(v) && "data" in v) {
+        const data = (v as { data?: unknown }).data;
+        return (data && isRecord(data)) ? (data as Branch) : null;
+    }
+    return isRecord(v) ? (v as Branch) : null;
+}
 
 export default function ContactInfo() {
     const [branch, setBranch] = useState<Branch | null>(null);
@@ -13,14 +27,15 @@ export default function ContactInfo() {
         const loadBranches = async () => {
             try {
                 // โหลด primary branch
-                const res = await fetch("/api/branch/primary");
-                const primary = await res.json();
+                const res = await fetch(withPublicShopId("/api/branch/primary"));
+                const primaryRaw = await res.json();
 
                 // โหลดสาขาทั้งหมด
-                const allRes = await fetch("/api/branch?all=true");
+                const allRes = await fetch(withPublicShopId("/api/branch?all=true"));
                 const all = await allRes.json();
 
                 setBranches(all);
+                const primary = pickBranchFromResponse(primaryRaw);
                 setBranch(primary?.id ? primary : all[0] || null);
             } catch (err) {
                 console.error("Failed to load branches →", err);

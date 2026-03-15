@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { HeroData } from "@/lib/types";
+import { withPublicShopId } from "@/lib/publicShop";
 
 export default function Hero() {
     const { theme } = useTheme();
@@ -26,7 +27,7 @@ export default function Hero() {
     useEffect(() => {
         const fetchHero = async () => {
             try {
-                const res = await fetch("/api/hero");
+                const res = await fetch(withPublicShopId("/api/hero"));
                 if (!res.ok) throw new Error("Failed to fetch hero");
                 const json = await res.json();
 

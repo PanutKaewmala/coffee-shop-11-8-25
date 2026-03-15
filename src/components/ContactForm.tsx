@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getPublicShopIdFromEnv } from "@/lib/publicShop";
 
 interface ApiError {
     error?: string;
@@ -31,10 +32,13 @@ export default function ContactForm() {
         setSuccess(null);
 
         try {
+            const shopId = getPublicShopIdFromEnv();
+            const payload = shopId ? { ...formData, shop_id: shopId } : formData;
+
             const res = await fetch("/api/contact", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(payload),
             });
 
             const data = (await res.json()) as ApiError;
