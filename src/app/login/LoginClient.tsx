@@ -15,7 +15,7 @@ function safeNext(raw: string | null) {
 
 type EnsureResult =
     | { action: "go"; href: string }
-    | { action: "select-shop"; href: "/select-shop" }
+    | { action: "select-shop"; href: "/admin/select-shop" }
     | { action: "select-branch"; href: "/select-branch" };
 
 async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -65,11 +65,11 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
 
         if (pickShop.mode === "none") {
             // user has no shop membership -> treat as must pick/create later
-            return { action: "select-shop", href: "/select-shop" };
+            return { action: "select-shop", href: "/admin/select-shop" };
         }
 
         if (pickShop.mode === "multiple") {
-            return { action: "select-shop", href: "/select-shop" };
+            return { action: "select-shop", href: "/admin/select-shop" };
         }
 
         // single

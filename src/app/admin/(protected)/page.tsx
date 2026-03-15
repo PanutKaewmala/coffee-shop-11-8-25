@@ -201,10 +201,10 @@ export default function AdminDashboard() {
         async function load() {
             try {
                 const [menuRes, branchRes, newsRes, contactRes] = await Promise.all([
-                    fetch("/api/menu"),
-                    fetch("/api/branch?all=true"),
-                    fetch("/api/news"),
-                    fetch("/api/contact"),
+                    fetch("/api/menu", { cache: "no-store" }),
+                    fetch("/api/branch?all=true", { cache: "no-store" }),
+                    fetch("/api/news", { cache: "no-store" }),
+                    fetch("/api/contact", { cache: "no-store" }),
                 ]);
 
                 const menu: unknown = await menuRes.json().catch(() => null);
@@ -244,7 +244,7 @@ export default function AdminDashboard() {
                 setLoading(true);
                 setError(null);
 
-                const res = await fetch(`/api/revenue?range=${range}`);
+                const res = await fetch(`/api/revenue?range=${range}`, { cache: "no-store" });
                 const data: unknown = await res.json().catch(() => null);
 
                 if (!res.ok) {

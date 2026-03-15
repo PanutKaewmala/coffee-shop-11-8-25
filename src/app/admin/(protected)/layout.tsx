@@ -6,7 +6,7 @@ import AdminShell from "../AdminShell";
 
 // routes
 const LOGIN_NEXT = "/login?next=/admin";
-const SELECT_SHOP = "/select-shop?next=/admin";
+const SELECT_SHOP = "/admin/select-shop?next=/admin";
 
 export default async function ProtectedAdminLayout({ children }: { children: ReactNode }) {
     const { user, currentShopId, currentBranchId } = await getServerIdentity();
