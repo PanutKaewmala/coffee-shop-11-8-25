@@ -7,14 +7,18 @@ interface UseBranchSearchOptions {
     rowsPerPage?: number;
 }
 
+type BranchListResponse = {
+    data?: Branch[];
+    totalPages?: number;
+    error?: string;
+};
+
 export default function useBranchSearch({
     rowsPerPage = 10,
 }: UseBranchSearchOptions = {}) {
-    /* --------------------------------
-     * STATE
-     * -------------------------------- */
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const [search, setSearch] = useState("");
     const [primary, setPrimary] = useState<"all" | "primary">("all");
@@ -23,18 +27,14 @@ export default function useBranchSearch({
     const [inputPage, setInputPage] = useState("1");
     const [totalPages, setTotalPages] = useState(1);
 
-    // ⭐ trigger refresh manually (เมื่อ CRUD เสร็จ)
     const [reloadTrigger, setReloadTrigger] = useState(0);
 
-    /* --------------------------------
-     * FETCH DATA (With filters)
-     * -------------------------------- */
     const fetchList = useCallback(async () => {
         setLoading(true);
+        setError(null);
 
         try {
             const params = new URLSearchParams();
-
             params.set("page", String(page));
             params.set("limit", String(rowsPerPage));
 
@@ -42,56 +42,56 @@ export default function useBranchSearch({
             if (primary === "primary") params.set("primary", "true");
 
             const res = await fetch(`/api/branch?${params.toString()}`);
-            const json = await res.json();
+            if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                throw new Error(text || `Request failed: ${res.status}`);
+            }
 
-            setBranches(json.data || []);
-            setTotalPages(json.totalPages || 1);
+            const json = (await res.json()) as BranchListResponse;
+            if (json.error) {
+                throw new Error(json.error);
+            }
+
+            setBranches(Array.isArray(json.data) ? json.data : []);
+            setTotalPages(
+                Number.isFinite(Number(json.totalPages)) && Number(json.totalPages) > 0
+                    ? Number(json.totalPages)
+                    : 1
+            );
             setInputPage(String(page));
         } catch (err) {
-            console.error("useBranchSearch error →", err);
+            const msg = err instanceof Error ? err.message : "Failed to load branches";
+            console.error("useBranchSearch error ->", msg);
+            setError(msg);
             setBranches([]);
+            setTotalPages(1);
+            setInputPage(String(page));
         } finally {
             setLoading(false);
         }
     }, [page, rowsPerPage, search, primary]);
 
-    /* --------------------------------
-     * load on mount + whenever filter/pagination changes
-     * + reloadTrigger (CRUD refresh)
-     * -------------------------------- */
     useEffect(() => {
         fetchList();
-    }, [fetchList, reloadTrigger]); // ⭐ FIX: reload on CRUD
+    }, [fetchList, reloadTrigger]);
 
-
-    /* --------------------------------
-     * PUBLIC: reload entire list (don’t reset filters/page)
-     * -------------------------------- */
     const reloadList = useCallback(() => {
-        setReloadTrigger((x) => x + 1);     // ⭐ force re-fetch
+        setReloadTrigger((x) => x + 1);
     }, []);
 
-
-    /* --------------------------------
-     * RETURN
-     * -------------------------------- */
     return {
         branches,
         loading,
-
+        error,
         search,
         setSearch,
-
         primary,
         setPrimary,
-
         page,
         setPage,
         totalPages,
-
         inputPage,
         setInputPage,
-
-        reloadList, // ⭐ NEW: now correctly triggers refresh
+        reloadList,
     };
 }

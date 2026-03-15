@@ -78,6 +78,7 @@ export type MenuWithRelations = {
 
   // legacy support
   serve_types: string[] | ServeTypeWithDefault[];
+  is_enabled_in_branch?: boolean;
 
   created_at?: string | null;
 };

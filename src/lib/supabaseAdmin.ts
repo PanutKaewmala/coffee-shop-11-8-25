@@ -1,39 +1,21 @@
-// lib/supabaseServer.ts
+// src/lib/supabaseAdmin.ts
 import "server-only";
-import { cookies } from "next/headers";
+
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/lib/database.types";
 
-export async function getSupabaseServerAsync() {
-    const cookieStore = await cookies();
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    return createServerClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll: () => cookieStore.getAll(),
-                setAll: (cookiesToSet) => {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) => {
-                            cookieStore.set({ name, value, ...options });
-                        });
-                    } catch { }
-                },
-            },
-        }
-    );
-}
-
-export function getSupabaseServer() {
-    return createServerClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-            cookies: {
-                getAll: () => [],
-                setAll: () => { },
-            },
-        }
-    );
+/**
+ * Service-role client (bypasses RLS). Use ONLY in server routes after
+ * verifying user + membership/authorization.
+ */
+export function getSupabaseAdmin() {
+    return createServerClient<Database>(SUPABASE_URL, SERVICE_ROLE_KEY, {
+        cookies: {
+            getAll: () => [],
+            setAll: () => {},
+        },
+    });
 }
