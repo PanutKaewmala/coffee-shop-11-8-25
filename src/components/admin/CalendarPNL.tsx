@@ -33,6 +33,12 @@ function toLocalISO(d: Date) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Parse local date key YYYY-MM-DD -> local Date */
+function fromLocalISO(iso: string) {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+}
+
 /** Hex -> r,g,b */
 function hexToRGB(hex: string) {
     const h = hex.replace("#", "").trim();
@@ -55,16 +61,23 @@ function hexToRGB(hex: string) {
 export default function CalendarPNL({ orders, range }: Props) {
     const [selectedMonth, setSelectedMonth] = React.useState<string>("");
 
+    // Keep calendar sales aligned with successful orders only
+    const paidOrders = React.useMemo(() => {
+        return orders.filter((o) => !o.status || o.status === "paid");
+    }, [orders]);
+
     // 1) Build daily totals keyed by LOCAL date (YYYY-MM-DD)
     const dailyMapLocal = React.useMemo(() => {
         const m = new Map<string, number>();
-        for (const o of orders) {
-            const d = new Date(o.created_at);
+        for (const o of paidOrders) {
+            const keyISO = o.paid_at ?? o.created_at;
+            const d = new Date(keyISO);
+            if (Number.isNaN(d.getTime())) continue;
             const key = toLocalISO(d);
             m.set(key, (m.get(key) || 0) + (o.total ?? 0));
         }
         return m;
-    }, [orders]);
+    }, [paidOrders]);
 
     // 2) Build rangeDates
     const rangeDates = React.useMemo(() => {
@@ -73,10 +86,12 @@ export default function CalendarPNL({ orders, range }: Props) {
         const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
         if (range === "all") {
-            if (orders.length === 0) return s;
+            if (paidOrders.length === 0) return s;
             let earliest: Date | null = null;
-            for (const o of orders) {
-                const d = new Date(o.created_at);
+            for (const o of paidOrders) {
+                const keyISO = o.paid_at ?? o.created_at;
+                const d = new Date(keyISO);
+                if (Number.isNaN(d.getTime())) continue;
                 const localDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
                 if (!earliest || localDay < earliest) earliest = localDay;
             }
@@ -104,14 +119,14 @@ export default function CalendarPNL({ orders, range }: Props) {
             s.add(toLocalISO(new Date(d)));
         }
         return s;
-    }, [orders, range]);
+    }, [paidOrders, range]);
 
     // 3) Month list
     const monthList = React.useMemo(() => {
         if (rangeDates.size === 0) return [] as string[];
         const days = Array.from(rangeDates).sort((a, b) => a.localeCompare(b));
-        const first = new Date(days[0]);
-        const last = new Date(days[days.length - 1]);
+        const first = fromLocalISO(days[0]);
+        const last = fromLocalISO(days[days.length - 1]);
         const months: string[] = [];
         const cur = new Date(first.getFullYear(), first.getMonth(), 1);
         const end = new Date(last.getFullYear(), last.getMonth(), 1);
@@ -122,11 +137,39 @@ export default function CalendarPNL({ orders, range }: Props) {
         return months;
     }, [rangeDates]);
 
+    // Months in current range that actually contain paid sales
+    const monthsWithData = React.useMemo(() => {
+        const s = new Set<string>();
+        for (const day of rangeDates) {
+            if (!dailyMapLocal.has(day)) continue;
+            s.add(day.slice(0, 7));
+        }
+        return s;
+    }, [dailyMapLocal, rangeDates]);
+
     // 4) default selected month
     React.useEffect(() => {
-        if (monthList.length) setSelectedMonth(monthList[monthList.length - 1]);
-        else setSelectedMonth("");
-    }, [monthList]);
+        if (!monthList.length) {
+            setSelectedMonth("");
+            return;
+        }
+
+        const latestMonthWithData = [...monthList]
+            .reverse()
+            .find((m) => monthsWithData.has(m));
+
+        setSelectedMonth((prev) => {
+            if (
+                prev &&
+                monthList.includes(prev) &&
+                (monthsWithData.size === 0 || monthsWithData.has(prev))
+            ) {
+                return prev;
+            }
+            if (latestMonthWithData) return latestMonthWithData;
+            return monthList[monthList.length - 1];
+        });
+    }, [monthList, monthsWithData]);
 
     // 5) max value for intensity
     const maxVal = React.useMemo(() => {
