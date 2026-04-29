@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Coffee Shop POS / Management System
 
-## Getting Started
+A practice web application for managing a small coffee shop business.
 
-First, run the development server:
+This project was built to practice web application development, system flow planning, database usage, authentication, and AI-assisted development workflow.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Overview
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This system is designed for a coffee shop / drink shop that needs basic tools for managing menu items, orders, stock, branches, and dashboard data.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Key Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- User authentication
+- Shop / branch context
+- Role-based access concept
+- Menu management
+- POS / order checkout flow
+- Stock management concept
+- Dashboard pages
+- Supabase integration
+- Responsive web UI
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+- Next.js
+- React
+- TypeScript
+- Supabase
+- Tailwind CSS
+- Vercel
+- Git / GitHub
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## My Role
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+I used this project to practice building a real-world web application flow.
 
-## Deploy on Vercel
+My main focus was:
+- Understanding requirements
+- Breaking features into smaller tasks
+- Using AI as a development assistant
+- Reviewing generated code
+- Testing user flows
+- Fixing issues during development
+- Improving the overall system structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## What I Learned
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- How to structure a web application
+- How authentication and database flow work
+- How to connect frontend with backend services
+- How to test features from a user perspective
+- How to use AI tools responsibly during development
+
+## Live Demo
+
+https://coffee-shop-11-8-25.vercel.app
+
+## Status
+
+This is a learning / portfolio project.  
+Some features may still be under development, but the project shows my ability to plan, build, test, and improve a web application using modern tools.
