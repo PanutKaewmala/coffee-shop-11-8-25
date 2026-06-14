@@ -157,29 +157,45 @@ function parsePosContext(data: unknown): PosContextView {
     const shops = asArray<unknown>(raw.shops);
     const branches = asArray<unknown>(raw.branches);
 
-    const shopName =
-        shops
-            .map((x) => (isRecord(x) ? x : null))
-            .find(
-                (x) =>
-                    x &&
-                    typeof x.id === "string" &&
-                    x.id === shopId &&
-                    typeof x.name === "string"
-            )?.name ?? null;
+    const shopObj = shops.map((x) => (isRecord(x) ? x : null)).find((x) =>
+        Boolean(
+            x && typeof x.id === "string" && x.id === shopId && typeof x.name === "string"
+        )
+    );
+    const shopName = isRecord(shopObj) && typeof shopObj.name === "string" ? shopObj.name : null;
 
-    const branchName =
-        branches
-            .map((x) => (isRecord(x) ? x : null))
-            .find(
-                (x) =>
-                    x &&
-                    typeof x.id === "string" &&
-                    x.id === branchId &&
-                    typeof x.name === "string"
-            )?.name ?? null;
+    const branchObj = branches.map((x) => (isRecord(x) ? x : null)).find((x) =>
+        Boolean(
+            x && typeof x.id === "string" && x.id === branchId && typeof x.name === "string"
+        )
+    );
+    const branchName = isRecord(branchObj) && typeof branchObj.name === "string" ? branchObj.name : null;
 
     return { shopId, shopName, branchId, branchName };
+}
+
+function formatPrice(n: number) {
+    try {
+        return new Intl.NumberFormat("th-TH", {
+            style: "currency",
+            currency: "THB",
+            maximumFractionDigits: 2,
+        }).format(n);
+    } catch {
+        return String(n);
+    }
+}
+
+function generateIdempotencyKey(): string {
+    const c = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
+    if (c && typeof c.randomUUID === "function") {
+        try {
+            return c.randomUUID();
+        } catch {
+            // fallthrough to fallback
+        }
+    }
+    return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /* =========================
@@ -213,6 +229,7 @@ export default function POSPage() {
     const [menu, setMenu] = useState<PosMenuItem[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const idempotencyKeyRef = useRef<string | null>(null);
     const [feedError, setFeedError] = useState<string | null>(null);
     const [feedbackText, setFeedbackText] = useState<string | null>(null);
     const [lastTouchedVariantId, setLastTouchedVariantId] = useState<string | null>(null);
@@ -531,6 +548,14 @@ export default function POSPage() {
     /* -------------------- CHECKOUT -------------------- */
     async function checkout() {
         if (cart.length === 0) return;
+
+        // Prevent multiple concurrent checkout attempts from generating
+        // distinct idempotency keys. If a checkout is already in progress,
+        // bail out early.
+        if (idempotencyKeyRef.current) return;
+
+        // Reserve a stable idempotency key for the duration of this request.
+        idempotencyKeyRef.current = generateIdempotencyKey();
         setLoading(true);
 
         try {
@@ -543,15 +568,14 @@ export default function POSPage() {
 
             const res = await fetch("/api/pos", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKeyRef.current ?? "" },
                 body: JSON.stringify(payload),
             });
             const debugText = await res.clone().text().catch(() => "");
 
             const raw: unknown = await res.json().catch(() => {
-                const txt = debugText;
-                console.error("⚠️ /api/pos returned non-JSON:", txt);
-                return {};
+                console.error("⚠️ /api/pos returned non-JSON:", debugText);
+                return null;
             });
 
             const data: PosCheckoutResponse = isRecord(raw) ? (raw as PosCheckoutResponse) : {};
@@ -572,7 +596,7 @@ export default function POSPage() {
 
                 const msg =
                     (typeof data.error === "string" && data.error) ||
-                    (isRecord(raw) && typeof raw.message === "string" ? raw.message : "") ||
+                    (isRecord(raw) && typeof (raw as any).message === "string" ? (raw as any).message : "") ||
                     (debugText.trim() ? debugText : "") ||
                     (res.status === 400
                         ? "ข้อมูลไม่ครบ/สต็อกไม่พอ/ไม่มีสูตร (เช็ค recipe_items)"
@@ -582,12 +606,25 @@ export default function POSPage() {
                 return;
             }
 
+            // If server returned success flag, verify it before clearing cart
+            if (!data.success) {
+                const msg = (typeof data.error === "string" && data.error) || "ปิดบิลล้มเหลว";
+                alert(msg);
+                return;
+            }
+
+            const order = isRecord(data.order) ? (data.order as Record<string, unknown>) : null;
+            const orderId = order && (order.id ?? (order as any).order_id) ? String(order.id ?? (order as any).order_id) : "";
+            const orderTotal = order && typeof (order as any).total === "number" ? ((order as any).total as number) : total;
+
             setCart([]);
-            alert("✅ ปิดบิลสำเร็จ");
+            alert(`✅ ปิดบิลสำเร็จ — Order ${orderId || "(unknown)"}\nยอดรวม: ${formatPrice(orderTotal)}`);
         } catch (err) {
             console.error("ปิดบิลผิดพลาด:", err);
             alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
         } finally {
+            // Clear active idempotency key only after request completes
+            idempotencyKeyRef.current = null;
             setLoading(false);
         }
     }
@@ -670,7 +707,7 @@ export default function POSPage() {
                                             {item.name}
                                         </div>
                                         <div className="text-text-secondary">
-                                            เริ่มต้น {getMinVariantPrice(item)} บาท
+                                            เริ่มต้น {formatPrice(getMinVariantPrice(item))}
                                         </div>
                                     </div>
 
@@ -705,10 +742,9 @@ export default function POSPage() {
                                                             ? "bg-accent text-white border-accent"
                                                             : "bg-[var(--text-muted)]/10 text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
                                                     ].join(" ")}
-                                                    title={`${serveLabel(v)} — ${toNumber(
-                                                        v.price,
-                                                        item.price
-                                                    )} บาท`}
+                                                    title={`${serveLabel(v)} — ${formatPrice(
+                                                        toNumber(v.price, item.price)
+                                                    )}`}
                                                 >
                                                     {serveLabel(v)}
                                                 </button>
@@ -754,7 +790,7 @@ export default function POSPage() {
                                         </div>
                                     </div>
 
-                                    <div className="font-bold text-text-primary">{g.groupTotal}</div>
+                                    <div className="font-bold text-text-primary">{formatPrice(g.groupTotal)}</div>
                                 </div>
 
                                 <div className="mt-3 space-y-2">
@@ -776,7 +812,7 @@ export default function POSPage() {
                                                         • {it.variant_label}
                                                     </div>
                                                     <div className="text-xs text-text-muted">
-                                                        {it.qty} × {it.price} บาท
+                                                        {it.qty} × {formatPrice(it.price)}
                                                     </div>
                                                 </div>
 
@@ -817,7 +853,7 @@ export default function POSPage() {
                 <div className="mt-4 border-t border-[var(--text-muted)]/20 pt-4">
                     <div className="flex justify-between text-lg font-bold text-text-primary">
                         <span>ยอดรวมทั้งหมด</span>
-                        <span>{total} บาท</span>
+                        <span>{formatPrice(total)}</span>
                     </div>
 
                     <button

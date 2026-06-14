@@ -279,6 +279,7 @@ export default function RecipeEditorPanel({
         return (
             <div className="rounded-2xl border border-[var(--text-muted)]/15 bg-[var(--surface)] p-6 text-center text-[var(--text-secondary)]">
                 เมนูนี้ยังไม่มี Variant — ไปสร้าง Variant ก่อน แล้วกลับมาที่นี่
+                <div className="mt-2 text-sm text-[var(--text-secondary)]">Note: Menus require at least one Variant with a recipe to appear in POS.</div>
                 <div className="mt-4 flex items-center justify-center gap-2">
                     <Button onClick={() => router.push("/admin/menu")}>
                         ไปสร้าง Variant
@@ -324,7 +325,9 @@ export default function RecipeEditorPanel({
                 <div className="text-sm text-[var(--text-secondary)]">Loading recipe...</div>
             ) : filtered.length === 0 ? (
                 <div className="rounded-xl border border-[var(--text-muted)]/20 p-6 text-center text-[var(--text-secondary)]">
-                    Variant นี้ยังไม่มีสูตร — กด <span className="text-[var(--accent)] font-semibold">Add Ingredient</span> เพื่อเริ่ม
+                    <div className="font-semibold">This variant has no recipe</div>
+                    <div className="mt-2 text-sm text-[var(--text-secondary)]">This variant will not appear in POS until ingredients are added.</div>
+                    <div className="mt-3">Press <span className="text-[var(--accent)] font-semibold">Add Ingredient</span> to create a recipe.</div>
                 </div>
             ) : (
                 <>

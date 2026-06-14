@@ -14,9 +14,40 @@ type MenuCard = {
     coverageStatus: "empty_variant" | "no_recipe" | "partial_recipe" | "full_recipe";
 };
 
-function coverageText(item: MenuCard): string {
-    if (item.coverageStatus === "empty_variant") return "No variant";
-    return `${item.recipeItemCount}/${item.variantCount} variants with recipe`;
+import React from "react";
+
+function coverageText(item: MenuCard): React.ReactNode {
+    const { coverageStatus, variantCount, recipeItemCount } = item;
+
+    if (coverageStatus === "empty_variant") {
+        return <span className="text-sm text-[var(--text-secondary)]">No variant</span>;
+    }
+
+    if (coverageStatus === "full_recipe") {
+        return (
+            <div className="text-sm">
+                <div className="font-semibold text-[var(--accent)]">Ready for POS</div>
+                <div className="text-xs text-[var(--text-secondary)]">{recipeItemCount}/{variantCount} variants ready</div>
+            </div>
+        );
+    }
+
+    if (coverageStatus === "no_recipe") {
+        return (
+            <div className="space-y-1">
+                <div className="font-semibold text-amber-400">Hidden from POS</div>
+                <div className="text-xs text-[var(--text-secondary)]">{recipeItemCount}/{variantCount} variants ready — This menu is hidden from POS until at least one variant has a recipe.</div>
+            </div>
+        );
+    }
+
+    // partial_recipe
+    return (
+        <div className="space-y-1">
+            <div className="font-semibold text-yellow-300">{recipeItemCount}/{variantCount} variants ready</div>
+            <div className="text-xs text-[var(--text-secondary)]">Some variants are missing recipes and will be hidden from POS until recipes are added.</div>
+        </div>
+    );
 }
 
 export default function MenuPickerPanel({
