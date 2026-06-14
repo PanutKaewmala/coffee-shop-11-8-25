@@ -137,7 +137,7 @@ export async function PUT(req: NextRequest) {
         .select("id, is_system")
         .eq("id", id)
         .eq("shop_id", ctx.shopId)
-        .maybeSingle();
+        .maybeSingle<{ id: string; is_system: boolean }>();
 
     if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
     if (!st) return NextResponse.json({ error: "Serve type not found" }, { status: 404 });
@@ -184,7 +184,7 @@ export async function DELETE(req: NextRequest) {
         .from("menu_serve_types")
         .select("id, shop_id, system_key, is_system")
         .eq("id", id)
-        .maybeSingle();
+        .maybeSingle<{ id: string; shop_id: string; system_key: string | null; is_system: boolean }>();
 
     if (stErr) return NextResponse.json({ error: stErr.message }, { status: 500 });
     if (!st) return NextResponse.json({ error: "Not found" }, { status: 404 });

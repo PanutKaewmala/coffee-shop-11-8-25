@@ -14,6 +14,16 @@ import useContactSearch from "@/hooks/useContactSearch";
 
 import type { ContactRow, ContactCategory } from "@/lib/types";
 
+// UI-facing contact shape (returned by useContactSearch) — keep minimal and permissive
+type ContactUI = {
+    id: string;
+    name: string;
+    email?: string | null;
+    message?: string | null;
+    category?: unknown;
+    created_at?: string | null;
+};
+
 // badge style (ครอบคลุม enum ทั้งหมด + fallback)
 const categoryColor: Record<string, string> = {
     praise: "bg-emerald-600 text-white",
@@ -25,7 +35,7 @@ const categoryColor: Record<string, string> = {
     feedback: "bg-green-600 text-white",
 };
 
-function safeCategory(c: ContactRow): ContactCategory | "other" {
+function safeCategory(c: { category?: unknown } /* permissive: accepts UI/DB shapes */): ContactCategory | "other" {
     // schema: category ไม่ null แต่กันไว้ให้ชัวร์
     return (c.category ?? "other") as ContactCategory | "other";
 }
@@ -50,9 +60,9 @@ export default function ContactAdminPage() {
        Modal State
     ------------------------- */
     const [showModal, setShowModal] = useState(false);
-    const [selectedContact, setSelectedContact] = useState<ContactRow | null>(null);
+    const [selectedContact, setSelectedContact] = useState<ContactUI | null>(null);
 
-    const handleView = (c: ContactRow) => {
+    const handleView = (c: ContactUI) => {
         setSelectedContact(c);
         setShowModal(true);
     };

@@ -130,7 +130,7 @@ async function loadServeTypeNameMap(args: {
  * - ถ้าไม่มี => null
  */
 async function findReplacementVariantId(args: {
-    supabase: ReturnType<typeof getSupabaseServer>;
+    supabase: Awaited<ReturnType<typeof getSupabaseServer>>;
     menu_id: UUID;
     serve_type_id: UUID;
     exclude_id: UUID;

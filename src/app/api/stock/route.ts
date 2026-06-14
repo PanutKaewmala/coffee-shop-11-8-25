@@ -262,7 +262,7 @@ type OrderItemJoinRow = {
 };
 
 async function fetchOrderMenuLinesByOrderIds(
-    supabase: ReturnType<typeof getSupabaseServer>,
+    supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
     orderIds: string[],
     currentShopId: string
 ): Promise<Map<string, OrderMenuLine[]>> {
@@ -347,12 +347,11 @@ async function countCriticalActiveIngredients(
         .from("ingredients")
         .select("stock,min_stock,is_active")
         .eq("shop_id", currentShopId)
-        .eq("is_active", true)
-        .returns<IngredientCriticalRow[]>();
+        .eq("is_active", true);
 
-    if (currentBranchId) q = q.filter("branch_id", "eq", currentBranchId);
+    if (currentBranchId) q = q.eq("branch_id", currentBranchId);
 
-    const { data, error } = await q;
+    const { data, error } = await q.returns<IngredientCriticalRow[]>();
 
     if (error) return 0;
 
@@ -406,12 +405,11 @@ export async function GET(req: NextRequest) {
                 .select("id,name,unit,base_unit,stock,min_stock,is_active")
                 .eq("shop_id", currentShopId)
                 .eq("is_active", true)
-                .order("stock", { ascending: true })
-                .returns<IngredientCriticalListRow[]>();
+                .order("stock", { ascending: true });
 
-            if (currentBranchId) q = q.filter("branch_id", "eq", currentBranchId);
+            if (currentBranchId) q = q.eq("branch_id", currentBranchId);
 
-            const { data, error } = await q;
+            const { data, error } = await q.returns<IngredientCriticalListRow[]>();
 
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
