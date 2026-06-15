@@ -22,7 +22,7 @@ function asMenuList(data: unknown): MenuWithRelations[] {
     return [];
 }
 
-export default function MenuSection() {
+export default function MenuSection({ shopId }: { shopId?: string | null }) {
     const { theme } = useTheme();
 
     const [menuItems, setMenuItems] = useState<MenuWithRelations[]>([]);
@@ -39,7 +39,7 @@ export default function MenuSection() {
             try {
                 setLoading(true);
 
-                const res = await fetch(withPublicShopId("/api/menu"), { cache: "no-store" });
+                const res = await fetch(withPublicShopId("/api/menu", shopId), { cache: "no-store" });
                 const data: unknown = await res.json();
 
                 const list = asMenuList(data);
@@ -61,7 +61,7 @@ export default function MenuSection() {
         return () => {
             alive = false;
         };
-    }, []);
+    }, [shopId]);
 
     /* -----------------------------
      * Categories = string ล้วน

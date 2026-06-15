@@ -1,8 +1,13 @@
 "use client";
+import { usePathname } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
+import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
 export default function Footer() {
     const year = new Date().getFullYear();
+    const pathname = usePathname();
+    const isTenantRoute = isPublicTenantPath(pathname);
+    const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
 
     return (
         <footer className="py-10 transition-colors duration-300 bg-surface text-foreground">
@@ -20,7 +25,7 @@ export default function Footer() {
                         {["Home", "Menu", "News"].map((item) => (
                             <a
                                 key={item}
-                                href={`#${item.toLowerCase()}`}
+                                href={isTenantRoute ? `${tenantBase}${item.toLowerCase() === "home" ? "" : `/${item.toLowerCase()}`}` : `#${item.toLowerCase()}`}
                                 className="rounded-lg transition-colors hover:opacity-80"
                             >
                                 {item}

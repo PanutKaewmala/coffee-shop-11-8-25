@@ -18,7 +18,7 @@ function pickBranchFromResponse(v: unknown): Branch | null {
     return isRecord(v) ? (v as Branch) : null;
 }
 
-export default function ContactInfo() {
+export default function ContactInfo({ shopId }: { shopId?: string | null }) {
     const [branch, setBranch] = useState<Branch | null>(null);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(true);
@@ -27,11 +27,11 @@ export default function ContactInfo() {
         const loadBranches = async () => {
             try {
                 // โหลด primary branch
-                const res = await fetch(withPublicShopId("/api/branch/primary"));
+                const res = await fetch(withPublicShopId("/api/branch/primary", shopId));
                 const primaryRaw = await res.json();
 
                 // โหลดสาขาทั้งหมด
-                const allRes = await fetch(withPublicShopId("/api/branch?all=true"));
+                const allRes = await fetch(withPublicShopId("/api/branch?all=true", shopId));
                 const all = await allRes.json();
 
                 setBranches(all);
@@ -45,7 +45,7 @@ export default function ContactInfo() {
         };
 
         loadBranches();
-    }, []);
+    }, [shopId]);
 
     if (loading) return <p className="text-text-muted p-6">Loading branch info...</p>;
     if (!branch) return <p className="text-text-muted p-6">No branch information available.</p>;

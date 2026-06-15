@@ -13,14 +13,14 @@ export interface NewsItem {
     created_at: string;
 }
 
-export default function NewsSection() {
+export default function NewsSection({ shopId }: { shopId?: string | null }) {
     const [news, setNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchNews = async () => {
             try {
-                const res = await fetch(withPublicShopId("/api/news"), { cache: "no-store" });
+                const res = await fetch(withPublicShopId("/api/news", shopId), { cache: "no-store" });
                 const data = await res.json();
 
                 // Optional: sort by date desc
@@ -38,7 +38,7 @@ export default function NewsSection() {
         };
 
         fetchNews();
-    }, []);
+    }, [shopId]);
 
     return (
         <section

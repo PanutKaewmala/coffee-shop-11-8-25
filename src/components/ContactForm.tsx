@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { getPublicShopIdFromEnv } from "@/lib/publicShop";
+import { getPublicShopIdFromEnv, withPublicShopId } from "@/lib/publicShop";
 
 interface ApiError {
     error?: string;
 }
 
-export default function ContactForm() {
+export default function ContactForm({ shopId }: { shopId?: string | null }) {
     const [formData, setFormData] = useState({
         name: "",
         email: "",
@@ -32,10 +32,10 @@ export default function ContactForm() {
         setSuccess(null);
 
         try {
-            const shopId = getPublicShopIdFromEnv();
-            const payload = shopId ? { ...formData, shop_id: shopId } : formData;
+            const resolvedShopId = shopId ?? getPublicShopIdFromEnv();
+            const payload = resolvedShopId ? { ...formData, shop_id: resolvedShopId } : formData;
 
-            const res = await fetch("/api/contact", {
+            const res = await fetch(withPublicShopId("/api/contact", resolvedShopId), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),

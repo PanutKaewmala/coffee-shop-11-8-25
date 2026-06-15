@@ -2,14 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
 import { Moon, Sun, Menu, X } from "lucide-react";
+import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
 export default function Navbar() {
     const { theme, toggleTheme } = useTheme();
+    const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
     const navItems = ["home", "menu", "news", "contact"];
+    const isTenantRoute = isPublicTenantPath(pathname);
+    const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">
@@ -57,7 +62,7 @@ export default function Navbar() {
                             {navItems.map((item) => (
                                 <li key={item}>
                                     <Link
-                                        href={`#${item}`}
+                                        href={isTenantRoute ? `${tenantBase}${item === "home" ? "" : `/${item}`}` : `#${item}`}
                                         className="px-3 py-1.5 rounded-lg transition-colors hover:opacity-80"
                                         style={{ color: "var(--color-foreground)" }}
                                     >
@@ -85,7 +90,7 @@ export default function Navbar() {
                         </button>
 
                         <Link
-                            href="#menu"
+                            href={isTenantRoute ? `${tenantBase}/menu` : "#menu"}
                             className="px-6 py-2 rounded-full font-semibold text-white
                         bg-gradient-to-r from-accent to-accent-dark
                         text-surface shadow-sm
@@ -120,7 +125,7 @@ export default function Navbar() {
                                 {navItems.map((item) => (
                                     <li key={item}>
                                         <Link
-                                            href={`#${item}`}
+                                            href={isTenantRoute ? `${tenantBase}${item === "home" ? "" : `/${item}`}` : `#${item}`}
                                             onClick={() => setOpen(false)}
                                             className="block px-3 py-2 rounded-lg transition-colors hover:opacity-80"
                                             style={{ color: "var(--color-foreground)" }}

@@ -5,7 +5,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { HeroData } from "@/lib/types";
 import { withPublicShopId } from "@/lib/publicShop";
 
-export default function Hero() {
+export default function Hero({ shopId }: { shopId?: string | null }) {
     const { theme } = useTheme();
 
     // default UI ของ Hero
@@ -27,7 +27,7 @@ export default function Hero() {
     useEffect(() => {
         const fetchHero = async () => {
             try {
-                const res = await fetch(withPublicShopId("/api/hero"));
+                const res = await fetch(withPublicShopId("/api/hero", shopId));
                 if (!res.ok) throw new Error("Failed to fetch hero");
                 const json = await res.json();
 
@@ -53,7 +53,7 @@ export default function Hero() {
         };
 
         fetchHero();
-    }, []);
+    }, [shopId]);
 
     if (loading) {
         return (

@@ -164,12 +164,21 @@ function parseServePricing(v: unknown): ServePricingInputRow[] {
    returns: { menu: ApiMenuRow[] }
    includes serve_prices (from menu_variants)
 ========================================================= */
+function isAuthSessionMissingError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return message.includes("AuthSessionMissingError") || message.includes("Auth session missing");
+}
+
 export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
-    const user = auth.user;
+    let user = auth.user ?? null;
+
+    if (authErr && !isAuthSessionMissingError(authErr)) {
+        return NextResponse.json({ error: authErr.message }, { status: 500 });
+    }
+
     const includeDisabled =
         (req.nextUrl.searchParams.get("include_disabled") ?? "").toLowerCase() === "1" ||
         (req.nextUrl.searchParams.get("include_disabled") ?? "").toLowerCase() === "true";

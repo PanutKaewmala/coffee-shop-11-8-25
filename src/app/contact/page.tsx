@@ -3,7 +3,7 @@
 import ContactForm from "@/components/ContactForm";
 import ContactInfo from "@/components/ContactInfo";
 
-export default function ContactPage() {
+export default function ContactPage({ shopId }: { shopId?: string | null }) {
     return (
         <main
             id="contact"
@@ -26,8 +26,8 @@ export default function ContactPage() {
 
                 {/* Layout */}
                 <div className="grid md:grid-cols-2 gap-8">
-                    <ContactInfo />
-                    <ContactForm />
+                    <ContactInfo shopId={shopId} />
+                    <ContactForm shopId={shopId} />
                 </div>
             </div>
         </main>
