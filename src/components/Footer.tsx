@@ -3,18 +3,19 @@ import { usePathname } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
 import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
-export default function Footer() {
+export default function Footer({ shopName }: { shopName?: string | null }) {
     const year = new Date().getFullYear();
     const pathname = usePathname();
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
+    const displayName = shopName?.trim() || "Brew & Bloom";
 
     return (
         <footer className="py-10 transition-colors duration-300 bg-surface text-foreground">
             <div className="max-w-6xl mx-auto grid md:grid-cols-3 sm:grid-cols-2 grid-cols-1 gap-6 px-6">
                 {/* Brand */}
                 <div>
-                    <div className="font-bold text-lg">Brew & Bloom</div>
+                    <div className="font-bold text-lg">{displayName}</div>
                     <p className="text-sm text-foreground/70">Minimal coffee shop</p>
                 </div>
 
@@ -63,7 +64,7 @@ export default function Footer() {
 
             {/* Bottom Row */}
             <div className="max-w-6xl mx-auto mt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm text-foreground/70 px-6">
-                <div>© {year} Brew & Bloom — All rights reserved</div>
+                <div>© {year} {displayName} — All rights reserved</div>
                 <div className="flex gap-3 flex-wrap">
                     <a href="#" className="rounded-lg transition-colors hover:opacity-80">
                         Terms

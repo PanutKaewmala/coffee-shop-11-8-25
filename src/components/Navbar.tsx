@@ -7,7 +7,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { Moon, Sun, Menu, X } from "lucide-react";
 import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
-export default function Navbar() {
+export default function Navbar({ shopName }: { shopName?: string | null }) {
     const { theme, toggleTheme } = useTheme();
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
@@ -15,6 +15,7 @@ export default function Navbar() {
     const navItems = ["home", "menu", "news", "contact"];
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
+    const displayName = shopName?.trim() || "Brew & Bloom";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">
@@ -45,7 +46,7 @@ export default function Navbar() {
                                 style={{ color: "var(--color-foreground)" }}
                                 className="font-bold truncate"
                             >
-                                Brew & Bloom
+                                {displayName}
                             </div>
                             <div
                                 style={{ color: "var(--color-text-secondary)" }}
