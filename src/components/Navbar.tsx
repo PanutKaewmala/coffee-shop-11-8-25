@@ -15,7 +15,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
     const navItems = ["home", "menu", "news", "contact"];
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
-    const displayName = shopName?.trim() || "Brew & Bloom";
+    const displayName = shopName?.trim() || "Coffee SaaS";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import NewsSection from "@/app/news/page";
+import PublicNewsSection from "@/components/public/PublicNewsSection";
 import { resolvePublicShopIdBySlug } from "@/lib/publicTenant";
 
 export default async function ShopSlugNewsPage({
@@ -14,5 +14,5 @@ export default async function ShopSlugNewsPage({
     notFound();
   }
 
-  return <NewsSection shopId={shopId} />;
+  return <PublicNewsSection shopId={shopId} />;
 }

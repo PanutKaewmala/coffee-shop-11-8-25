@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import MenuSection from "@/app/menu/page";
+import PublicMenuSection from "@/components/public/PublicMenuSection";
 import { resolvePublicShopIdBySlug } from "@/lib/publicTenant";
 
 export default async function ShopSlugMenuPage({
@@ -14,5 +14,5 @@ export default async function ShopSlugMenuPage({
     notFound();
   }
 
-  return <MenuSection shopId={shopId} />;
+  return <PublicMenuSection shopId={shopId} />;
 }

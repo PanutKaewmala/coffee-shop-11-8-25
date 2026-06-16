@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import HomePage from "@/app/page";
+import PublicHome from "@/components/public/PublicHome";
 import { resolvePublicShopIdBySlug } from "@/lib/publicTenant";
 
 export default async function ShopSlugHomePage({
@@ -14,5 +14,5 @@ export default async function ShopSlugHomePage({
     notFound();
   }
 
-  return <HomePage shopId={shopId} />;
+  return <PublicHome shopId={shopId} />;
 }

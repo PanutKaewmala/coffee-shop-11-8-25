@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import ContactPage from "@/app/contact/page";
+import PublicContactSection from "@/components/public/PublicContactSection";
 import { resolvePublicShopIdBySlug } from "@/lib/publicTenant";
 
 export default async function ShopSlugContactPage({
@@ -14,5 +14,5 @@ export default async function ShopSlugContactPage({
     notFound();
   }
 
-  return <ContactPage shopId={shopId} />;
+  return <PublicContactSection shopId={shopId} />;
 }

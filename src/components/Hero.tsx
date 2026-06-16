@@ -28,25 +28,26 @@ export default function Hero({ shopId }: { shopId?: string | null }) {
         const fetchHero = async () => {
             try {
                 const res = await fetch(withPublicShopId("/api/hero", shopId));
-                if (!res.ok) throw new Error("Failed to fetch hero");
+                if (!res.ok) {
+                    return;
+                }
                 const json = await res.json();
 
-                // map Supabase field → HeroData
                 const mapped: HeroData = {
-                    title: json.title,
-                    subtitle: json.subtitle,
-                    ctaText: json.cta_text,         // DB column → camelCase
-                    ctaLink: json.cta_link,
-                    secondaryText: json.secondary_text,
-                    secondaryLink: json.secondary_link,
-                    signature: json.signature,
-                    seasonal: json.seasonal,
-                    imageUrl: json.image_url,
+                    title: json.title ?? defaultData.title,
+                    subtitle: json.subtitle ?? defaultData.subtitle,
+                    ctaText: json.cta_text ?? defaultData.ctaText,
+                    ctaLink: json.cta_link ?? defaultData.ctaLink,
+                    secondaryText: json.secondary_text ?? defaultData.secondaryText,
+                    secondaryLink: json.secondary_link ?? defaultData.secondaryLink,
+                    signature: json.signature ?? defaultData.signature,
+                    seasonal: json.seasonal ?? defaultData.seasonal,
+                    imageUrl: json.image_url ?? defaultData.imageUrl,
                 };
 
                 setData(mapped);
-            } catch (error) {
-                console.error("Hero fetch error:", error);
+            } catch {
+                // silently use default data
             } finally {
                 setLoading(false);
             }

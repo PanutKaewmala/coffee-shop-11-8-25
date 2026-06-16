@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Brew & Bloom Coffee",
-  description: "Minimal responsive coffee shop template",
+    title: "Coffee SaaS",
+    description: "Multi-tenant coffee shop management system",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

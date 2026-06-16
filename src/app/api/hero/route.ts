@@ -26,14 +26,14 @@ export async function GET(req: NextRequest) {
             .select("*")
             .eq("shop_id", shopId)
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (error) {
             console.error("Hero fetch error:", error);
-            return NextResponse.json({ error: "Failed to load hero data" }, { status: 500 });
+            return NextResponse.json({}, { status: 200 });
         }
 
-        return NextResponse.json(data);
+        return NextResponse.json(data ?? {});
     }
 
     const { data, error } = await supabase.from("hero").select("*").limit(1).single();

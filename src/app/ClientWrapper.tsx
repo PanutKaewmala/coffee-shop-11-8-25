@@ -55,7 +55,7 @@ export default function ClientWrapper({ children }: { children: ReactNode }) {
         };
     }, [pathname]);
 
-    const displayShopName = shopName ?? "Brew & Bloom";
+    const displayShopName = shopName ?? "Coffee SaaS";
 
     // ซ่อน Navbar / Footer ในหน้า admin, login และ pos
     const hideNavAndFooter =

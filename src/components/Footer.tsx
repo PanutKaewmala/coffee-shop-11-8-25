@@ -8,7 +8,7 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
     const pathname = usePathname();
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
-    const displayName = shopName?.trim() || "Brew & Bloom";
+    const displayName = shopName?.trim() || "Coffee SaaS";
 
     return (
         <footer className="py-10 transition-colors duration-300 bg-surface text-foreground">
