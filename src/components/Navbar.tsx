@@ -12,10 +12,28 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
-    const navItems = ["home", "menu", "news", "contact"];
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
     const displayName = shopName?.trim() || "Coffee SaaS";
+
+    // Non-tenant product navigation vs tenant shop navigation
+    const navItems = isTenantRoute
+        ? ["home", "menu", "news", "contact"]
+        : ["features", "demo-shops", "login"];
+
+    const itemLabel = (item: string) => {
+        return item.charAt(0).toUpperCase() + item.slice(1).replace("-", " ");
+    };
+
+    const itemHref = (item: string) => {
+        if (item === "login") return "/login";
+        return isTenantRoute
+            ? `${tenantBase}${item === "home" ? "" : `/${item}`}`
+            : `#${item}`;
+    };
+
+    const ctaHref = isTenantRoute ? `${tenantBase}/menu` : "/#demo-shops";
+    const ctaLabel = isTenantRoute ? "View Menu" : "Try Demo";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">
@@ -52,7 +70,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                                 style={{ color: "var(--color-text-secondary)" }}
                                 className="text-sm truncate"
                             >
-                                Minimal Coffee
+                                {isTenantRoute ? "Coffee Shop" : "Product"}
                             </div>
                         </div>
                     </div>
@@ -63,11 +81,11 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                             {navItems.map((item) => (
                                 <li key={item}>
                                     <Link
-                                        href={isTenantRoute ? `${tenantBase}${item === "home" ? "" : `/${item}`}` : `#${item}`}
+                                        href={itemHref(item)}
                                         className="px-3 py-1.5 rounded-lg transition-colors hover:opacity-80"
                                         style={{ color: "var(--color-foreground)" }}
                                     >
-                                        {item.charAt(0).toUpperCase() + item.slice(1)}
+                                        {itemLabel(item)}
                                     </Link>
                                 </li>
                             ))}
@@ -86,12 +104,11 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                             onClick={toggleTheme}
                             aria-label="Toggle theme"
                         >
-                            {/* SSR-safe: icon จะ render หลัง ThemeProvider mount */}
                             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
 
                         <Link
-                            href={isTenantRoute ? `${tenantBase}/menu` : "#menu"}
+                            href={ctaHref}
                             className="px-6 py-2 rounded-full font-semibold text-white
                         bg-gradient-to-r from-accent to-accent-dark
                         text-surface shadow-sm
@@ -101,7 +118,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                                 color: "white",
                             }}
                         >
-                            View Menu
+                            {ctaLabel}
                         </Link>
 
                         {/* Mobile menu button */}
@@ -126,12 +143,12 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                                 {navItems.map((item) => (
                                     <li key={item}>
                                         <Link
-                                            href={isTenantRoute ? `${tenantBase}${item === "home" ? "" : `/${item}`}` : `#${item}`}
+                                            href={itemHref(item)}
                                             onClick={() => setOpen(false)}
                                             className="block px-3 py-2 rounded-lg transition-colors hover:opacity-80"
                                             style={{ color: "var(--color-foreground)" }}
                                         >
-                                            {item.charAt(0).toUpperCase() + item.slice(1)}
+                                            {itemLabel(item)}
                                         </Link>
                                     </li>
                                 ))}
