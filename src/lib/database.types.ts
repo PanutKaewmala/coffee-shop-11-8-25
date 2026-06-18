@@ -14,6 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_shopa_mismatch_ingredient_logs: {
+        Row: {
+          after_stock: number | null
+          amount: number | null
+          before_stock: number | null
+          branch_id: string | null
+          created_at: string | null
+          id: string | null
+          ingredient_id: string | null
+          note: string | null
+          order_id: string | null
+          shop_id: string | null
+          type: string | null
+        }
+        Insert: {
+          after_stock?: number | null
+          amount?: number | null
+          before_stock?: number | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ingredient_id?: string | null
+          note?: string | null
+          order_id?: string | null
+          shop_id?: string | null
+          type?: string | null
+        }
+        Update: {
+          after_stock?: number | null
+          amount?: number | null
+          before_stock?: number | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ingredient_id?: string | null
+          note?: string | null
+          order_id?: string | null
+          shop_id?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
+      _backup_stock_logs_shopa_before_fix: {
+        Row: {
+          after_stock: number | null
+          amount: number | null
+          before_stock: number | null
+          branch_id: string | null
+          created_at: string | null
+          id: string | null
+          ingredient_id: string | null
+          note: string | null
+          order_id: string | null
+          shop_id: string | null
+          type: string | null
+        }
+        Insert: {
+          after_stock?: number | null
+          amount?: number | null
+          before_stock?: number | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ingredient_id?: string | null
+          note?: string | null
+          order_id?: string | null
+          shop_id?: string | null
+          type?: string | null
+        }
+        Update: {
+          after_stock?: number | null
+          amount?: number | null
+          before_stock?: number | null
+          branch_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          ingredient_id?: string | null
+          note?: string | null
+          order_id?: string | null
+          shop_id?: string | null
+          type?: string | null
+        }
+        Relationships: []
+      }
       branch: {
         Row: {
           address: string | null
@@ -58,6 +142,55 @@ export type Database = {
           },
         ]
       }
+      branch_menu_availability: {
+        Row: {
+          branch_id: string
+          created_at: string
+          id: string
+          is_enabled: boolean
+          menu_id: string
+          shop_id: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          menu_id: string
+          shop_id?: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          menu_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branch_menu_availability_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_menu_availability_menu_id_fkey"
+            columns: ["menu_id"]
+            isOneToOne: false
+            referencedRelation: "menu"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "branch_menu_availability_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact: {
         Row: {
           category: Database["public"]["Enums"]["contact_category"]
@@ -66,7 +199,7 @@ export type Database = {
           id: string
           message: string | null
           name: string
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           category?: Database["public"]["Enums"]["contact_category"]
@@ -75,7 +208,7 @@ export type Database = {
           id?: string
           message?: string | null
           name: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           category?: Database["public"]["Enums"]["contact_category"]
@@ -84,7 +217,7 @@ export type Database = {
           id?: string
           message?: string | null
           name?: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: []
       }
@@ -133,13 +266,200 @@ export type Database = {
         }
         Relationships: []
       }
+      ingredient_expiry_settings: {
+        Row: {
+          after_open_days: number | null
+          alert_enabled: boolean
+          created_at: string
+          critical_expiry_days: number
+          id: string
+          ingredient_id: string
+          near_expiry_days: number
+          sale_block_mode: string
+          shelf_life_days: number | null
+          shop_id: string
+          tracking_mode: string
+          updated_at: string
+          waste_action_hint: string
+        }
+        Insert: {
+          after_open_days?: number | null
+          alert_enabled?: boolean
+          created_at?: string
+          critical_expiry_days?: number
+          id?: string
+          ingredient_id: string
+          near_expiry_days?: number
+          sale_block_mode?: string
+          shelf_life_days?: number | null
+          shop_id: string
+          tracking_mode?: string
+          updated_at?: string
+          waste_action_hint?: string
+        }
+        Update: {
+          after_open_days?: number | null
+          alert_enabled?: boolean
+          created_at?: string
+          critical_expiry_days?: number
+          id?: string
+          ingredient_id?: string
+          near_expiry_days?: number
+          sale_block_mode?: string
+          shelf_life_days?: number | null
+          shop_id?: string
+          tracking_mode?: string
+          updated_at?: string
+          waste_action_hint?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_expiry_settings_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_expiry_settings_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_expiry_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingredient_lots: {
+        Row: {
+          best_before_at: string | null
+          branch_id: string
+          cost_per_unit: number | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          ingredient_id: string
+          invoice_ref: string | null
+          lot_code: string | null
+          manufactured_at: string | null
+          notes: string | null
+          opened_at: string | null
+          qty_received: number
+          qty_remaining: number
+          received_at: string
+          shop_id: string
+          source_type: string
+          status: string
+          supplier_name: string | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          best_before_at?: string | null
+          branch_id: string
+          cost_per_unit?: number | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          ingredient_id: string
+          invoice_ref?: string | null
+          lot_code?: string | null
+          manufactured_at?: string | null
+          notes?: string | null
+          opened_at?: string | null
+          qty_received: number
+          qty_remaining: number
+          received_at?: string
+          shop_id: string
+          source_type?: string
+          status?: string
+          supplier_name?: string | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          best_before_at?: string | null
+          branch_id?: string
+          cost_per_unit?: number | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          ingredient_id?: string
+          invoice_ref?: string | null
+          lot_code?: string | null
+          manufactured_at?: string | null
+          notes?: string | null
+          opened_at?: string | null
+          qty_received?: number
+          qty_remaining?: number
+          received_at?: string
+          shop_id?: string
+          source_type?: string
+          status?: string
+          supplier_name?: string | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_lots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_user_shop_permissions"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingredients: {
         Row: {
           archived_at: string | null
           base_unit: string
+          branch_id: string | null
           category: string | null
           cost_per_unit: number | null
           created_at: string
+          default_after_open_days: number | null
+          default_critical_expiry_days: number
+          default_near_expiry_days: number
+          default_shelf_life_days: number | null
+          expiry_tracking_enabled: boolean
           id: string
           is_active: boolean
           lead_time_days: number
@@ -148,18 +468,26 @@ export type Database = {
           name: string
           name_key: string | null
           safety_stock_qty: number | null
-          shop_id: string | null
+          shop_id: string
           stock: number
+          track_lots: boolean
           unit: string
           updated_at: string | null
           warn_stock_days: number
+          waste_cost_per_unit: number | null
         }
         Insert: {
           archived_at?: string | null
           base_unit: string
+          branch_id?: string | null
           category?: string | null
           cost_per_unit?: number | null
           created_at?: string
+          default_after_open_days?: number | null
+          default_critical_expiry_days?: number
+          default_near_expiry_days?: number
+          default_shelf_life_days?: number | null
+          expiry_tracking_enabled?: boolean
           id?: string
           is_active?: boolean
           lead_time_days?: number
@@ -168,18 +496,26 @@ export type Database = {
           name: string
           name_key?: string | null
           safety_stock_qty?: number | null
-          shop_id?: string | null
+          shop_id?: string
           stock?: number
+          track_lots?: boolean
           unit: string
           updated_at?: string | null
           warn_stock_days?: number
+          waste_cost_per_unit?: number | null
         }
         Update: {
           archived_at?: string | null
           base_unit?: string
+          branch_id?: string | null
           category?: string | null
           cost_per_unit?: number | null
           created_at?: string
+          default_after_open_days?: number | null
+          default_critical_expiry_days?: number
+          default_near_expiry_days?: number
+          default_shelf_life_days?: number | null
+          expiry_tracking_enabled?: boolean
           id?: string
           is_active?: boolean
           lead_time_days?: number
@@ -188,13 +524,22 @@ export type Database = {
           name?: string
           name_key?: string | null
           safety_stock_qty?: number | null
-          shop_id?: string | null
+          shop_id?: string
           stock?: number
+          track_lots?: boolean
           unit?: string
           updated_at?: string | null
           warn_stock_days?: number
+          waste_cost_per_unit?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ingredients_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ingredients_shop_id_fkey"
             columns: ["shop_id"]
@@ -213,7 +558,7 @@ export type Database = {
           image_url: string | null
           name: string
           price: number
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           category_id: string
@@ -223,7 +568,7 @@ export type Database = {
           image_url?: string | null
           name: string
           price: number
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           category_id?: string
@@ -233,7 +578,7 @@ export type Database = {
           image_url?: string | null
           name?: string
           price?: number
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: [
           {
@@ -257,19 +602,19 @@ export type Database = {
           created_at: string | null
           id: string
           name: string
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           name: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           created_at?: string | null
           id?: string
           name?: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: []
       }
@@ -277,20 +622,26 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          is_system: boolean
           name: string
-          shop_id: string | null
+          shop_id: string
+          system_key: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
+          is_system?: boolean
           name: string
-          shop_id?: string | null
+          shop_id?: string
+          system_key?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
+          is_system?: boolean
           name?: string
-          shop_id?: string | null
+          shop_id?: string
+          system_key?: string | null
         }
         Relationships: []
       }
@@ -300,43 +651,36 @@ export type Database = {
           id: string
           menu_id: string
           serve_type_id: string
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           menu_id: string
           serve_type_id: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           created_at?: string
           id?: string
           menu_id?: string
           serve_type_id?: string
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "menu_serves_menu_id_fkey"
-            columns: ["menu_id"]
+            foreignKeyName: "menu_serves_menu_shop_fkey"
+            columns: ["menu_id", "shop_id"]
             isOneToOne: false
             referencedRelation: "menu"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "shop_id"]
           },
           {
-            foreignKeyName: "menu_serves_menu_id_fkey"
-            columns: ["menu_id"]
-            isOneToOne: false
-            referencedRelation: "v_pos_menu"
-            referencedColumns: ["menu_id"]
-          },
-          {
-            foreignKeyName: "menu_serves_serve_type_id_fkey"
-            columns: ["serve_type_id"]
+            foreignKeyName: "menu_serves_serve_type_shop_fkey"
+            columns: ["serve_type_id", "shop_id"]
             isOneToOne: false
             referencedRelation: "menu_serve_types"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "shop_id"]
           },
         ]
       }
@@ -349,7 +693,7 @@ export type Database = {
           menu_id: string
           price_override: number | null
           serve_type_id: string
-          shop_id: string | null
+          shop_id: string
           size: string
         }
         Insert: {
@@ -360,7 +704,7 @@ export type Database = {
           menu_id: string
           price_override?: number | null
           serve_type_id: string
-          shop_id?: string | null
+          shop_id?: string
           size?: string
         }
         Update: {
@@ -371,30 +715,23 @@ export type Database = {
           menu_id?: string
           price_override?: number | null
           serve_type_id?: string
-          shop_id?: string | null
+          shop_id?: string
           size?: string
         }
         Relationships: [
           {
-            foreignKeyName: "menu_variants_menu_id_fkey"
-            columns: ["menu_id"]
+            foreignKeyName: "menu_variants_menu_shop_fkey"
+            columns: ["menu_id", "shop_id"]
             isOneToOne: false
             referencedRelation: "menu"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "shop_id"]
           },
           {
-            foreignKeyName: "menu_variants_menu_id_fkey"
-            columns: ["menu_id"]
-            isOneToOne: false
-            referencedRelation: "v_pos_menu"
-            referencedColumns: ["menu_id"]
-          },
-          {
-            foreignKeyName: "menu_variants_serve_type_id_fkey"
-            columns: ["serve_type_id"]
+            foreignKeyName: "menu_variants_serve_type_shop_fkey"
+            columns: ["serve_type_id", "shop_id"]
             isOneToOne: false
             referencedRelation: "menu_serve_types"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "shop_id"]
           },
           {
             foreignKeyName: "menu_variants_shop_id_fkey"
@@ -413,7 +750,7 @@ export type Database = {
           event_date: string
           id: string
           image_url: string | null
-          shop_id: string | null
+          shop_id: string
           title: string
         }
         Insert: {
@@ -423,7 +760,7 @@ export type Database = {
           event_date: string
           id?: string
           image_url?: string | null
-          shop_id?: string | null
+          shop_id?: string
           title: string
         }
         Update: {
@@ -433,10 +770,18 @@ export type Database = {
           event_date?: string
           id?: string
           image_url?: string | null
-          shop_id?: string | null
+          shop_id?: string
           title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "news_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       order_items: {
         Row: {
@@ -447,7 +792,7 @@ export type Database = {
           order_id: string | null
           price: number
           qty: number
-          shop_id: string | null
+          shop_id: string
           variant_id: string | null
           variant_label: string | null
         }
@@ -459,7 +804,7 @@ export type Database = {
           order_id?: string | null
           price: number
           qty: number
-          shop_id?: string | null
+          shop_id?: string
           variant_id?: string | null
           variant_label?: string | null
         }
@@ -471,7 +816,7 @@ export type Database = {
           order_id?: string | null
           price?: number
           qty?: number
-          shop_id?: string | null
+          shop_id?: string
           variant_id?: string | null
           variant_label?: string | null
         }
@@ -501,54 +846,70 @@ export type Database = {
       }
       orders: {
         Row: {
+          branch_id: string
           cancel_note: string | null
           cancel_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
+          change_amount: number | null
           created_at: string
           id: string
           note: string | null
+          paid_amount: number | null
           paid_at: string | null
           payment_method: string
-          shop_id: string | null
+          shop_id: string
           status: string
           stock_refunded: boolean
           stock_refunded_at: string | null
           total: number
         }
         Insert: {
+          branch_id?: string
           cancel_note?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          change_amount?: number | null
           created_at?: string
           id?: string
           note?: string | null
+          paid_amount?: number | null
           paid_at?: string | null
           payment_method?: string
-          shop_id?: string | null
+          shop_id?: string
           status?: string
           stock_refunded?: boolean
           stock_refunded_at?: string | null
           total: number
         }
         Update: {
+          branch_id?: string
           cancel_note?: string | null
           cancel_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          change_amount?: number | null
           created_at?: string
           id?: string
           note?: string | null
+          paid_amount?: number | null
           paid_at?: string | null
           payment_method?: string
-          shop_id?: string | null
+          shop_id?: string
           status?: string
           stock_refunded?: boolean
           stock_refunded_at?: string | null
           total?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_shop_id_fkey"
             columns: ["shop_id"]
@@ -563,19 +924,19 @@ export type Database = {
           created_at: string
           key: string
           response: Json
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           created_at?: string
           key: string
           response: Json
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           created_at?: string
           key?: string
           response?: Json
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: []
       }
@@ -601,7 +962,29 @@ export type Database = {
           id?: string
           role?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_current_branch_id_fkey"
+            columns: ["current_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_current_shop_id_fkey"
+            columns: ["current_shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "v_user_shop_permissions"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       recipe_items: {
         Row: {
@@ -609,7 +992,7 @@ export type Database = {
           id: string
           ingredient_id: string
           quantity: number
-          shop_id: string | null
+          shop_id: string
           variant_id: string
         }
         Insert: {
@@ -617,7 +1000,7 @@ export type Database = {
           id?: string
           ingredient_id: string
           quantity: number
-          shop_id?: string | null
+          shop_id?: string
           variant_id: string
         }
         Update: {
@@ -625,7 +1008,7 @@ export type Database = {
           id?: string
           ingredient_id?: string
           quantity?: number
-          shop_id?: string | null
+          shop_id?: string
           variant_id?: string
         }
         Relationships: [
@@ -665,21 +1048,21 @@ export type Database = {
           ingredient_id: string
           menu_id: string
           quantity: number
-          shop_id: string | null
+          shop_id: string
         }
         Insert: {
           id?: string
           ingredient_id: string
           menu_id: string
           quantity: number
-          shop_id?: string | null
+          shop_id?: string
         }
         Update: {
           id?: string
           ingredient_id?: string
           menu_id?: string
           quantity?: number
-          shop_id?: string | null
+          shop_id?: string
         }
         Relationships: [
           {
@@ -704,11 +1087,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "fk_recipe_menu"
-            columns: ["menu_id"]
+            foreignKeyName: "recipes_shop_id_fkey"
+            columns: ["shop_id"]
             isOneToOne: false
-            referencedRelation: "v_pos_menu"
-            referencedColumns: ["menu_id"]
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -739,6 +1122,13 @@ export type Database = {
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "shop_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_shop_permissions"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       shops: {
@@ -746,16 +1136,19 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          slug: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          slug: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          slug?: string
         }
         Relationships: []
       }
@@ -764,11 +1157,18 @@ export type Database = {
           after_stock: number | null
           amount: number
           before_stock: number | null
+          branch_id: string | null
           created_at: string | null
+          expires_at: string | null
           id: string
           ingredient_id: string
+          ingredient_lot_id: string | null
+          movement_type: string | null
           note: string | null
+          opened_at: string | null
           order_id: string | null
+          reference_id: string | null
+          reference_type: string | null
           shop_id: string | null
           type: string | null
         }
@@ -776,11 +1176,18 @@ export type Database = {
           after_stock?: number | null
           amount: number
           before_stock?: number | null
+          branch_id?: string | null
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           ingredient_id: string
+          ingredient_lot_id?: string | null
+          movement_type?: string | null
           note?: string | null
+          opened_at?: string | null
           order_id?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
           shop_id?: string | null
           type?: string | null
         }
@@ -788,15 +1195,29 @@ export type Database = {
           after_stock?: number | null
           amount?: number
           before_stock?: number | null
+          branch_id?: string | null
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           ingredient_id?: string
+          ingredient_lot_id?: string | null
+          movement_type?: string | null
           note?: string | null
+          opened_at?: string | null
           order_id?: string | null
+          reference_id?: string | null
+          reference_type?: string | null
           shop_id?: string | null
           type?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stock_logs_ingredient_id_fkey"
             columns: ["ingredient_id"]
@@ -809,6 +1230,20 @@ export type Database = {
             columns: ["ingredient_id"]
             isOneToOne: false
             referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_logs_ingredient_lot_id_fkey"
+            columns: ["ingredient_lot_id"]
+            isOneToOne: false
+            referencedRelation: "ingredient_lot_expiry_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_logs_ingredient_lot_id_fkey"
+            columns: ["ingredient_lot_id"]
+            isOneToOne: false
+            referencedRelation: "ingredient_lots"
             referencedColumns: ["id"]
           },
           {
@@ -843,10 +1278,222 @@ export type Database = {
           is_admin?: boolean
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "v_user_shop_permissions"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      waste_logs: {
+        Row: {
+          branch_id: string
+          created_at: string
+          created_by: string | null
+          estimated_cost: number | null
+          id: string
+          ingredient_id: string
+          ingredient_lot_id: string | null
+          notes: string | null
+          qty: number
+          reason: string
+          shop_id: string
+          unit: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          created_by?: string | null
+          estimated_cost?: number | null
+          id?: string
+          ingredient_id: string
+          ingredient_lot_id?: string | null
+          notes?: string | null
+          qty: number
+          reason: string
+          shop_id: string
+          unit: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          created_by?: string | null
+          estimated_cost?: number | null
+          id?: string
+          ingredient_id?: string
+          ingredient_lot_id?: string | null
+          notes?: string | null
+          qty?: number
+          reason?: string
+          shop_id?: string
+          unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waste_logs_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_logs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_user_shop_permissions"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "waste_logs_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_logs_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_logs_ingredient_lot_id_fkey"
+            columns: ["ingredient_lot_id"]
+            isOneToOne: false
+            referencedRelation: "ingredient_lot_expiry_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_logs_ingredient_lot_id_fkey"
+            columns: ["ingredient_lot_id"]
+            isOneToOne: false
+            referencedRelation: "ingredient_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_logs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
+      ingredient_expiry_summary: {
+        Row: {
+          active_lot_count: number | null
+          branch_id: string | null
+          ingredient_id: string | null
+          ingredient_name: string | null
+          nearest_days_to_expiry: number | null
+          nearest_expiry_at: string | null
+          risk_value: number | null
+          shop_id: string | null
+          summary_status: string | null
+          total_qty_remaining: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_lots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingredient_lot_expiry_status: {
+        Row: {
+          after_open_days: number | null
+          alert_enabled: boolean | null
+          best_before_at: string | null
+          branch_id: string | null
+          computed_status: string | null
+          cost_per_unit: number | null
+          created_at: string | null
+          critical_expiry_days: number | null
+          days_to_expiry: number | null
+          effective_expiry_at: string | null
+          expires_at: string | null
+          id: string | null
+          ingredient_id: string | null
+          ingredient_name: string | null
+          lot_code: string | null
+          manufactured_at: string | null
+          near_expiry_days: number | null
+          notes: string | null
+          opened_at: string | null
+          qty_received: number | null
+          qty_remaining: number | null
+          received_at: string | null
+          sale_block_mode: string | null
+          shelf_life_days: number | null
+          shop_id: string | null
+          source_type: string | null
+          stored_status: string | null
+          tracking_mode: string | null
+          unit: string | null
+          updated_at: string | null
+          waste_action_hint: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingredient_lots_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branch"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "v_ingredients_alert"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingredient_lots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_ingredients_alert: {
         Row: {
           archived_at: string | null
@@ -867,14 +1514,27 @@ export type Database = {
         }
         Relationships: []
       }
-      v_pos_menu: {
+      v_user_shop_permissions: {
         Row: {
-          menu_id: string | null
-          name: string | null
-          price: number | null
-          serves: Json | null
+          can_manage_billing: boolean | null
+          can_manage_menu: boolean | null
+          can_manage_staff: boolean | null
+          can_use_pos: boolean | null
+          email: string | null
+          role: string | null
+          shop_id: string | null
+          shop_name: string | null
+          user_id: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "shop_members_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
@@ -892,6 +1552,7 @@ export type Database = {
         }
         Returns: Json
       }
+      current_branch_id: { Args: never; Returns: string }
       current_shop_id: { Args: never; Returns: string }
       deduct_stock_atomic: {
         Args: { p_items: Json; p_note: string; p_order_id: string }
@@ -902,13 +1563,70 @@ export type Database = {
           ingredient_id: string
         }[]
       }
+      discard_ingredient_lot: {
+        Args: {
+          p_lot_id: string
+          p_notes?: string
+          p_qty: number
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      ensure_default_serve_type: {
+        Args: { p_shop_id: string }
+        Returns: undefined
+      }
+      get_expiry_alert_summary: {
+        Args: { p_branch_id?: string; p_shop_id: string }
+        Returns: {
+          critical_count: number
+          expired_count: number
+          near_expiry_count: number
+          risk_value: number
+        }[]
+      }
       increment_stock: {
         Args: { diff: number; ing_id: string }
         Returns: number
       }
       is_admin: { Args: never; Returns: boolean }
+      is_owner_in_current_shop: { Args: never; Returns: boolean }
       is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
       is_shop_owner: { Args: { p_shop_id: string }; Returns: boolean }
+      is_staff_in_current_shop: { Args: never; Returns: boolean }
+      mark_ingredient_lot_opened: {
+        Args: { p_lot_id: string }
+        Returns: {
+          best_before_at: string | null
+          branch_id: string
+          cost_per_unit: number | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          ingredient_id: string
+          invoice_ref: string | null
+          lot_code: string | null
+          manufactured_at: string | null
+          notes: string | null
+          opened_at: string | null
+          qty_received: number
+          qty_remaining: number
+          received_at: string
+          shop_id: string
+          source_type: string
+          status: string
+          supplier_name: string | null
+          unit: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ingredient_lots"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       process_pos_checkout: {
         Args: { p_branch_id: string; p_items: Json }
         Returns: Json
@@ -920,6 +1638,11 @@ export type Database = {
           total: number
         }[]
       }
+      set_current_context: {
+        Args: { p_branch_id?: string; p_shop_id: string }
+        Returns: undefined
+      }
+      set_current_shop: { Args: { p_shop_id: string }; Returns: boolean }
     }
     Enums: {
       contact_category:
@@ -1069,6 +1792,3 @@ export const Constants = {
     },
   },
 } as const
-
-
-

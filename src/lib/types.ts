@@ -31,8 +31,6 @@ export type RecipeItemRow = Tables<"recipe_items">;
 
 export type StockLogRow = Tables<"stock_logs">;
 
-export type PosMenuViewRow = Tables<"v_pos_menu">;
-
 /* =========================
    Enums
 ========================= */

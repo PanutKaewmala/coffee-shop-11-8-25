@@ -78,6 +78,8 @@ type IncomingItem = {
 type IncomingBody = {
     items?: unknown;
     branch_id?: unknown;
+    payment_method?: unknown;
+    paid_amount?: unknown;
 };
 
 type RpcItem = {
@@ -639,6 +641,16 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const paymentMethodRaw = toStringOrNull(raw?.payment_method);
+        const paymentMethod = paymentMethodRaw === "promptpay" ? "promptpay" : "cash";
+
+        if (paymentMethodRaw && paymentMethodRaw !== "cash" && paymentMethodRaw !== "promptpay") {
+            return NextResponse.json(
+                { error: "Invalid payment_method. Use cash or promptpay.", code: "INVALID_PAYMENT_METHOD" },
+                { status: 400 }
+            );
+        }
+
         // 2) Resolve branch id (always!)
         const branchIdInput = toStringOrNull(raw?.branch_id) ?? currentBranchId;
         const branchRes = await resolveBranchId(admin, branchIdInput, currentShopId);
@@ -765,6 +777,33 @@ export async function POST(req: NextRequest) {
         const total = itemsToInsert.reduce((sum, i) => sum + i.price * i.qty, 0);
         const paidAt = new Date().toISOString();
 
+        const paidAmountRaw = toNumber(raw?.paid_amount);
+        const paidAmount =
+            paymentMethod === "promptpay"
+                ? total
+                : paidAmountRaw != null
+                    ? paidAmountRaw
+                    : null;
+
+        if (paymentMethod === "cash" && paidAmount == null) {
+            return NextResponse.json(
+                { error: "paid_amount is required for cash payment.", code: "MISSING_PAID_AMOUNT" },
+                { status: 400 }
+            );
+        }
+
+        const changeAmount =
+            paymentMethod === "cash" && paidAmount != null
+                ? Math.max(0, paidAmount - total)
+                : 0;
+
+        if (paymentMethod === "cash" && paidAmount != null && paidAmount < total) {
+            return NextResponse.json(
+                { error: `Insufficient payment. Total is ${total}, received ${paidAmount}.`, code: "INSUFFICIENT_PAYMENT" },
+                { status: 400 }
+            );
+        }
+
         // IMPORTANT:
         // Use user-scoped client for write path so DB functions/triggers that rely
         // on auth/context (ex. current_shop_id()) get correct values.
@@ -773,7 +812,9 @@ export async function POST(req: NextRequest) {
         const orderInsertBase: Database["public"]["Tables"]["orders"]["Insert"] = {
             total,
             status: "paid",
-            payment_method: "cash",
+            payment_method: paymentMethod,
+            paid_amount: paidAmount,
+            change_amount: changeAmount,
             paid_at: paidAt,
             note: null,
             shop_id: currentShopId,

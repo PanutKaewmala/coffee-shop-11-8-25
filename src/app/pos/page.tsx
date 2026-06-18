@@ -29,6 +29,8 @@ type PosMenuItem = {
 ========================= */
 type PosCheckoutPayload = {
     items: { variant_id: string; qty: number }[];
+    payment_method: "cash" | "promptpay";
+    paid_amount?: number;
 };
 
 type PosCheckoutResponse = {
@@ -88,6 +90,13 @@ function toNonEmptyString(v: unknown): string | null {
 
 function clamp(n: number, min: number, max: number) {
     return Math.min(max, Math.max(min, n));
+}
+
+function parseNumberInput(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
 }
 
 function parsePosFeed(data: unknown): PosMenuItem[] {
@@ -235,6 +244,8 @@ export default function POSPage() {
     const [lastTouchedVariantId, setLastTouchedVariantId] = useState<string | null>(null);
     const feedbackTimerRef = useRef<number | null>(null);
     const lineFlashTimerRef = useRef<number | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">("cash");
+    const [paidAmount, setPaidAmount] = useState<string>("");
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -546,15 +557,28 @@ export default function POSPage() {
     }, [cart.length, loading]);
 
     /* -------------------- CHECKOUT -------------------- */
+    const canCashCheckout = useMemo(() => {
+        if (paymentMethod !== "cash") return true;
+        const paid = parseNumberInput(paidAmount);
+        return paid != null && paid >= total && total > 0;
+    }, [paymentMethod, paidAmount, total]);
+
     async function checkout() {
         if (cart.length === 0) return;
 
-        // Prevent multiple concurrent checkout attempts from generating
-        // distinct idempotency keys. If a checkout is already in progress,
-        // bail out early.
-        if (idempotencyKeyRef.current) return;
+        if (paymentMethod === "cash") {
+            const paid = parseNumberInput(paidAmount);
+            if (paid == null) {
+                alert("กรุณากรอกจำนวนเงินที่รับ (บาท)");
+                return;
+            }
+            if (paid < total) {
+                alert(`เงินไม่พอ\nยอดรวม: ${formatPrice(total)}\nได้รับ: ${formatPrice(paid)}\nขาดอีก: ${formatPrice(total - paid)}`);
+                return;
+            }
+        }
 
-        // Reserve a stable idempotency key for the duration of this request.
+        if (idempotencyKeyRef.current) return;
         idempotencyKeyRef.current = generateIdempotencyKey();
         setLoading(true);
 
@@ -564,7 +588,14 @@ export default function POSPage() {
                     variant_id: c.variant_id,
                     qty: clamp(c.qty, 1, 999),
                 })),
+                payment_method: paymentMethod,
             };
+            if (paymentMethod === "cash") {
+                const parsedPaidAmount = parseNumberInput(paidAmount);
+                if (parsedPaidAmount != null) {
+                    payload.paid_amount = parsedPaidAmount;
+                }
+            }
 
             const res = await fetch("/api/pos", {
                 method: "POST",
@@ -850,7 +881,68 @@ export default function POSPage() {
                     )}
                 </div>
 
-                <div className="mt-4 border-t border-[var(--text-muted)]/20 pt-4">
+                <div className="mt-4 border-t border-[var(--text-muted)]/20 pt-4 space-y-3">
+                    <div className="text-xs text-text-muted">วิธีจ่ายเงิน</div>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setPaymentMethod("cash")}
+                            className={[
+                                "flex-1 py-2 rounded-lg text-sm border transition",
+                                paymentMethod === "cash"
+                                    ? "bg-accent text-white border-accent"
+                                    : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
+                            ].join(" ")}
+                        >
+                            เงินสด
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPaymentMethod("promptpay")}
+                            className={[
+                                "flex-1 py-2 rounded-lg text-sm border transition",
+                                paymentMethod === "promptpay"
+                                    ? "bg-accent text-white border-accent"
+                                    : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
+                            ].join(" ")}
+                        >
+                            PromptPay / QR
+                        </button>
+                    </div>
+
+                    {paymentMethod === "cash" && (
+                        <div className="space-y-2">
+                            <div className="text-xs text-text-muted">รับเงิน (บาท)</div>
+                            <input
+                                type="number"
+                                inputMode="numeric"
+                                min="0"
+                                step="0.01"
+                                value={paidAmount}
+                                onChange={(e) => setPaidAmount(e.target.value)}
+                                placeholder="กรอกจำนวนเงินที่รับ"
+                                className="w-full px-3 py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
+                            />
+                            {(() => {
+                                const paid = parseNumberInput(paidAmount);
+                                if (paid == null || total <= 0) return null;
+                                if (paid >= total) {
+                                    const change = paid - total;
+                                    return (
+                                        <div className="text-sm text-green-600">
+                                            เงินทอน: {formatPrice(change)}
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div className="text-sm text-red-600">
+                                        เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
                     <div className="flex justify-between text-lg font-bold text-text-primary">
                         <span>ยอดรวมทั้งหมด</span>
                         <span>{formatPrice(total)}</span>
@@ -866,7 +958,7 @@ export default function POSPage() {
 
                     <button
                         onClick={() => void checkout()}
-                        disabled={loading || cart.length === 0}
+                        disabled={loading || cart.length === 0 || !canCashCheckout}
                         className="mt-4 w-full py-3 rounded-xl text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? "กำลังปิดบิล..." : "ปิดบิล"}
