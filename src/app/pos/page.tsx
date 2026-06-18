@@ -207,6 +207,9 @@ function generateIdempotencyKey(): string {
     return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const CASH_ADD_AMOUNTS = [5, 10, 20, 50, 100, 500, 1000] as const;
+const CASH_PRESET_AMOUNTS = [50, 100, 500, 1000] as const;
+
 /* =========================
    UI helpers
 ========================= */
@@ -492,6 +495,24 @@ export default function POSPage() {
 
     /* -------------------- TOTAL -------------------- */
     const total = useMemo(() => cart.reduce((sum, i) => sum + i.price * i.qty, 0), [cart]);
+
+    /* -------------------- CASH TENDER HELPERS -------------------- */
+    const addCashAmount = useCallback((amount: number) => {
+        const current = parseNumberInput(paidAmount) ?? 0;
+        setPaidAmount(String(current + amount));
+    }, [paidAmount]);
+
+    const setExactCash = useCallback(() => {
+        setPaidAmount(String(total));
+    }, [total]);
+
+    const setCashPreset = useCallback((amount: number) => {
+        setPaidAmount(String(amount));
+    }, []);
+
+    const clearPaidAmount = useCallback(() => {
+        setPaidAmount("");
+    }, []);
 
     /* -------------------- GROUPED CART -------------------- */
     type CartGroup = {
@@ -940,6 +961,53 @@ export default function POSPage() {
                                     </div>
                                 );
                             })()}
+
+                            <div className="space-y-2 pt-1">
+                                <div className="text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={setExactCash}
+                                        className="px-3 py-1.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-accent/20 transition"
+                                    >
+                                        พอดี ฿{total}
+                                    </button>
+                                    {CASH_PRESET_AMOUNTS.filter((a) => a >= total).map((amount) => (
+                                        <button
+                                            key={amount}
+                                            type="button"
+                                            onClick={() => setCashPreset(amount)}
+                                            className="px-3 py-1.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-accent/20 transition"
+                                        >
+                                            ฿{amount}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {CASH_ADD_AMOUNTS.map((amount) => (
+                                        <button
+                                            key={amount}
+                                            type="button"
+                                            onClick={() => addCashAmount(amount)}
+                                            className="py-1.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-accent/20 transition"
+                                        >
+                                            +{amount}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={clearPaidAmount}
+                                className="w-full py-2 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-[var(--text-muted)]/30 transition"
+                            >
+                                ล้าง
+                            </button>
                         </div>
                     )}
 
