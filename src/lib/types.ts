@@ -115,9 +115,10 @@ export type Order = {
   total: number;
   created_at: string;
 
-  // ✅ new (optional เพื่อไม่ทำของเก่าพัง)
   status?: OrderStatus;
   payment_method?: PaymentMethod;
+  paid_amount?: number | null;
+  change_amount?: number | null;
   paid_at?: string | null;
   note?: string | null;
 };
@@ -128,9 +129,10 @@ export interface OrderDetail {
   created_at: string;
   items: OrderItem[];
 
-  // ✅ new (optional)
   status?: OrderStatus;
   payment_method?: PaymentMethod;
+  paid_amount?: number | null;
+  change_amount?: number | null;
   paid_at?: string | null;
   note?: string | null;
 }

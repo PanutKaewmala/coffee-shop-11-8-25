@@ -43,6 +43,8 @@ type OrderWithItemsRow = {
 
     status: OrderStatus | null;
     payment_method: PaymentMethod | null;
+    paid_amount: number | null;
+    change_amount: number | null;
     paid_at?: string | null;
     note?: string | null;
 
@@ -179,6 +181,8 @@ export async function GET(req: NextRequest) {
     created_at,
     status,
     payment_method,
+    paid_amount,
+    change_amount,
     paid_at,
     note,
     cancel_reason,
@@ -253,6 +257,8 @@ export async function GET(req: NextRequest) {
                 created_at: data.created_at,
                 status: data.status ?? "paid",
                 payment_method: data.payment_method ?? "cash",
+                paid_amount: data.paid_amount ?? null,
+                change_amount: data.change_amount ?? null,
                 paid_at: data.paid_at ?? null,
                 note: data.note ?? null,
 
@@ -313,6 +319,8 @@ export async function GET(req: NextRequest) {
                 created_at: o.created_at,
                 status: o.status ?? "paid",
                 payment_method: o.payment_method ?? "cash",
+                paid_amount: o.paid_amount ?? null,
+                change_amount: o.change_amount ?? null,
                 paid_at: o.paid_at ?? null,
                 note: o.note ?? null,
 

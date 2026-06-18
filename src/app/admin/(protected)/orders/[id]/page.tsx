@@ -62,6 +62,8 @@ type UIOrderDetail = {
 
     status?: string;
     payment_method?: string;
+    paid_amount?: number | null;
+    change_amount?: number | null;
     paid_at?: string | null;
 
     // legacy note
@@ -108,6 +110,18 @@ function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
     const total = readNumber(raw.total, 0);
     const status = readString(raw.status) ?? undefined;
     const payment_method = readString(raw.payment_method) ?? undefined;
+    const paid_amount = (() => {
+        const rawVal = (raw as Record<string, unknown>).paid_amount;
+        if (typeof rawVal === "number") return rawVal;
+        const n = Number(rawVal);
+        return Number.isFinite(n) ? n : null;
+    })();
+    const change_amount = (() => {
+        const rawVal = (raw as Record<string, unknown>).change_amount;
+        if (typeof rawVal === "number") return rawVal;
+        const n = Number(rawVal);
+        return Number.isFinite(n) ? n : null;
+    })();
     const paid_at = readString(raw.paid_at) ?? null;
 
     const note = readString(raw.note) ?? null;
@@ -136,6 +150,8 @@ function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
         items,
         status,
         payment_method,
+        paid_amount,
+        change_amount,
         paid_at,
         note,
         cancel_reason,
@@ -624,6 +640,41 @@ export default function OrderDetailPage() {
                         <div className="text-3xl font-extrabold tabular-nums leading-tight">
                             {fmtMoney(order.total)}{" "}
                             <span className="text-base font-semibold opacity-80">บาท</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <div className="text-xs text-text-secondary opacity-70">วิธีจ่าย</div>
+                            <div className="font-semibold mt-1">
+                                {order.payment_method === "cash"
+                                    ? "เงินสด"
+                                    : order.payment_method === "promptpay"
+                                        ? "PromptPay"
+                                        : order.payment_method ?? "-"}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-text-secondary opacity-70">สถานะ</div>
+                            <div className="mt-1"><StatusBadge status={order.status} /></div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-text-secondary opacity-70">ยอดรวม</div>
+                            <div className="font-semibold tabular-nums mt-1">{fmtMoney(order.total)} บาท</div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-text-secondary opacity-70">รับเงิน</div>
+                            <div className="font-semibold tabular-nums mt-1">
+                                {order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-"}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-text-secondary opacity-70">เงินทอน</div>
+                            <div className="font-semibold tabular-nums mt-1">
+                                {order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-"}
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -32,6 +32,9 @@ type OrderRow = {
     total: number;
     created_at: string;
     status?: string | null;
+    payment_method?: string | null;
+    paid_amount?: number | null;
+    change_amount?: number | null;
     items?: OrderItem[];
 };
 
@@ -327,7 +330,7 @@ export default function AdminOrdersPage() {
         };
     }, [filteredOrders, paidTotalToShow, paidCountToShow]);
 
-    const headers = ["#", "Order ID", "Status", "Items", "Total", "Date"];
+    const headers = ["#", "Order ID", "Status", "Payment", "Items", "Total", "Date"];
 
     const rows = useMemo(() => {
         const list = (paginatedOrders as unknown as OrderRow[]) ?? [];
@@ -335,6 +338,23 @@ export default function AdminOrdersPage() {
         return list.map((order, idx) => {
             const items = Array.isArray(order.items) ? order.items : [];
             const n = (page - 1) * rowsPerPage + (idx + 1);
+
+            const paidDisplay = (() => {
+                const paid = Number.isFinite(order.paid_amount as number) ? (order.paid_amount as number) : null;
+                const change = Number.isFinite(order.change_amount as number) ? (order.change_amount as number) : null;
+                if (paid == null && change == null) return order.total ? formatMoneyTHB(order.total) : "-";
+                const parts: string[] = [];
+                if (paid != null) parts.push(`รับ ฿${formatMoneyTHB(paid)}`);
+                if (change != null) parts.push(`ทอน ฿${formatMoneyTHB(change)}`);
+                return parts.join(" • ");
+            })();
+
+            const paymentBadge = (() => {
+                const pm = (order.payment_method ?? "").toLowerCase();
+                if (pm === "promptpay") return "PromptPay";
+                if (pm === "cash") return "เงินสด";
+                return order.payment_method ?? "-";
+            })();
 
             return [
                 <span key={`idx-${order.id}`} className="text-text-secondary tabular-nums">
@@ -354,12 +374,18 @@ export default function AdminOrdersPage() {
                     <StatusPill status={order.status ?? null} />
                 </span>,
 
+                <span key={`pm-${order.id}`} className="text-xs">
+                    <span className="inline-flex items-center rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-text-secondary">
+                        {paymentBadge}
+                    </span>
+                </span>,
+
                 <span key={`items-${order.id}`} className="text-text-secondary">
                     <OrderItemsTooltip items={items} />
                 </span>,
 
-                <span key={`total-${order.id}`} className="tabular-nums text-text-secondary">
-                    {formatMoneyTHB(order.total)} บาท
+                <span key={`paid-${order.id}`} className="tabular-nums text-text-secondary">
+                    {paidDisplay}
                 </span>,
 
                 <span key={`date-${order.id}`} className="text-text-secondary whitespace-nowrap">
