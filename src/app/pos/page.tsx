@@ -68,6 +68,24 @@ type CartItem = {
     qty: number;
 };
 
+type ReceiptItem = {
+    name: string;
+    variantLabel: string;
+    qty: number;
+    unitPrice: number;
+    lineTotal: number;
+};
+
+type ReceiptData = {
+    orderId: string;
+    createdAt: string;
+    items: ReceiptItem[];
+    total: number;
+    paymentMethod: "cash" | "promptpay";
+    paidAmount: number;
+    changeAmount: number;
+};
+
 /* =========================
    Helpers (no any)
 ========================= */
@@ -195,6 +213,19 @@ function formatPrice(n: number) {
     }
 }
 
+function formatDateTime(iso: string) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString("th-TH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+    });
+}
+
+function paymentMethodLabel(method: "cash" | "promptpay") {
+    return method === "cash" ? "เงินสด" : "PromptPay";
+}
+
 function generateIdempotencyKey(): string {
     const c = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
     if (c && typeof c.randomUUID === "function") {
@@ -249,6 +280,7 @@ export default function POSPage() {
     const lineFlashTimerRef = useRef<number | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">("cash");
     const [paidAmount, setPaidAmount] = useState<string>("");
+    const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -667,10 +699,28 @@ export default function POSPage() {
 
             const order = isRecord(data.order) ? (data.order as Record<string, unknown>) : null;
             const orderId = order && (order.id ?? (order as any).order_id) ? String(order.id ?? (order as any).order_id) : "";
-            const orderTotal = order && typeof (order as any).total === "number" ? ((order as any).total as number) : total;
+            const receiptPaidAmount =
+                paymentMethod === "cash" ? parseNumberInput(paidAmount) ?? 0 : total;
+            const receiptChangeAmount =
+                paymentMethod === "cash" ? receiptPaidAmount - total : 0;
 
+            setReceiptData({
+                orderId,
+                createdAt: new Date().toISOString(),
+                items: cart.map((c) => ({
+                    name: c.menu_name,
+                    variantLabel: c.variant_label,
+                    qty: c.qty,
+                    unitPrice: c.price,
+                    lineTotal: c.price * c.qty,
+                })),
+                total,
+                paymentMethod,
+                paidAmount: receiptPaidAmount,
+                changeAmount: receiptChangeAmount,
+            });
             setCart([]);
-            alert(`✅ ปิดบิลสำเร็จ — Order ${orderId || "(unknown)"}\nยอดรวม: ${formatPrice(orderTotal)}`);
+            setPaidAmount("");
         } catch (err) {
             console.error("ปิดบิลผิดพลาด:", err);
             alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
@@ -680,6 +730,22 @@ export default function POSPage() {
             setLoading(false);
         }
     }
+
+    /* -------------------- PRINT STYLES FOR RECEIPT -------------------- */
+    useEffect(() => {
+        if (!receiptData) return;
+
+        let styleEl: HTMLStyleElement | null = null;
+        if (typeof document !== "undefined") {
+            styleEl = document.createElement("style");
+            styleEl.innerHTML = "@media print { @page { size: 80mm auto; margin: 4mm; } }";
+            document.head.appendChild(styleEl);
+        }
+
+        return () => {
+            styleEl?.remove();
+        };
+    }, [receiptData]);
 
     /* -------------------- RENDER -------------------- */
     return (
@@ -1033,6 +1099,100 @@ export default function POSPage() {
                     </button>
                 </div>
             </div>
+
+            {receiptData ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm print:bg-white print:p-0 print:items-start print:justify-center"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="receipt-modal-title"
+                >
+                    <div className="w-full max-w-xl rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-5 print:w-[80mm] print:max-w-[80mm] print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:p-3 print:my-[4mm] print:min-h-0 print:overflow-visible">
+                        <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
+                            <div>
+                                <h2 id="receipt-modal-title" className="text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ปิดบิลสำเร็จ</h2>
+                                <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">Order ID: {receiptData.orderId || "(unknown)"}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReceiptData(null)}
+                                className="rounded-lg border border-[var(--text-muted)]/20 px-3 py-1.5 text-sm text-text-secondary hover:bg-[var(--text-muted)]/20 print:hidden"
+                                aria-label="ปิดใบเสร็จ"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+
+                        <div className="print:p-0">
+                            <div className="mb-4 rounded-xl border border-[var(--text-muted)]/20 bg-background/40 p-3 text-sm text-text-muted print:border-0 print:border-b print:border-dashed print:pb-2 print:mb-2 print:p-0 print:bg-white print:text-black">
+                                <div className="flex justify-between gap-4">
+                                    <span>วันที่/เวลา</span>
+                                    <span>{formatDateTime(receiptData.createdAt)}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="text-base font-semibold text-text-primary print:text-black print:text-sm print:font-bold print:pb-1">รายการสินค้า</div>
+                                <div className="space-y-1">
+                                    {receiptData.items.map((item, index) => (
+                                        <div
+                                            key={`${item.name}-${item.variantLabel}-${index}`}
+                                            className="grid grid-cols-[1fr_auto] gap-2 text-sm print:border-0 print:bg-white print:text-black print:p-0 print:m-0"
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="font-medium text-text-primary print:text-black print:text-xs print:font-normal print:leading-tight">{item.name}</div>
+                                                <div className="text-xs text-text-muted print:text-gray-700 print:text-[10px] print:leading-tight">
+                                                    {item.variantLabel} · {item.qty} × {formatPrice(item.unitPrice)}
+                                                </div>
+                                            </div>
+
+                                            <div className="text-right text-text-primary print:text-black print:text-xs">{formatPrice(item.lineTotal)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-4 space-y-1 rounded-xl border border-[var(--text-muted)]/20 bg-background/30 p-4 text-sm print:border-0 print:border-t print:border-dashed print:pt-2 print:mt-3 print:p-0 print:bg-white print:text-black">
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                                    <span>ยอดรวม</span>
+                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">{formatPrice(receiptData.total)}</span>
+                                </div>
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                                    <span>วิธีจ่าย</span>
+                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">
+                                        {paymentMethodLabel(receiptData.paymentMethod)}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                                    <span>รับเงิน</span>
+                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">{formatPrice(receiptData.paidAmount)}</span>
+                                </div>
+                                <div className="flex justify-between border-t border-[var(--text-muted)]/20 pt-2 text-base font-bold text-text-primary print:text-black print:text-xs print:font-bold print:border-dashed print:pt-1">
+                                    <span>เงินทอน</span>
+                                    <span>{formatPrice(receiptData.changeAmount)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 border-t border-[var(--text-muted)]/20 p-5 sm:flex-row print:hidden">
+                            <button
+                                type="button"
+                                onClick={() => setReceiptData(null)}
+                                className="w-full rounded-xl border border-[var(--text-muted)]/20 bg-surface px-4 py-3 text-sm font-semibold text-text-primary hover:bg-[var(--text-muted)]/20"
+                            >
+                                เริ่มบิลใหม่
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => window.print()}
+                                className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-dark"
+                            >
+                                พิมพ์ใบเสร็จ
+</button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
