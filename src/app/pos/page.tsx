@@ -281,6 +281,7 @@ export default function POSPage() {
     const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">("cash");
     const [paidAmount, setPaidAmount] = useState<string>("");
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+    const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -738,14 +739,16 @@ export default function POSPage() {
         let styleEl: HTMLStyleElement | null = null;
         if (typeof document !== "undefined") {
             styleEl = document.createElement("style");
-            styleEl.innerHTML = "@media print { @page { size: 80mm auto; margin: 4mm; } }";
+            const pageWidth = receiptPrintMode === "a4" ? "150mm" : "90mm";
+            const pageMargin = receiptPrintMode === "a4" ? "5mm" : "2mm";
+            styleEl.innerHTML = `@media print { @page { size: ${pageWidth} auto; margin: ${pageMargin}; } }`;
             document.head.appendChild(styleEl);
         }
 
         return () => {
             styleEl?.remove();
         };
-    }, [receiptData]);
+    }, [receiptData, receiptPrintMode]);
 
     /* -------------------- RENDER -------------------- */
     return (
@@ -1107,11 +1110,16 @@ export default function POSPage() {
                     aria-modal="true"
                     aria-labelledby="receipt-modal-title"
                 >
-                    <div className="w-full max-w-xl rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-5 print:w-[80mm] print:max-w-[80mm] print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:p-3 print:my-[4mm] print:min-h-0 print:overflow-visible">
+                    <div className={`w-full max-w-xl rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[90mm] print:max-w-[90mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
                         <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
                             <div>
-                                <h2 id="receipt-modal-title" className="text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ปิดบิลสำเร็จ</h2>
-                                <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">Order ID: {receiptData.orderId || "(unknown)"}</p>
+                                <h2 id="receipt-modal-title" className="text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
+                                <div className="text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
+                                    {context.shopName ? `${context.shopName}${(context.branchName ? " - " + context.branchName : "")}` : "Coffee SaaS"}
+                                </div>
+                                <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
+                                    Receipt #{receiptData.orderId ? receiptData.orderId.slice(-8) : "XXXXXX"}
+                                </p>
                             </div>
                             <button
                                 type="button"
@@ -1124,8 +1132,8 @@ export default function POSPage() {
                         </div>
 
                         <div className="print:p-0">
-                            <div className="mb-4 rounded-xl border border-[var(--text-muted)]/20 bg-background/40 p-3 text-sm text-text-muted print:border-0 print:border-b print:border-dashed print:pb-2 print:mb-2 print:p-0 print:bg-white print:text-black">
-                                <div className="flex justify-between gap-4">
+                            <div className="mb-4 rounded-xl border border-[var(--text-muted)]/20 bg-background/40 p-3 text-sm text-text-muted print:border-0 print:border-b print:border-dashed print:pb-1 print:mb-1 print:p-0 print:bg-white print:text-black">
+                                <div className="flex justify-between gap-4 print:text-sm">
                                     <span>วันที่/เวลา</span>
                                     <span>{formatDateTime(receiptData.createdAt)}</span>
                                 </div>
@@ -1137,40 +1145,77 @@ export default function POSPage() {
                                     {receiptData.items.map((item, index) => (
                                         <div
                                             key={`${item.name}-${item.variantLabel}-${index}`}
-                                            className="grid grid-cols-[1fr_auto] gap-2 text-sm print:border-0 print:bg-white print:text-black print:p-0 print:m-0"
+                                            className="grid grid-cols-[1fr_auto] gap-1 text-sm print:border-0 print:bg-white print:text-black print:p-0 print:m-0"
                                         >
                                             <div className="min-w-0">
-                                                <div className="font-medium text-text-primary print:text-black print:text-xs print:font-normal print:leading-tight">{item.name}</div>
-                                                <div className="text-xs text-text-muted print:text-gray-700 print:text-[10px] print:leading-tight">
+                                                <div className="font-medium text-text-primary print:text-black print:text-sm print:font-normal print:leading-tight">{item.name}</div>
+                                                <div className="text-xs text-text-muted print:text-gray-700 print:text-xs print:leading-tight">
                                                     {item.variantLabel} · {item.qty} × {formatPrice(item.unitPrice)}
                                                 </div>
                                             </div>
 
-                                            <div className="text-right text-text-primary print:text-black print:text-xs">{formatPrice(item.lineTotal)}</div>
+                                            <div className="text-right text-text-primary print:text-black print:text-sm">{formatPrice(item.lineTotal)}</div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="mt-4 space-y-1 rounded-xl border border-[var(--text-muted)]/20 bg-background/30 p-4 text-sm print:border-0 print:border-t print:border-dashed print:pt-2 print:mt-3 print:p-0 print:bg-white print:text-black">
-                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                            <div className="mt-3 space-y-1 rounded-xl border border-[var(--text-muted)]/20 bg-background/30 p-4 text-sm print:border-0 print:border-t print:border-dashed print:pt-1 print:mt-2 print:p-0 print:bg-white print:text-black">
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>ยอดรวม</span>
-                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">{formatPrice(receiptData.total)}</span>
+                                    <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">{formatPrice(receiptData.total)}</span>
                                 </div>
-                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>วิธีจ่าย</span>
-                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">
+                                    <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">
                                         {paymentMethodLabel(receiptData.paymentMethod)}
                                     </span>
                                 </div>
-                                <div className="flex justify-between text-text-secondary print:text-black print:text-xs">
+                                <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>รับเงิน</span>
-                                    <span className="font-semibold text-text-primary print:text-black print:text-xs print:font-bold">{formatPrice(receiptData.paidAmount)}</span>
+                                    <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">{formatPrice(receiptData.paidAmount)}</span>
                                 </div>
-                                <div className="flex justify-between border-t border-[var(--text-muted)]/20 pt-2 text-base font-bold text-text-primary print:text-black print:text-xs print:font-bold print:border-dashed print:pt-1">
+                                <div className="flex justify-between border-t border-[var(--text-muted)]/20 pt-2 text-base font-bold text-text-primary print:text-black print:text-sm print:font-bold print:border-dashed print:pt-1">
                                     <span>เงินทอน</span>
                                     <span>{formatPrice(receiptData.changeAmount)}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-[var(--text-muted)]/20 pt-3 mt-3 print:border-dashed print:mt-2 print:pt-2">
+                            <div className="text-center text-base font-medium text-text-primary print:text-black print:text-sm print:font-normal">
+                                ขอบคุณที่ใช้บริการ
+                            </div>
+                            <div className="text-center text-xs text-text-muted print:text-gray-700 print:text-xs">Thank you</div>
+                        </div>
+
+                        <div className="mt-4 print:hidden">
+                            <div className="text-xs text-text-muted mb-2">รูปแบบพิมพ์</div>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setReceiptPrintMode("thermal")}
+                                    className={[
+                                        "flex-1 py-1.5 rounded-lg text-xs border transition",
+                                        receiptPrintMode === "thermal"
+                                            ? "bg-accent text-white border-accent"
+                                            : "bg-surface border-[var(--text-muted)]/20 text-text-secondary hover:bg-accent/20",
+                                    ].join(" ")}
+                                >
+                                    ใบเสร็จ 80mm
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setReceiptPrintMode("a4")}
+                                    className={[
+                                        "flex-1 py-1.5 rounded-lg text-xs border transition",
+                                        receiptPrintMode === "a4"
+                                            ? "bg-accent text-white border-accent"
+                                            : "bg-surface border-[var(--text-muted)]/20 text-text-secondary hover:bg-accent/20",
+                                    ].join(" ")}
+                                >
+                                    A4 / PDF
+                                </button>
                             </div>
                         </div>
 
