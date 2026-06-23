@@ -1,6 +1,7 @@
 // app/api/recipes/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +135,29 @@ export async function GET(req: NextRequest) {
 ============================================================ */
 export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const source = getSource(req);
 
     try {
@@ -166,12 +190,39 @@ export async function POST(req: NextRequest) {
             const vId = variant_id.trim();
             const ingId = ingredient_id.trim();
 
+            // verify variant belongs to current shop
+            const { data: variantRow, error: varErr } = await supabase
+                .from("menu_variants")
+                .select("id")
+                .eq("id", vId)
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (varErr) return NextResponse.json({ error: varErr.message }, { status: 500 });
+            if (!variantRow) {
+                return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
+            }
+
+            // verify ingredient belongs to current shop
+            const { data: ingredientRow, error: ingErr } = await supabase
+                .from("ingredients")
+                .select("id")
+                .eq("id", ingId)
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
+            if (!ingredientRow) {
+                return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
+            }
+
             // 1) เช็คก่อนว่ามีอยู่แล้วไหม เพื่อบอก mode ให้ UI
             const { data: existing, error: exErr } = await supabase
                 .from("recipe_items")
                 .select("id")
                 .eq("variant_id", vId)
                 .eq("ingredient_id", ingId)
+                .eq("shop_id", currentShopId)
                 .maybeSingle();
 
             if (exErr) {
@@ -189,6 +240,7 @@ export async function POST(req: NextRequest) {
                             variant_id: vId,
                             ingredient_id: ingId,
                             quantity: qty,
+                            shop_id: currentShopId,
                         },
                     ],
                     { onConflict: "variant_id,ingredient_id" }
@@ -215,6 +267,32 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // verify menu belongs to current shop
+        const { data: menuRow, error: menuErr } = await supabase
+            .from("menu")
+            .select("id")
+            .eq("id", menu_id.trim())
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (menuErr) return NextResponse.json({ error: menuErr.message }, { status: 500 });
+        if (!menuRow) {
+            return NextResponse.json({ error: "Menu not found in current shop" }, { status: 404 });
+        }
+
+        // verify ingredient belongs to current shop
+        const { data: ingredientRow2, error: ingErr2 } = await supabase
+            .from("ingredients")
+            .select("id")
+            .eq("id", ingredient_id.trim())
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (ingErr2) return NextResponse.json({ error: ingErr2.message }, { status: 500 });
+        if (!ingredientRow2) {
+            return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
+        }
+
         const { data, error } = await supabase
             .from("recipes")
             .insert([
@@ -222,6 +300,7 @@ export async function POST(req: NextRequest) {
                     menu_id: menu_id.trim(),
                     ingredient_id: ingredient_id.trim(),
                     quantity: qty,
+                    shop_id: currentShopId,
                 },
             ])
             .select()
