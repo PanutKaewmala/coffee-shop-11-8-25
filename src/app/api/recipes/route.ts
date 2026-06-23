@@ -1,6 +1,6 @@
 // app/api/recipes/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,26 @@ function returnAsc() {
 ============================================================ */
 export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await supabase
+        .from("shop_members")
+        .select("shop_id")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+
     const source = getSource(req);
 
     try {
@@ -44,22 +64,21 @@ export async function GET(req: NextRequest) {
             const variant_id = req.nextUrl.searchParams.get("variant_id");
             const menu_id = req.nextUrl.searchParams.get("menu_id");
 
-            // base query
             let q = supabase
                 .from("recipe_items")
                 .select("*")
+                .eq("shop_id", currentShopId)
                 .order("variant_id", returnAsc());
 
-            // filter by variant_id (direct)
             if (isNonEmptyString(variant_id)) {
                 q = q.eq("variant_id", variant_id.trim());
             }
 
-            // filter by menu_id (via menu_variants -> variant ids)
             if (isNonEmptyString(menu_id)) {
                 const { data: vars, error: vErr } = await supabase
                     .from("menu_variants")
                     .select("id")
+                    .eq("shop_id", currentShopId)
                     .eq("menu_id", menu_id.trim());
 
                 if (vErr) {
@@ -82,12 +101,12 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(data ?? []);
         }
 
-        // source === "menu"
         const menu_id = req.nextUrl.searchParams.get("menu_id");
 
         let q = supabase
             .from("recipes")
             .select("*")
+            .eq("shop_id", currentShopId)
             .order("menu_id", returnAsc());
 
         if (isNonEmptyString(menu_id)) q = q.eq("menu_id", menu_id.trim());
