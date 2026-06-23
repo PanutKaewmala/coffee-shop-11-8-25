@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import BranchFilter from "@/components/admin/BranchFilter";
 import useBranchSearch from "@/hooks/useBranchSearch";
 
-import { useState } from "react";
-import type { BranchRow } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { BranchRow, ReceiptSettings } from "@/lib/types";
 import SearchBox from "@/components/admin/search/SearchBox";
 
 type FormData = {
@@ -56,6 +56,97 @@ export default function BranchPageClient() {
     });
 
     const [errors, setErrors] = useState<Errors>({});
+    const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
+    const [receiptTaxId, setReceiptTaxId] = useState("");
+    const [receiptFooter, setReceiptFooter] = useState("");
+    const [receiptLoading, setReceiptLoading] = useState(true);
+    const [receiptSaving, setReceiptSaving] = useState(false);
+    const [receiptError, setReceiptError] = useState<string | null>(null);
+    const [receiptSuccess, setReceiptSuccess] = useState<string | null>(null);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadReceiptSettings() {
+            setReceiptLoading(true);
+            setReceiptError(null);
+
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data = (await res.json().catch(() => null)) as
+                    | ReceiptSettings
+                    | { error?: string }
+                    | null;
+
+                if (!alive) return;
+                if (!res.ok || !data || !("shopId" in data)) {
+                    const message = data && "error" in data ? data.error : null;
+                    throw new Error(message || "Failed to load receipt settings");
+                }
+
+                setReceiptSettings(data);
+                setReceiptTaxId(data.taxId ?? "");
+                setReceiptFooter(data.receiptFooter ?? "");
+            } catch (error) {
+                if (!alive) return;
+                setReceiptError(
+                    error instanceof Error ? error.message : "Failed to load receipt settings"
+                );
+            } finally {
+                if (alive) setReceiptLoading(false);
+            }
+        }
+
+        void loadReceiptSettings();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    const handleReceiptSave = async () => {
+        if (!receiptSettings?.canEditShopSettings) {
+            setReceiptError("Only the shop owner can edit shop-wide receipt settings.");
+            return;
+        }
+
+        setReceiptSaving(true);
+        setReceiptError(null);
+        setReceiptSuccess(null);
+
+        try {
+            const res = await fetch("/api/receipt-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    taxId: receiptTaxId,
+                    receiptFooter,
+                }),
+            });
+            const data = (await res.json().catch(() => null)) as
+                | ReceiptSettings
+                | { error?: string }
+                | null;
+
+            if (!res.ok || !data || !("shopId" in data)) {
+                const apiMessage = data && "error" in data ? data.error : null;
+                if (res.status === 403) {
+                    throw new Error("Only the shop owner can edit shop-wide receipt settings.");
+                }
+                throw new Error(apiMessage || "Failed to save receipt settings");
+            }
+
+            setReceiptSettings(data);
+            setReceiptTaxId(data.taxId ?? "");
+            setReceiptFooter(data.receiptFooter ?? "");
+            setReceiptSuccess("Receipt settings saved successfully.");
+        } catch (error) {
+            setReceiptError(
+                error instanceof Error ? error.message : "Failed to save receipt settings"
+            );
+        } finally {
+            setReceiptSaving(false);
+        }
+    };
 
     const resetForm = () => {
         setEditingBranch(null);
@@ -161,6 +252,110 @@ export default function BranchPageClient() {
 
     return (
         <div className="p-6 space-y-6">
+            <Card title="Receipt Settings">
+                <div className="max-w-2xl space-y-4">
+                    <div>
+                        <p className="text-sm font-medium text-[var(--text-primary)]">
+                            Shop-wide receipt settings
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                            These values apply to every branch. Branch name, address, and phone remain managed in the branch editor below.
+                        </p>
+                    </div>
+
+                    {receiptLoading ? (
+                        <p className="text-sm text-[var(--text-muted)]">Loading receipt settings...</p>
+                    ) : (
+                        <>
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium text-[var(--text-primary)]">
+                                    Current shop name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={receiptSettings?.shopName ?? "Coffee SaaS"}
+                                    readOnly
+                                    className="w-full rounded-md border border-[var(--text-muted)]/20 bg-[var(--background)]/50 p-2 text-[var(--text-muted)]"
+                                />
+                                <p className="text-xs text-[var(--text-muted)]">
+                                    The shop name is managed separately from receipt settings.
+                                </p>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label htmlFor="receipt-tax-id" className="text-sm font-medium text-[var(--text-primary)]">
+                                    Tax ID / เลขผู้เสียภาษี
+                                </label>
+                                <input
+                                    id="receipt-tax-id"
+                                    type="text"
+                                    value={receiptTaxId}
+                                    maxLength={50}
+                                    disabled={!receiptSettings?.canEditShopSettings || receiptSaving}
+                                    onChange={(event) => {
+                                        setReceiptTaxId(event.target.value);
+                                        setReceiptError(null);
+                                        setReceiptSuccess(null);
+                                    }}
+                                    placeholder="Optional"
+                                    className="w-full rounded-md border border-[var(--text-muted)]/20 bg-[var(--surface)] p-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label htmlFor="receipt-footer" className="text-sm font-medium text-[var(--text-primary)]">
+                                    Receipt footer / ข้อความท้ายใบเสร็จ
+                                </label>
+                                <textarea
+                                    id="receipt-footer"
+                                    value={receiptFooter}
+                                    maxLength={300}
+                                    rows={4}
+                                    disabled={!receiptSettings?.canEditShopSettings || receiptSaving}
+                                    onChange={(event) => {
+                                        setReceiptFooter(event.target.value);
+                                        setReceiptError(null);
+                                        setReceiptSuccess(null);
+                                    }}
+                                    placeholder="Optional message shown at the bottom of receipts in a later phase"
+                                    className="w-full resize-y rounded-md border border-[var(--text-muted)]/20 bg-[var(--surface)] p-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                />
+                                <div className="text-right text-xs text-[var(--text-muted)]">
+                                    {receiptFooter.length}/300
+                                </div>
+                            </div>
+
+                            {receiptSettings && !receiptSettings.canEditShopSettings ? (
+                                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                                    Only the shop owner can edit shop-wide receipt settings.
+                                </div>
+                            ) : null}
+
+                            {receiptError ? (
+                                <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                                    {receiptError}
+                                </div>
+                            ) : null}
+
+                            {receiptSuccess ? (
+                                <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-500">
+                                    {receiptSuccess}
+                                </div>
+                            ) : null}
+
+                            <div className="flex justify-end">
+                                <Button
+                                    onClick={() => void handleReceiptSave()}
+                                    disabled={!receiptSettings?.canEditShopSettings || receiptSaving}
+                                >
+                                    {receiptSaving ? "Saving..." : "Save Receipt Settings"}
+                                </Button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </Card>
+
             <Card title="Branch Management">
                 <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาชื่อสาขา / ที่อยู่" />
 

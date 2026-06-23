@@ -31,6 +31,18 @@ export type RecipeItemRow = Tables<"recipe_items">;
 
 export type StockLogRow = Tables<"stock_logs">;
 
+export type ReceiptSettings = {
+  shopId: string;
+  shopName: string;
+  taxId: string | null;
+  receiptFooter: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  branchAddress: string | null;
+  branchPhone: string | null;
+  canEditShopSettings: boolean;
+};
+
 /* =========================
    Enums
 ========================= */
