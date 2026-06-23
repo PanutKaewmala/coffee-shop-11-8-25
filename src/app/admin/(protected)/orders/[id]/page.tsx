@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, Copy, Check, X, AlertTriangle, Printer } from "lucide-react";
 
 import Card from "@/components/admin/Card";
+import type { ReceiptSettings } from "@/lib/types";
 
 /* =========================
    Type guards + readers
@@ -20,6 +21,50 @@ function readString(v: unknown): string | null {
 function readNumber(v: unknown, fallback = 0): number {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+
+function parseReceiptSettings(v: unknown): ReceiptSettings | null {
+    if (!isRecord(v)) return null;
+
+    const shopId = readString(v.shopId);
+    const shopName = readString(v.shopName);
+    if (!shopId || !shopName) return null;
+
+    return {
+        shopId,
+        shopName,
+        taxId: readString(v.taxId),
+        receiptFooter: readString(v.receiptFooter),
+        branchId: readString(v.branchId),
+        branchName: readString(v.branchName),
+        branchAddress: readString(v.branchAddress),
+        branchPhone: readString(v.branchPhone),
+        canEditShopSettings: v.canEditShopSettings === true,
+    };
+}
+
+function parseNavbarReceiptContext(v: unknown): {
+    shopName: string | null;
+    branchName: string | null;
+} {
+    if (!isRecord(v)) return { shopName: null, branchName: null };
+
+    const currentShopId = readString(v.currentShopId);
+    const currentBranchId = readString(v.currentBranchId);
+    const shops = Array.isArray(v.shops) ? v.shops : [];
+    const branches = Array.isArray(v.branches) ? v.branches : [];
+
+    const currentShop = shops.find(
+        (shop) => isRecord(shop) && readString(shop.id) === currentShopId
+    );
+    const currentBranch = branches.find(
+        (branch) => isRecord(branch) && readString(branch.id) === currentBranchId
+    );
+
+    return {
+        shopName: isRecord(currentShop) ? readString(currentShop.name) : null,
+        branchName: isRecord(currentBranch) ? readString(currentBranch.name) : null,
+    };
 }
 
 /* =========================
@@ -408,13 +453,32 @@ function buildReceiptDocument({
     mode,
     shopName,
     branchName,
+    receiptSettings,
 }: {
     order: UIOrderDetail;
     mode: "thermal" | "a4";
     shopName: string | null;
     branchName: string | null;
+    receiptSettings: ReceiptSettings | null;
 }) {
-    const shopTitle = [shopName, branchName].filter((value): value is string => Boolean(value)).join(" • ") || "Coffee SaaS";
+    // Admin reprints use current receipt settings for MVP; immutable snapshots are deferred.
+    const effectiveShopName = receiptSettings?.shopName ?? shopName ?? "Coffee SaaS";
+    const effectiveBranchName = receiptSettings?.branchName ?? branchName;
+    const shopTitle = effectiveBranchName
+        ? `${effectiveShopName} - ${effectiveBranchName}`
+        : effectiveShopName;
+    const branchAddressHtml = receiptSettings?.branchAddress
+        ? `<div class="meta">${escapeReceiptHtml(receiptSettings.branchAddress)}</div>`
+        : "";
+    const branchPhoneHtml = receiptSettings?.branchPhone
+        ? `<div class="meta">Tel / โทร: ${escapeReceiptHtml(receiptSettings.branchPhone)}</div>`
+        : "";
+    const taxIdHtml = receiptSettings?.taxId
+        ? `<div class="meta">Tax ID / เลขผู้เสียภาษี: ${escapeReceiptHtml(receiptSettings.taxId)}</div>`
+        : "";
+    const footerHtml = receiptSettings?.receiptFooter
+        ? `<div>${escapeReceiptHtml(receiptSettings.receiptFooter)}</div>`
+        : `<div>ขอบคุณที่ใช้บริการ</div><div>Thank you</div>`;
     const receiptNumber = order.id.slice(-8) || "-";
     const paidDisplay = order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-";
     const changeDisplay = order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-";
@@ -491,13 +555,16 @@ function buildReceiptDocument({
             .summary { display: grid; gap: ${summarySpacing}; }
             .summary-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
             .total { font-weight: 700; }
-            .thanks { margin-top: 10px; padding-top: 7px; border-top: 1px dashed #777; font-size: ${smallFontSize}; }
+            .thanks { margin-top: 10px; padding-top: 7px; border-top: 1px dashed #777; font-size: ${smallFontSize}; white-space: pre-wrap; overflow-wrap: anywhere; }
         </style>
     </head>
     <body>
         <main class="receipt">
             <header class="center">
                 <div class="shop">${escapeReceiptHtml(shopTitle)}</div>
+                ${branchAddressHtml}
+                ${branchPhoneHtml}
+                ${taxIdHtml}
                 <div class="heading">ใบเสร็จรับเงิน</div>
                 <div class="meta">เลขที่ ${escapeReceiptHtml(receiptNumber)}</div>
                 <div class="meta">${escapeReceiptHtml(order.id)}</div>
@@ -513,8 +580,7 @@ function buildReceiptDocument({
                 <div class="summary-row"><span>เงินทอน</span><span>${changeDisplay}</span></div>
             </section>
             <footer class="thanks center">
-                <div>ขอบคุณที่ใช้บริการ</div>
-                <div>Thank you</div>
+                ${footerHtml}
             </footer>
         </main>
     </body>
@@ -529,6 +595,7 @@ function ReceiptModal({
     order,
     shopName,
     branchName,
+    receiptSettings,
 }: {
     open: boolean;
     mode: "thermal" | "a4";
@@ -537,12 +604,13 @@ function ReceiptModal({
     order: UIOrderDetail;
     shopName: string | null;
     branchName: string | null;
+    receiptSettings: ReceiptSettings | null;
 }) {
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const [loadedReceiptDocument, setLoadedReceiptDocument] = useState<string | null>(null);
     const receiptSrcDoc = useMemo(
-        () => buildReceiptDocument({ order, mode, shopName, branchName }),
-        [order, mode, shopName, branchName]
+        () => buildReceiptDocument({ order, mode, shopName, branchName, receiptSettings }),
+        [order, mode, shopName, branchName, receiptSettings]
     );
     const iframeLoaded = open && loadedReceiptDocument === receiptSrcDoc;
 
@@ -688,6 +756,7 @@ export default function OrderDetailPage() {
     // Receipt reprint state
     const [receiptOpen, setReceiptOpen] = useState(false);
     const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
+    const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
     const [context, setContext] = useState<{
         shopName: string | null;
         branchName: string | null;
@@ -700,7 +769,7 @@ export default function OrderDetailPage() {
         }
     }, []);
 
-    // Load shop/branch context for receipt header
+    // Keep navbar names only as a fallback if receipt settings are unavailable.
     useEffect(() => {
         let alive = true;
         async function loadContext() {
@@ -708,16 +777,34 @@ export default function OrderDetailPage() {
                 const res = await fetch("/api/admin/navbar", { cache: "no-store" });
                 if (!res.ok) return;
                 const data: unknown = await res.json().catch(() => null);
-                if (!alive || !isRecord(data)) return;
-                setContext({
-                    shopName: typeof data.currentShopName === "string" ? data.currentShopName : null,
-                    branchName: typeof data.currentBranchName === "string" ? data.currentBranchName : null,
-                });
+                if (!alive) return;
+                setContext(parseNavbarReceiptContext(data));
             } catch {
                 // ignore
             }
         }
         void loadContext();
+        return () => { alive = false; };
+    }, []);
+
+    // Receipt settings are display-only and must never block order detail or printing.
+    useEffect(() => {
+        let alive = true;
+
+        async function loadReceiptSettings() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                if (!res.ok) return;
+
+                const data: unknown = await res.json().catch(() => null);
+                if (!alive) return;
+                setReceiptSettings(parseReceiptSettings(data));
+            } catch {
+                // Silently retain the existing receipt fallback behavior.
+            }
+        }
+
+        void loadReceiptSettings();
         return () => { alive = false; };
     }, []);
 
@@ -1180,6 +1267,7 @@ export default function OrderDetailPage() {
                 order={order}
                 shopName={context.shopName}
                 branchName={context.branchName}
+                receiptSettings={receiptSettings}
             />
         </div>
     );
