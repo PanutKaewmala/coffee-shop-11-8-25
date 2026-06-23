@@ -53,6 +53,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
         title: "Business Operations",
         items: [
             { label: "Orders", path: "/admin/orders" },
+            { label: "Daily Close", path: "/admin/daily-close" },
             { label: "News", path: "/admin/news" },
             { label: "Branches", path: "/admin/branch" },
             { label: "Contact", path: "/admin/contact" },
