@@ -235,6 +235,7 @@ export default function RecipeEditorPanel({
 
             close();
             void fetchItems();
+            void onRefreshBase();
         } catch (e) {
             console.error(e);
             alert("บันทึกสูตรไม่สำเร็จ");
@@ -254,6 +255,7 @@ export default function RecipeEditorPanel({
         }
 
         void fetchItems();
+        void onRefreshBase();
     };
 
     /* =========================
