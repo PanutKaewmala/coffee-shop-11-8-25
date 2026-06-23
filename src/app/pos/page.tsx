@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReceiptSettings } from "@/lib/types";
 
 /* =========================
    Types (match /api/pos response)
@@ -201,6 +202,26 @@ function parsePosContext(data: unknown): PosContextView {
     return { shopId, shopName, branchId, branchName };
 }
 
+function parseReceiptSettings(data: unknown): ReceiptSettings | null {
+    if (!isRecord(data)) return null;
+
+    const shopId = toNonEmptyString(data.shopId);
+    const shopName = toNonEmptyString(data.shopName);
+    if (!shopId || !shopName) return null;
+
+    return {
+        shopId,
+        shopName,
+        taxId: toNonEmptyString(data.taxId),
+        receiptFooter: toNonEmptyString(data.receiptFooter),
+        branchId: toNonEmptyString(data.branchId),
+        branchName: toNonEmptyString(data.branchName),
+        branchAddress: toNonEmptyString(data.branchAddress),
+        branchPhone: toNonEmptyString(data.branchPhone),
+        canEditShopSettings: data.canEditShopSettings === true,
+    };
+}
+
 function formatPrice(n: number) {
     try {
         return new Intl.NumberFormat("th-TH", {
@@ -282,6 +303,7 @@ export default function POSPage() {
     const [paidAmount, setPaidAmount] = useState<string>("");
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
     const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
+    const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -318,6 +340,32 @@ export default function POSPage() {
             alive = false;
         };
     }, []);
+
+    /* -------------------- LOAD RECEIPT DISPLAY SETTINGS -------------------- */
+    useEffect(() => {
+        let alive = true;
+
+        async function fetchReceiptSettings() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                if (!res.ok) {
+                    if (alive) setReceiptSettings(null);
+                    return;
+                }
+
+                const raw: unknown = await res.json().catch(() => null);
+                if (!alive) return;
+                setReceiptSettings(parseReceiptSettings(raw));
+            } catch {
+                if (alive) setReceiptSettings(null);
+            }
+        }
+
+        void fetchReceiptSettings();
+        return () => {
+            alive = false;
+        };
+    }, [context.shopId, context.branchId]);
 
     /* -------------------- LOAD MENU (POS FEED) -------------------- */
     useEffect(() => {
@@ -750,6 +798,13 @@ export default function POSPage() {
         };
     }, [receiptData, receiptPrintMode]);
 
+    const receiptShopName = receiptSettings?.shopName ?? context.shopName ?? "Coffee SaaS";
+    const receiptBranchName = receiptSettings?.branchName ?? context.branchName;
+    const receiptBranchAddress = receiptSettings?.branchAddress ?? null;
+    const receiptBranchPhone = receiptSettings?.branchPhone ?? null;
+    const receiptTaxId = receiptSettings?.taxId ?? null;
+    const receiptFooter = receiptSettings?.receiptFooter ?? null;
+
     /* -------------------- RENDER -------------------- */
     return (
         <div className="flex h-screen bg-background text-text-primary">
@@ -1114,8 +1169,20 @@ export default function POSPage() {
                         <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
                             <div>
                                 <h2 id="receipt-modal-title" className="text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
-                                <div className="text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
-                                    {context.shopName ? `${context.shopName}${(context.branchName ? " - " + context.branchName : "")}` : "Coffee SaaS"}
+                                <div className="text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0 print:leading-tight">
+                                    <div>
+                                        {receiptShopName}
+                                        {receiptBranchName ? ` - ${receiptBranchName}` : ""}
+                                    </div>
+                                    {receiptBranchAddress ? (
+                                        <div className="break-words">{receiptBranchAddress}</div>
+                                    ) : null}
+                                    {receiptBranchPhone ? (
+                                        <div className="break-words">Tel / โทร: {receiptBranchPhone}</div>
+                                    ) : null}
+                                    {receiptTaxId ? (
+                                        <div className="break-words">Tax ID / เลขผู้เสียภาษี: {receiptTaxId}</div>
+                                    ) : null}
                                 </div>
                                 <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
                                     Receipt #{receiptData.orderId ? receiptData.orderId.slice(-8) : "XXXXXX"}
@@ -1183,10 +1250,18 @@ export default function POSPage() {
                         </div>
 
                         <div className="border-t border-[var(--text-muted)]/20 pt-3 mt-3 print:border-dashed print:mt-2 print:pt-2">
-                            <div className="text-center text-base font-medium text-text-primary print:text-black print:text-sm print:font-normal">
-                                ขอบคุณที่ใช้บริการ
-                            </div>
-                            <div className="text-center text-xs text-text-muted print:text-gray-700 print:text-xs">Thank you</div>
+                            {receiptFooter ? (
+                                <div className="whitespace-pre-wrap break-words text-center text-sm text-text-primary print:text-black print:text-xs print:leading-tight">
+                                    {receiptFooter}
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="text-center text-base font-medium text-text-primary print:text-black print:text-sm print:font-normal">
+                                        ขอบคุณที่ใช้บริการ
+                                    </div>
+                                    <div className="text-center text-xs text-text-muted print:text-gray-700 print:text-xs">Thank you</div>
+                                </>
+                            )}
                         </div>
 
                         <div className="mt-4 print:hidden">
