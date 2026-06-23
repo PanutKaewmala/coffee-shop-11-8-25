@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Copy, Check, X, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Copy, Check, X, AlertTriangle, Printer } from "lucide-react";
 
 import Card from "@/components/admin/Card";
 
@@ -381,7 +381,291 @@ function CancelStockToggle({
 }
 
 /* =========================
-   Page
+    Receipt Modal (reprinter)
+========================= */
+function paymentMethodLabel(method: string | undefined) {
+    const m = (method ?? "").toLowerCase();
+    if (m === "cash") return "เงินสด";
+    if (m === "promptpay") return "PromptPay";
+    return method ?? "-";
+}
+
+function escapeReceiptHtml(value: string) {
+    return value.replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;",
+        };
+        return entities[character];
+    });
+}
+
+function buildReceiptDocument({
+    order,
+    mode,
+    shopName,
+    branchName,
+}: {
+    order: UIOrderDetail;
+    mode: "thermal" | "a4";
+    shopName: string | null;
+    branchName: string | null;
+}) {
+    const shopTitle = [shopName, branchName].filter((value): value is string => Boolean(value)).join(" • ") || "Coffee SaaS";
+    const receiptNumber = order.id.slice(-8) || "-";
+    const paidDisplay = order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-";
+    const changeDisplay = order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-";
+    const isA4 = mode === "a4";
+    const pageSize = isA4 ? "A4 portrait" : "90mm auto";
+    const bodyWidth = "100%";
+    const receiptWidth = isA4 ? "160mm" : "90mm";
+    const receiptMargin = isA4 ? "16mm auto 0 auto" : "0 auto";
+    const receiptPadding = isA4 ? "12mm" : "4mm";
+    const baseFontSize = isA4 ? "14px" : "12px";
+    const shopFontSize = isA4 ? "20px" : "14px";
+    const headingFontSize = isA4 ? "16px" : "12px";
+    const smallFontSize = isA4 ? "12px" : "10px";
+    const dividerMargin = isA4 ? "12px 0" : "8px 0";
+    const itemSpacing = isA4 ? "8px" : "5px";
+    const summarySpacing = isA4 ? "6px" : "3px";
+
+    const itemRows = order.items.map((item) => {
+        const variant = cleanVariant(item.variant_label);
+        const price = Number.isFinite(item.price) ? item.price : 0;
+        const qty = Number.isFinite(item.qty) ? item.qty : 0;
+        const variantHtml = variant ? `<div class="variant">${escapeReceiptHtml(variant)}</div>` : "";
+
+        return `
+            <div class="item-row">
+                <div class="item-name">
+                    <div>${escapeReceiptHtml(item.name)}</div>
+                    ${variantHtml}
+                </div>
+                <div class="item-price">
+                    <div>${fmtMoney(price * qty)}</div>
+                    <div class="muted">${fmtMoney(qty)} × ${fmtMoney(price)}</div>
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    return `<!doctype html>
+<html lang="th">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Receipt ${escapeReceiptHtml(receiptNumber)}</title>
+        <style>
+            @page { size: ${pageSize}; margin: 0; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+            body {
+                width: ${bodyWidth};
+                margin: 0;
+                font-family: Arial, "Noto Sans Thai", Tahoma, sans-serif;
+                font-size: ${baseFontSize};
+                line-height: 1.35;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .receipt {
+                width: ${receiptWidth};
+                max-width: ${receiptWidth};
+                margin: ${receiptMargin};
+                padding: ${receiptPadding};
+            }
+            .center { text-align: center; }
+            .shop { font-size: ${shopFontSize}; font-weight: 700; overflow-wrap: anywhere; }
+            .heading { margin-top: 3px; font-size: ${headingFontSize}; font-weight: 700; }
+            .meta { margin-top: 2px; font-size: ${smallFontSize}; color: #444; overflow-wrap: anywhere; }
+            .divider { margin: ${dividerMargin}; border-top: 1px dashed #777; }
+            .item-row, .summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+            .item-row { break-inside: avoid; page-break-inside: avoid; }
+            .item-row + .item-row { margin-top: ${itemSpacing}; }
+            .item-name { min-width: 0; overflow-wrap: anywhere; }
+            .item-price { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
+            .variant, .muted { color: #555; }
+            .summary { display: grid; gap: ${summarySpacing}; }
+            .summary-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+            .total { font-weight: 700; }
+            .thanks { margin-top: 10px; padding-top: 7px; border-top: 1px dashed #777; font-size: ${smallFontSize}; }
+        </style>
+    </head>
+    <body>
+        <main class="receipt">
+            <header class="center">
+                <div class="shop">${escapeReceiptHtml(shopTitle)}</div>
+                <div class="heading">ใบเสร็จรับเงิน</div>
+                <div class="meta">เลขที่ ${escapeReceiptHtml(receiptNumber)}</div>
+                <div class="meta">${escapeReceiptHtml(order.id)}</div>
+                <div class="meta">${escapeReceiptHtml(fmtDateTH(order.created_at))}</div>
+            </header>
+            <div class="divider"></div>
+            <section>${itemRows}</section>
+            <div class="divider"></div>
+            <section class="summary">
+                <div class="summary-row total"><span>ยอดรวม</span><span>${fmtMoney(order.total)} บาท</span></div>
+                <div class="summary-row"><span>วิธีจ่าย</span><span>${escapeReceiptHtml(paymentMethodLabel(order.payment_method))}</span></div>
+                <div class="summary-row"><span>รับเงิน</span><span>${paidDisplay}</span></div>
+                <div class="summary-row"><span>เงินทอน</span><span>${changeDisplay}</span></div>
+            </section>
+            <footer class="thanks center">
+                <div>ขอบคุณที่ใช้บริการ</div>
+                <div>Thank you</div>
+            </footer>
+        </main>
+    </body>
+</html>`;
+}
+
+function ReceiptModal({
+    open,
+    mode,
+    onModeChange,
+    onClose,
+    order,
+    shopName,
+    branchName,
+}: {
+    open: boolean;
+    mode: "thermal" | "a4";
+    onModeChange: (mode: "thermal" | "a4") => void;
+    onClose: () => void;
+    order: UIOrderDetail;
+    shopName: string | null;
+    branchName: string | null;
+}) {
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
+    const [loadedReceiptDocument, setLoadedReceiptDocument] = useState<string | null>(null);
+    const receiptSrcDoc = useMemo(
+        () => buildReceiptDocument({ order, mode, shopName, branchName }),
+        [order, mode, shopName, branchName]
+    );
+    const iframeLoaded = open && loadedReceiptDocument === receiptSrcDoc;
+
+    const closeModal = useCallback(() => {
+        setLoadedReceiptDocument(null);
+        onClose();
+    }, [onClose]);
+
+    useEffect(() => {
+        function onKey(e: KeyboardEvent) {
+            if (e.key === "Escape") closeModal();
+        }
+        if (open) window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [open, closeModal]);
+
+    const selectPrintMode = (nextMode: "thermal" | "a4") => {
+        if (nextMode === mode) return;
+        setLoadedReceiptDocument(null);
+        onModeChange(nextMode);
+    };
+
+    const printReceipt = () => {
+        if (!iframeLoaded) return;
+        const iframe = iframeRef.current;
+        if (!iframe?.contentWindow) return;
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    };
+
+    if (!open) return null;
+
+    return (
+        <div className="fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/60" />
+
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+                <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col rounded-2xl border border-white/10 bg-[#141210] shadow-2xl">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+                        <div className="font-semibold">ตัวอย่างใบเสร็จ</div>
+                        <button
+                            type="button"
+                            onClick={closeModal}
+                            className="rounded-lg p-2 text-text-secondary hover:bg-white/10 hover:text-text-primary transition"
+                            aria-label="Close"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="min-h-0 flex-1 p-5">
+                        {/* print mode selector (screen only) */}
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                            <div className="text-xs text-text-secondary opacity-70">รูปแบบพิมพ์</div>
+                            <div className="flex rounded-lg border border-white/10 bg-white/5 p-1">
+                                <button
+                                    type="button"
+                                    onClick={() => selectPrintMode("thermal")}
+                                    className={[
+                                        "rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                                        mode === "thermal"
+                                            ? "bg-white/10 text-text-primary"
+                                            : "text-text-secondary hover:text-text-primary",
+                                    ].join(" ")}
+                                >
+                                    ใบเสร็จ 90mm
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => selectPrintMode("a4")}
+                                    className={[
+                                        "rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                                        mode === "a4"
+                                            ? "bg-white/10 text-text-primary"
+                                            : "text-text-secondary hover:text-text-primary",
+                                    ].join(" ")}
+                                >
+                                    A4 / PDF
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* The iframe document is both the preview and the print target. */}
+                        <div className="max-h-[65vh] overflow-auto rounded-xl border border-white/10 bg-white/5 p-4">
+                            <iframe
+                                ref={iframeRef}
+                                title="ตัวอย่างใบเสร็จ"
+                                srcDoc={receiptSrcDoc}
+                                onLoad={() => setLoadedReceiptDocument(receiptSrcDoc)}
+                                className="mx-auto block border-0 bg-white"
+                                style={{
+                                    width: mode === "a4" ? "210mm" : "90mm",
+                                    height: mode === "a4" ? "297mm" : "65vh",
+                                }}
+                            />
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={closeModal}
+                                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs text-text-secondary hover:bg-white/10 transition"
+                            >
+                                ปิด
+                            </button>
+                            <button
+                                type="button"
+                                onClick={printReceipt}
+                                disabled={!iframeLoaded}
+                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <Printer size={14} />
+                                {iframeLoaded ? "พิมพ์ใบเสร็จ" : "กำลังเตรียมใบเสร็จ..."}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* =========================
+    Page
 ========================= */
 export default function OrderDetailPage() {
     const orderId = useOrderId();
@@ -401,11 +685,40 @@ export default function OrderDetailPage() {
     const [cancelLoading, setCancelLoading] = useState(false);
     const [cancelError, setCancelError] = useState<string | null>(null);
 
+    // Receipt reprint state
+    const [receiptOpen, setReceiptOpen] = useState(false);
+    const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
+    const [context, setContext] = useState<{
+        shopName: string | null;
+        branchName: string | null;
+    }>({ shopName: null, branchName: null });
+
     const clearCopyTimer = useCallback(() => {
         if (copyTimerRef.current !== null) {
             window.clearTimeout(copyTimerRef.current);
             copyTimerRef.current = null;
         }
+    }, []);
+
+    // Load shop/branch context for receipt header
+    useEffect(() => {
+        let alive = true;
+        async function loadContext() {
+            try {
+                const res = await fetch("/api/admin/navbar", { cache: "no-store" });
+                if (!res.ok) return;
+                const data: unknown = await res.json().catch(() => null);
+                if (!alive || !isRecord(data)) return;
+                setContext({
+                    shopName: typeof data.currentShopName === "string" ? data.currentShopName : null,
+                    branchName: typeof data.currentBranchName === "string" ? data.currentBranchName : null,
+                });
+            } catch {
+                // ignore
+            }
+        }
+        void loadContext();
+        return () => { alive = false; };
     }, []);
 
     const fetchOrder = useCallback(async (id: string, signal?: AbortSignal) => {
@@ -492,6 +805,13 @@ export default function OrderDetailPage() {
         if (cancelLoading) return;
         setCancelOpen(false);
     }, [cancelLoading]);
+
+    const openReceipt = useCallback(() => {
+        setReceiptPrintMode("thermal");
+        setReceiptOpen(true);
+    }, []);
+
+    const closeReceipt = useCallback(() => setReceiptOpen(false), []);
 
     const submitCancel = useCallback(async () => {
         if (!order) return;
@@ -581,7 +901,7 @@ export default function OrderDetailPage() {
     }
 
     return (
-        <div className="p-6 space-y-6 text-text-primary">
+        <div className="admin-order-detail-screen p-6 space-y-6 text-text-primary">
             {/* Top bar */}
             <div className="flex items-center justify-between gap-3">
                 <Link
@@ -617,6 +937,16 @@ export default function OrderDetailPage() {
                     >
                         <AlertTriangle size={14} />
                         Cancel order
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={openReceipt}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-white/10 transition"
+                        title="พิมพ์ใบเสร็จ"
+                    >
+                        <Printer size={14} />
+                        พิมพ์ใบเสร็จ
                     </button>
                 </div>
             </div>
@@ -841,6 +1171,16 @@ export default function OrderDetailPage() {
                     </div>
                 </div>
             </ModalShell>
+
+            <ReceiptModal
+                open={receiptOpen}
+                mode={receiptPrintMode}
+                onModeChange={setReceiptPrintMode}
+                onClose={closeReceipt}
+                order={order}
+                shopName={context.shopName}
+                branchName={context.branchName}
+            />
         </div>
     );
 }
