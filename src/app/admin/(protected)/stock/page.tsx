@@ -68,6 +68,36 @@ function rowFlags(ev: StockEvent) {
     return flags.length ? flags.join(" ") : "";
 }
 
+function stockActionMeta(type: StockEvent["type"]) {
+    switch (type) {
+        case "restock":
+            return {
+                label: "Restock / คืนสต็อก",
+                className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+            };
+        case "waste":
+            return {
+                label: "Waste / ของเสีย",
+                className: "border-red-500/30 bg-red-500/10 text-red-400",
+            };
+        case "add":
+            return {
+                label: "Stock in / เพิ่มสต็อก",
+                className: "border-green-500/30 bg-green-500/10 text-green-400",
+            };
+        case "adjust":
+            return {
+                label: "Adjust / ปรับสต็อก",
+                className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+            };
+        default:
+            return {
+                label: "Stock out / ตัดสต็อก",
+                className: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+            };
+    }
+}
+
 function fmtAbs(n: number) {
     return Math.round(Math.abs(n));
 }
@@ -184,13 +214,16 @@ export default function StockHistoryPage() {
             const ref = hintForReference(ev);
             const impact = fmtSignedImpactCompact(ev);
 
-            const actionLabel =
-                ev.type === "deduct" ? "ตัดสต็อก" : ev.type === "add" ? "เพิ่มสต็อก" : "ปรับสต็อก";
+            const action = stockActionMeta(ev.type);
 
             return [
                 <div key={`${ev.event_id}-time`} className="whitespace-nowrap">
                     <div className="font-medium tabular-nums">{timeText}</div>
-                    <div className="text-xs text-[var(--text-muted)]">{actionLabel}</div>
+                    <span
+                        className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${action.className}`}
+                    >
+                        {action.label}
+                    </span>
                 </div>,
 
                 <div key={`${ev.event_id}-what`} className="min-w-0">
@@ -213,7 +246,7 @@ export default function StockHistoryPage() {
                 <div key={`${ev.event_id}-impact`} className="whitespace-nowrap">
                     <div className="text-sm font-semibold">{impact}</div>
                     <div className="text-xs text-[var(--text-muted)]">
-                        {actionLabel}: {ev.items_count} รายการ
+                        {action.label}: {ev.items_count} รายการ
                     </div>
                 </div>,
             ];
@@ -231,6 +264,8 @@ export default function StockHistoryPage() {
         });
         return sorted.slice(0, 3);
     }, [selectedEvent]);
+
+    const selectedAction = selectedEvent ? stockActionMeta(selectedEvent.type) : null;
 
     const criticalTop = useMemo(() => {
         const out = criticalItems.filter((x) => x.status === "out");
@@ -413,6 +448,13 @@ export default function StockHistoryPage() {
                             <div className="min-w-0">
                                 <div className="text-base font-semibold truncate flex items-center gap-2">
                                     <span className="truncate">{selectedEvent.title}</span>
+                                    {selectedAction ? (
+                                        <span
+                                            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${selectedAction.className}`}
+                                        >
+                                            {selectedAction.label}
+                                        </span>
+                                    ) : null}
                                     {rowFlags(selectedEvent) ? (
                                         <span className="text-xs text-[var(--text-muted)]">
                                             {rowFlags(selectedEvent)}

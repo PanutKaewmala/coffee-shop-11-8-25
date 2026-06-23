@@ -13,6 +13,8 @@ type ApiStockLogType =
     | "deduct"
     | "add"
     | "adjust"
+    | "restock"
+    | "waste"
     | "delete"
     | "set"
     | "increase"
@@ -20,8 +22,8 @@ type ApiStockLogType =
     | "loss"
     | string;
 
-// UI เราโชว์แค่ 3 กลุ่มหลัก (ง่าย + เจ้าของร้านเข้าใจ)
-export type StockLogType = "deduct" | "add" | "adjust";
+// Canonical movement types shown in Stock History.
+export type StockLogType = "deduct" | "add" | "adjust" | "restock" | "waste";
 
 type UnitKey = "g" | "ml" | "piece" | "unknown";
 
@@ -142,8 +144,8 @@ function emptySummary(): StockSummary {
     return {
         total_events: 0,
         total_items: 0,
-        events_by_type: { deduct: 0, add: 0, adjust: 0 },
-        items_by_type: { deduct: 0, add: 0, adjust: 0 },
+        events_by_type: { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
+        items_by_type: { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
         impact_by_unit: emptyImpact(),
     };
 }
@@ -155,7 +157,7 @@ function emptyKpi(): KpiSummary {
         critical_count: 0,
         inflow: emptyImpact(),
         outflow: emptyImpact(),
-        by_type: { deduct: 0, add: 0, adjust: 0 },
+        by_type: { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
     };
 }
 
@@ -165,9 +167,11 @@ function emptyKpi(): KpiSummary {
 // ✅ ทำให้ type ฝั่ง UI “นิ่ง” แม้ backend จะเพิ่ม type ใหม่
 function normalizeType(t: ApiStockLogType): StockLogType | null {
     // กลุ่ม “ออก”
-    if (t === "deduct" || t === "decrease" || t === "loss") return "deduct";
+    if (t === "deduct" || t === "decrease") return "deduct";
+    if (t === "waste" || t === "loss") return "waste";
     // กลุ่ม “เข้า”
     if (t === "add" || t === "increase") return "add";
+    if (t === "restock") return "restock";
     // กลุ่ม “ปรับ”
     if (t === "adjust" || t === "set") return "adjust";
 
@@ -373,7 +377,7 @@ function decodeStockEvent(v: unknown): StockEvent | null {
     if (!event_id || !happened_at || !title) return null;
 
     const type = normalizeType(rawType);
-    if (!type) return null; // ✅ delete/loss แปลก ๆ ไม่โชว์
+    if (!type) return null; // Unknown event types stay hidden instead of breaking the timeline.
 
     const items = decodeEventItems(v.items);
     // event ไม่มี items ก็ยัง allow (บางระบบสรุปเป็น event)
@@ -416,10 +420,10 @@ function decodeEventsResponse(json: unknown): ApiEventsResponse | null {
             total_items: readNumber(summaryRaw.total_items) ?? 0,
             events_by_type: isRecord(summaryRaw.events_by_type)
                 ? (summaryRaw.events_by_type as Record<string, number | null>)
-                : { deduct: 0, add: 0, adjust: 0 },
+                : { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
             items_by_type: isRecord(summaryRaw.items_by_type)
                 ? (summaryRaw.items_by_type as Record<string, number | null>)
-                : { deduct: 0, add: 0, adjust: 0 },
+                : { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
             impact_by_unit: normalizeImpact(summaryRaw.impact_by_unit),
         }
         : emptySummary();
@@ -458,12 +462,14 @@ function decodeKpi(json: unknown): KpiSummary | null {
     const inflow = normalizeImpact(json.inflow);
     const outflow = normalizeImpact(json.outflow);
 
-    // backend อาจส่ง by_type แปลก ๆ → normalize แค่ 3 ตัว
+    // Normalize every movement type supported by Stock History.
     const bt = isRecord(json.by_type) ? json.by_type : {};
     const by_type: Record<StockLogType, number> = {
         deduct: readNumber((bt as Record<string, unknown>).deduct) ?? 0,
         add: readNumber((bt as Record<string, unknown>).add) ?? 0,
         adjust: readNumber((bt as Record<string, unknown>).adjust) ?? 0,
+        restock: readNumber((bt as Record<string, unknown>).restock) ?? 0,
+        waste: readNumber((bt as Record<string, unknown>).waste) ?? 0,
     };
 
     return {
@@ -540,7 +546,7 @@ export default function useStockSearch({
     // filters
     const [dateFilter, setDateFilter] = useState<DateFilter>(initialFilter);
     const [ingredientId, setIngredientId] = useState<string>("all");
-    const [type, setType] = useState<string>("all"); // UI filter type: "all" | "deduct" | "add" | "adjust"
+    const [type, setType] = useState<string>("all"); // UI filter type: "all" | StockLogType
     const [orderId, setOrderId] = useState<string>("");
 
     // search
@@ -571,8 +577,16 @@ export default function useStockSearch({
 
             if (ingredientId !== "all") params.set("ingredient_id", ingredientId);
 
-            // type filter เฉพาะที่ UI รองรับ
-            if (type === "deduct" || type === "add" || type === "adjust") params.set("type", type);
+            // Send only movement types supported by the Stock History API.
+            if (
+                type === "deduct"
+                || type === "add"
+                || type === "adjust"
+                || type === "restock"
+                || type === "waste"
+            ) {
+                params.set("type", type);
+            }
 
             const oid = orderId.trim();
             if (oid) params.set("order_id", oid);

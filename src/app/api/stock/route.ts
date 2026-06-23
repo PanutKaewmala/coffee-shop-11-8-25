@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 type UUID = string;
 
-type StockLogType = "deduct" | "add" | "adjust";
+type StockLogType = "deduct" | "add" | "adjust" | "restock" | "waste";
 type UnitKey = "g" | "ml" | "piece";
 
 type IngredientJoinRow = {
@@ -154,7 +154,7 @@ function readNumberField(obj: Record<string, unknown>, key: string): number | nu
 }
 
 function isStockLogType(v: string | null): v is StockLogType {
-    return v === "deduct" || v === "add" || v === "adjust";
+    return v === "deduct" || v === "add" || v === "adjust" || v === "restock" || v === "waste";
 }
 
 function normalizeFromTo(input: string | null, mode: "from" | "to"): string | null {
@@ -192,7 +192,7 @@ function shortId(id: string, n = 8) {
 }
 
 function eventKey(row: { order_id: string | null; type: StockLogType; note: string | null; created_at: string }): string {
-    if (row.order_id) return `order:${row.order_id}`;
+    if (row.order_id) return `order:${row.order_id}:${row.type}`;
     const minute = row.created_at?.slice(0, 16) || "unknown-minute";
     const note = (row.note ?? "").trim().toLowerCase();
     return `batch:${row.type}:${minute}:${note || "-"}`;
@@ -200,21 +200,23 @@ function eventKey(row: { order_id: string | null; type: StockLogType; note: stri
 
 function calcSignedImpact(params: { type: StockLogType; amount: number; before_stock: number | null; after_stock: number | null }): number {
     const { type, amount, before_stock, after_stock } = params;
+    const isOutflow = type === "deduct" || type === "waste";
+    const isInflow = type === "add" || type === "restock";
 
     // ใช้ delta ถ้ามี before/after
     if (before_stock != null && after_stock != null) {
         const d = after_stock - before_stock;
 
         // กัน data เพี้ยน: deduct แต่ delta เป็นบวก -> ถือว่าเป็นลบ
-        if (type === "deduct" && d > 0) return -Math.abs(amount);
+        if (isOutflow && d > 0) return -Math.abs(amount);
         // add แต่ delta เป็นลบ -> ถือว่าเป็นบวก
-        if (type === "add" && d < 0) return Math.abs(amount);
+        if (isInflow && d < 0) return Math.abs(amount);
 
         return d;
     }
 
-    if (type === "deduct") return -Math.abs(amount);
-    if (type === "add") return Math.abs(amount);
+    if (isOutflow) return -Math.abs(amount);
+    if (isInflow) return Math.abs(amount);
     return 0;
 }
 
@@ -226,10 +228,18 @@ function isBigAmountDeduct(amountAbs: number, unit: UnitKey): boolean {
 }
 
 function buildTitle(type: StockLogType, hasOrder: boolean): string {
-    if (hasOrder) return "POS Checkout";
+    if (hasOrder && type === "deduct") return "POS Checkout";
+    if (hasOrder && type === "restock") {
+        return "Order cancelled: restock / คืนสต็อกจากออเดอร์ที่ยกเลิก";
+    }
+    if (hasOrder && type === "waste") {
+        return "Order cancelled: waste / ของเสียจากออเดอร์ที่ยกเลิก";
+    }
     if (type === "adjust") return "ปรับสต็อก";
     if (type === "add") return "เพิ่มสต็อก";
-    return "ตัดตามออเดอร์";
+    if (type === "restock") return "คืนสต็อก";
+    if (type === "waste") return "ของเสีย";
+    return "ตัดสต็อก";
 }
 
 function buildSubtitle(type: StockLogType, order_id: string | null, note: string | null): string | null {
@@ -483,7 +493,13 @@ export async function GET(req: NextRequest) {
 
             const inflow = initImpact();
             const outflow = initImpact();
-            const byType: Record<StockLogType, number> = { deduct: 0, add: 0, adjust: 0 };
+            const byType: Record<StockLogType, number> = {
+                deduct: 0,
+                add: 0,
+                adjust: 0,
+                restock: 0,
+                waste: 0,
+            };
 
             for (const r of data ?? []) {
                 byType[r.type] += 1;
@@ -638,7 +654,9 @@ export async function GET(req: NextRequest) {
             }
 
             const isSafe = ingName ? SAFE_BIG_INGREDIENTS.has(ingName.trim()) : false;
-            const big = r.type === "deduct" && !isSafe && isBigAmountDeduct(Math.abs(amount), uKey);
+            const big = (r.type === "deduct" || r.type === "waste")
+                && !isSafe
+                && isBigAmountDeduct(Math.abs(amount), uKey);
 
             ev.items.push({
                 id: r.id,
@@ -677,8 +695,8 @@ export async function GET(req: NextRequest) {
         const summary: StockSummary = {
             total_events: events.length,
             total_items: events.reduce((s, e) => s + e.items_count, 0),
-            events_by_type: { deduct: 0, add: 0, adjust: 0 },
-            items_by_type: { deduct: 0, add: 0, adjust: 0 },
+            events_by_type: { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
+            items_by_type: { deduct: 0, add: 0, adjust: 0, restock: 0, waste: 0 },
             impact_by_unit: initImpact(),
         };
 
