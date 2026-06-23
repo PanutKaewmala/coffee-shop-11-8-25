@@ -344,29 +344,31 @@ export default function AdminDashboard() {
 
     const topSeller = summary?.topItems?.[0] ?? null;
 
+    const paidOnlyOrders = useMemo(() => {
+        return (summary?.orders ?? []).filter((o) => o.status === "paid");
+    }, [summary]);
+
     // ✅ cast through unknown to the type Chart expects (no any)
     const chartOrders = useMemo(() => {
-        if (!summary?.orders) return [] as ChartOrder[];
-        return summary.orders as unknown as ChartOrder[];
-    }, [summary]);
+        return paidOnlyOrders as unknown as ChartOrder[];
+    }, [paidOnlyOrders]);
 
     // =========================
     // Insights (Owner-first signals)
     // =========================
 
     const paidOrdersSorted = useMemo(() => {
-        const list = (summary?.orders ?? []).filter((o) => o.status === "paid");
-        return [...list].sort(
+        return [...paidOnlyOrders].sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );
-    }, [summary]);
+    }, [paidOnlyOrders]);
 
-    const totalQtyAll = useMemo(() => {
-        return (summary?.orders ?? []).reduce((sum, o) => {
+    const totalQtyPaid = useMemo(() => {
+        return paidOnlyOrders.reduce((sum, o) => {
             const q = o.items.reduce((s, it) => s + (Number.isFinite(it.qty) ? it.qty : 0), 0);
             return sum + q;
         }, 0);
-    }, [summary]);
+    }, [paidOnlyOrders]);
 
     const cancelLikeCount = useMemo(() => {
         const c = summary?.cancelledCount ?? 0;
@@ -400,10 +402,10 @@ export default function AdminDashboard() {
     const menuConcentration = useMemo(() => {
         // use topItems[0].qty / total qty (fallback: 0)
         const top = summary?.topItems?.[0]?.qty ?? 0;
-        const total = totalQtyAll || 0;
+        const total = totalQtyPaid || 0;
         if (!total) return 0;
         return top / total;
-    }, [summary, totalQtyAll]);
+    }, [summary, totalQtyPaid]);
 
     /** ✅ hour-based insights ONLY when chart labels are hourly */
     const hourlyOk = useMemo(() => {
