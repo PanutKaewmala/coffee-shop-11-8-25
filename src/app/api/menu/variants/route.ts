@@ -134,10 +134,11 @@ async function findReplacementVariantId(args: {
     menu_id: UUID;
     serve_type_id: UUID;
     exclude_id: UUID;
+    shop_id?: UUID;
 }): Promise<UUID | null> {
-    const { supabase, menu_id, serve_type_id, exclude_id } = args;
+    const { supabase, menu_id, serve_type_id, exclude_id, shop_id } = args;
 
-    const { data, error } = await supabase
+    let q = supabase
         .from("menu_variants")
         .select("id")
         .eq("menu_id", menu_id)
@@ -145,6 +146,10 @@ async function findReplacementVariantId(args: {
         .neq("id", exclude_id)
         .order("created_at", { ascending: false })
         .limit(1);
+
+    if (shop_id) q = q.eq("shop_id", shop_id);
+
+    const { data, error } = await q;
 
     if (error) return null;
     const first = (data ?? [])[0] as { id?: UUID } | undefined;
@@ -252,6 +257,29 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        const user = auth.user;
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
+
         const raw = (await req.json().catch(() => null)) as unknown;
 
         if (!isRecord(raw)) {
@@ -267,6 +295,18 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const { data: menuRow, error: menuErr } = await admin
+            .from("menu")
+            .select("id,shop_id")
+            .eq("id", menu_id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (menuErr) return NextResponse.json({ error: menuErr.message }, { status: 500 });
+        if (!menuRow?.id) {
+            return NextResponse.json({ error: "Menu not found in current shop" }, { status: 404 });
+        }
+
         const size = toStringOrNull(raw.size) ?? "default"; // NOT NULL
         const price_override = toNumberOrNull(raw.price_override);
         const image_url = toStringOrNull(raw.image_url);
@@ -278,7 +318,8 @@ export async function POST(req: NextRequest) {
                 .update({ is_default: false })
                 .eq("menu_id", menu_id)
                 .eq("serve_type_id", serve_type_id)
-                .eq("is_default", true);
+                .eq("is_default", true)
+                .eq("shop_id", currentShopId);
 
             if (unsetErr) return NextResponse.json({ error: unsetErr.message }, { status: 500 });
         }
@@ -327,6 +368,29 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        const user = auth.user;
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
+
         const raw = (await req.json().catch(() => null)) as unknown;
 
         if (!isRecord(raw)) {
@@ -340,6 +404,7 @@ export async function PUT(req: NextRequest) {
             .from("menu_variants")
             .select("id, menu_id, serve_type_id, is_default")
             .eq("id", id)
+            .eq("shop_id", currentShopId)
             .single();
 
         if (curErr || !current) {
@@ -365,18 +430,19 @@ export async function PUT(req: NextRequest) {
                 .update({ is_default: false })
                 .eq("menu_id", cur.menu_id)
                 .eq("serve_type_id", cur.serve_type_id)
-                .eq("is_default", true);
+                .eq("is_default", true)
+                .eq("shop_id", currentShopId);
 
             if (unsetErr) return NextResponse.json({ error: unsetErr.message }, { status: 500 });
             update.is_default = true;
         } else if (requestedDefault === false) {
-            // ✅ กัน “no default” ในกลุ่มเดียวกัน
             if (cur.is_default) {
                 const replacementId = await findReplacementVariantId({
                     supabase,
                     menu_id: cur.menu_id,
                     serve_type_id: cur.serve_type_id,
                     exclude_id: id,
+                    shop_id: currentShopId,
                 });
 
                 if (!replacementId) {
@@ -389,11 +455,11 @@ export async function PUT(req: NextRequest) {
                     );
                 }
 
-                // promote ตัวอื่นให้เป็น default ก่อน
                 const { error: promoteErr } = await supabase
                     .from("menu_variants")
                     .update({ is_default: true })
-                    .eq("id", replacementId);
+                    .eq("id", replacementId)
+                    .eq("shop_id", currentShopId);
 
                 if (promoteErr) {
                     return NextResponse.json({ error: promoteErr.message }, { status: 500 });
@@ -411,6 +477,7 @@ export async function PUT(req: NextRequest) {
             .from("menu_variants")
             .update(update)
             .eq("id", id)
+            .eq("shop_id", currentShopId)
             .select(SELECT_BASE)
             .single();
 
@@ -443,8 +510,30 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
-        const id = new URL(req.url).searchParams.get("id");
+        const admin = getSupabaseAdmin();
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        const user = auth.user;
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const { currentShopId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        }
+
+        const id = new URL(req.url).searchParams.get("id");
         if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
         // 1) read current row (need menu_id, serve_type_id, is_default)
@@ -452,6 +541,7 @@ export async function DELETE(req: NextRequest) {
             .from("menu_variants")
             .select("id, menu_id, serve_type_id, is_default")
             .eq("id", id)
+            .eq("shop_id", currentShopId)
             .single();
 
         if (curErr || !current) {
@@ -470,6 +560,7 @@ export async function DELETE(req: NextRequest) {
                 menu_id: cur.menu_id,
                 serve_type_id: cur.serve_type_id,
                 exclude_id: id,
+                shop_id: currentShopId,
             });
 
             if (!replacementId) {
@@ -485,13 +576,19 @@ export async function DELETE(req: NextRequest) {
             const { error: promoteErr } = await supabase
                 .from("menu_variants")
                 .update({ is_default: true })
-                .eq("id", replacementId);
+                .eq("id", replacementId)
+                .eq("shop_id", currentShopId);
 
             if (promoteErr) return NextResponse.json({ error: promoteErr.message }, { status: 500 });
         }
 
         // 3) delete
-        const { error } = await supabase.from("menu_variants").delete().eq("id", id);
+        const { error } = await supabase
+            .from("menu_variants")
+            .delete()
+            .eq("id", id)
+            .eq("shop_id", currentShopId);
+
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
         return NextResponse.json({ success: true });
