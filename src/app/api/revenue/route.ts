@@ -1,6 +1,7 @@
 // app/api/revenue/route.ts
 import { NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 /* =========================
    Helpers
@@ -173,7 +174,42 @@ function buildBucket(range: RangeType, startLocal: Date | null, now: Date): Reco
 export async function GET(req: Request) {
   try {
     const supabase = await getSupabaseServer();
-    const { currentBranchId } = await getCurrentContextFromCookies();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+      return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+      .from("shop_members")
+      .select("shop_id")
+      .eq("user_id", user.id)
+      .eq("shop_id", currentShopId)
+      .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+
+    if (currentBranchId) {
+      const { data: branchRow, error: branchErr } = await admin
+        .from("branch")
+        .select("id")
+        .eq("id", currentBranchId)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+      if (branchErr) return NextResponse.json({ error: branchErr.message }, { status: 500 });
+      if (!branchRow) {
+        return NextResponse.json({ error: "Branch not in current shop" }, { status: 403 });
+      }
+    }
+
     const { searchParams } = new URL(req.url);
     const range = (searchParams.get("range") || "today") as RangeType;
 
@@ -213,19 +249,21 @@ export async function GET(req: Request) {
       .from("orders")
       .select("id,total,created_at,paid_at,status,order_items(id,name,price,qty,variant_label)")
       .eq("status", "paid")
+      .eq("shop_id", currentShopId)
       .order("paid_at", { ascending: false })
       .range(0, 99999);
 
-    if (currentBranchId) paidQuery = paidQuery.filter("branch_id", "eq", currentBranchId);
+    if (currentBranchId) paidQuery = paidQuery.eq("branch_id", currentBranchId);
     if (startUTCISO) paidQuery = paidQuery.gte("paid_at", startUTCISO);
 
     let allQuery = supabase
       .from("orders")
       .select("id,total,created_at,paid_at,status,order_items(id,name,price,qty,variant_label)")
+      .eq("shop_id", currentShopId)
       .order("created_at", { ascending: false })
       .range(0, 200); // recent enough for dashboard
 
-    if (currentBranchId) allQuery = allQuery.filter("branch_id", "eq", currentBranchId);
+    if (currentBranchId) allQuery = allQuery.eq("branch_id", currentBranchId);
     if (startUTCISO) allQuery = allQuery.gte("created_at", startUTCISO);
 
     const [{ data: paidRaw, error: paidErr }, { data: allRaw, error: allErr }] = await Promise.all([
