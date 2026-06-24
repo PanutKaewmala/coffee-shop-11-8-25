@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolvePublicShopId } from "@/lib/publicShop";
 import { NextRequest, NextResponse } from "next/server";
@@ -185,6 +185,31 @@ type ContactUpdatePayload = {
 };
 
 export async function PUT(req: NextRequest) {
+    const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const body = await readJson(req);
     if (!body) {
         return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -193,6 +218,18 @@ export async function PUT(req: NextRequest) {
     const id = str(body.id).trim();
     if (!id) {
         return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+
+    const { data: existing, error: existErr } = await admin
+        .from("contact")
+        .select("id")
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+    if (!existing) {
+        return NextResponse.json({ error: "Contact not found in current shop" }, { status: 404 });
     }
 
     const payload: ContactUpdatePayload = {};
@@ -220,12 +257,11 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
-    const supabase = await getSupabaseServer();
-
-    const { data, error } = await supabase
+    const { data, error } = await admin
         .from("contact")
         .update(payload)
         .eq("id", id)
+        .eq("shop_id", currentShopId)
         .select()
         .single();
 
@@ -238,14 +274,49 @@ export async function PUT(req: NextRequest) {
    DELETE  /api/contact?id=xxxx
 =========================================== */
 export async function DELETE(req: NextRequest) {
+    const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id")?.trim();
 
     if (!id) return NextResponse.json({ error: "No id provided" }, { status: 400 });
 
-    const supabase = await getSupabaseServer();
+    const { data: existing, error: existErr } = await admin
+        .from("contact")
+        .select("id")
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
 
-    const { error } = await supabase.from("contact").delete().eq("id", id);
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+    if (!existing) {
+        return NextResponse.json({ error: "Contact not found in current shop" }, { status: 404 });
+    }
+
+    const { error } = await admin.from("contact").delete().eq("id", id).eq("shop_id", currentShopId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
