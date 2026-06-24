@@ -146,6 +146,8 @@ export default function IngredientsAdminPage() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [actionNotice, setActionNotice] = useState<string | null>(null);
     const [flashIngredientId, setFlashIngredientId] = useState<string | null>(null);
+    const [canManageIngredients, setCanManageIngredients] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
 
     // filters
     const [search, setSearch] = useState("");
@@ -176,7 +178,7 @@ export default function IngredientsAdminPage() {
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
     const isAnyModalOpen = showModal || !!adjustItem;
-    const disableActions = loading || saving || !!deletingId || isAnyModalOpen;
+    const disableActions = loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading;
 
     useEffect(() => setInputPage(String(page)), [page]);
 
@@ -219,6 +221,35 @@ export default function IngredientsAdminPage() {
         const t = setTimeout(() => setFlashIngredientId(null), 2600);
         return () => clearTimeout(t);
     }, [flashIngredientId]);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || typeof data !== "object" || !("canEditShopSettings" in data)) {
+                    setCanManageIngredients(false);
+                    return;
+                }
+
+                setCanManageIngredients((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageIngredients(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     const refreshAfterAdjust = async (ingredientId?: string) => {
         setAdjustItem(null);
@@ -416,6 +447,7 @@ export default function IngredientsAdminPage() {
     }, [ingredients, analyticsMap]);
 
     const openAdd = () => {
+        if (!canManageIngredients || permissionLoading) return;
         setAdjustItem(null);
         setEditingItem(null);
         setName("");
@@ -425,6 +457,7 @@ export default function IngredientsAdminPage() {
     };
 
     const openRename = (item: IngredientRow) => {
+        if (!canManageIngredients || permissionLoading) return;
         setAdjustItem(null);
         setEditingItem(item);
         setName(item.name ?? "");
@@ -512,6 +545,7 @@ export default function IngredientsAdminPage() {
     };
 
     const openAdjust = (item: IngredientRow) => {
+        if (!canManageIngredients || permissionLoading) return;
         if (saving) return;
         setShowModal(false);
         setEditingItem(null);
@@ -519,6 +553,7 @@ export default function IngredientsAdminPage() {
     };
 
     const deleteIngredient = async (id: string) => {
+        if (!canManageIngredients || permissionLoading) return;
         if (deletingId) return;
         if (!confirm("ลบวัตถุดิบนี้ใช่ไหม?")) return;
 
@@ -569,6 +604,11 @@ export default function IngredientsAdminPage() {
     return (
         <div className="p-6 space-y-6">
             <Card title="Ingredients">
+                {!permissionLoading && !canManageIngredients ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can manage ingredients.
+                    </div>
+                ) : null}
                 {/* Filters */}
                 <div className="mb-4 space-y-3">
                     <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาวัตถุดิบ..." />
@@ -739,47 +779,53 @@ export default function IngredientsAdminPage() {
                                 </div>,
 
                                 <div key={`${item.id}-actions`} className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => openAdjust(item)}
-                                        disabled={disableActions}
-                                    >
-                                        ปรับสต็อก
-                                    </Button>
-
-                                    <details className="relative">
-                                        <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
-                                            ⋯
-                                        </summary>
-
-                                        <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
-                                            <a
-                                                href={`/admin/ingredients/${item.id}`}
-                                                className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
-                                            >
-                                                รายละเอียด
-                                            </a>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => openRename(item)}
+                                    {canManageIngredients && !permissionLoading ? (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => openAdjust(item)}
                                                 disabled={disableActions}
-                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
                                             >
-                                                เปลี่ยนชื่อ
-                                            </button>
+                                                ปรับสต็อก
+                                            </Button>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => deleteIngredient(item.id)}
-                                                disabled={disableActions}
-                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
-                                            >
-                                                {isDeletingThis ? "กำลังลบ..." : "ลบ"}
-                                            </button>
-                                        </div>
-                                    </details>
+                                            <details className="relative">
+                                                <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
+                                                    ⋯
+                                                </summary>
+
+                                                <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
+                                                    <a
+                                                        href={`/admin/ingredients/${item.id}`}
+                                                        className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
+                                                    >
+                                                        รายละเอียด
+                                                    </a>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openRename(item)}
+                                                        disabled={disableActions}
+                                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
+                                                    >
+                                                        เปลี่ยนชื่อ
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deleteIngredient(item.id)}
+                                                        disabled={disableActions}
+                                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
+                                                    >
+                                                        {isDeletingThis ? "กำลังลบ..." : "ลบ"}
+                                                    </button>
+                                                </div>
+                                            </details>
+                                        </>
+                                    ) : (
+                                        <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                    )}
                                 </div>,
                             ];
                         })}
