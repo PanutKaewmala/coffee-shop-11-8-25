@@ -6,12 +6,13 @@ import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseS
 import { resolvePublicShopId } from "@/lib/publicShop";
 
 type ShopContextResult =
-    | { ok: true; shopId: string }
+    | { ok: true; shopId: string; role: string | null }
     | { ok: false; response: NextResponse };
 
 async function ensureCurrentShopContext(
     admin: ReturnType<typeof getSupabaseAdmin>,
-    userId: string
+    userId: string,
+    ownerOnly = false
 ): Promise<ShopContextResult> {
     const { currentShopId } = await getCurrentContextFromCookies();
     if (!currentShopId) {
@@ -21,9 +22,12 @@ async function ensureCurrentShopContext(
         };
     }
 
+    const selectFields = ownerOnly
+        ? "shop_id,role"
+        : "shop_id";
     const { data: member, error: mErr } = await admin
         .from("shop_members")
-        .select("shop_id")
+        .select(selectFields)
         .eq("user_id", userId)
         .eq("shop_id", currentShopId)
         .maybeSingle();
@@ -42,7 +46,17 @@ async function ensureCurrentShopContext(
         };
     }
 
-    return { ok: true, shopId: currentShopId };
+    const maybeMember = member as { role?: unknown } | null;
+    const role = typeof maybeMember?.role === "string" ? maybeMember.role : null;
+
+    if (ownerOnly && role !== "owner") {
+        return {
+            ok: false,
+            response: NextResponse.json({ error: "Owner only" }, { status: 403 }),
+        };
+    }
+
+    return { ok: true, shopId: currentShopId, role };
 }
 
 export async function GET(req: NextRequest) {
@@ -157,7 +171,7 @@ export async function POST(req: NextRequest) {
     const user = auth.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const ctx = await ensureCurrentShopContext(admin, user.id);
+    const ctx = await ensureCurrentShopContext(admin, user.id, true);
     if (!ctx.ok) return ctx.response;
     const currentShopId = ctx.shopId;
 
@@ -247,7 +261,7 @@ export async function PUT(req: NextRequest) {
     const user = auth.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const ctx = await ensureCurrentShopContext(admin, user.id);
+    const ctx = await ensureCurrentShopContext(admin, user.id, true);
     if (!ctx.ok) return ctx.response;
     const currentShopId = ctx.shopId;
 
@@ -255,6 +269,16 @@ export async function PUT(req: NextRequest) {
     const id = typeof body?.id === "string" ? body.id : "";
 
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+    const { data: existing, error: existErr } = await admin
+        .from("branch")
+        .select("id")
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+    if (!existing) return NextResponse.json({ error: "Branch not found" }, { status: 404 });
 
     const payload: Record<string, string | null> = {};
     if (body?.name !== undefined) payload.name = String(body.name).trim();
@@ -287,7 +311,7 @@ export async function DELETE(req: NextRequest) {
     const user = auth.user;
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const ctx = await ensureCurrentShopContext(admin, user.id);
+    const ctx = await ensureCurrentShopContext(admin, user.id, true);
     if (!ctx.ok) return ctx.response;
     const currentShopId = ctx.shopId;
 
