@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
@@ -56,6 +56,38 @@ export default function ContactAdminPage() {
         reloadList,
     } = useContactSearch({ rowsPerPage: 10 });
 
+    const [canManageContacts, setCanManageContacts] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || typeof data !== "object" || !("canEditShopSettings" in data)) {
+                    setCanManageContacts(false);
+                    return;
+                }
+
+                setCanManageContacts((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageContacts(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     /* -------------------------
        Modal State
     ------------------------- */
@@ -89,6 +121,12 @@ export default function ContactAdminPage() {
     return (
         <div className="p-6 space-y-6">
             <Card title="Customer Contacts">
+                {!permissionLoading && !canManageContacts ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can delete contact messages.
+                    </div>
+                ) : null}
+
                 {/* SEARCH */}
                 <SearchBox
                     value={filter.search}
@@ -134,13 +172,19 @@ export default function ContactAdminPage() {
                                                 View
                                             </Button>
 
-                                            <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                onClick={() => handleDelete(c.id)}
-                                            >
-                                                Delete
-                                            </Button>
+                                            {canManageContacts && !permissionLoading ? (
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={() => handleDelete(c.id)}
+                                                >
+                                                    Delete
+                                                </Button>
+                                            ) : (
+                                                <span className="text-xs text-[var(--text-secondary)] self-center">
+                                                    View only
+                                                </span>
+                                            )}
                                         </div>,
                                     ];
                                 })}
