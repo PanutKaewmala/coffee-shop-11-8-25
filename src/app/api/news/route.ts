@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolvePublicShopId } from "@/lib/publicShop";
 import { NextRequest, NextResponse } from "next/server";
@@ -91,10 +91,33 @@ export async function GET(req: NextRequest) {
 }
 
 /* =========================
-   POST /api/news
-========================= */
+    POST /api/news
+ ========================= */
 export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
 
     let body: unknown;
     try {
@@ -126,11 +149,12 @@ export async function POST(req: NextRequest) {
         image_url: asStringOrNull(body.image),
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
         .from("news")
         .insert([
             {
                 ...payload,
+                shop_id: currentShopId,
                 created_at: new Date().toISOString(),
             },
         ])
@@ -146,10 +170,33 @@ export async function POST(req: NextRequest) {
 }
 
 /* =========================
-   PUT /api/news
-========================= */
+    PUT /api/news
+ ========================= */
 export async function PUT(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
 
     let body: unknown;
     try {
@@ -165,6 +212,18 @@ export async function PUT(req: NextRequest) {
     const id = asString(body.id);
     if (!id) {
         return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+
+    const { data: existing, error: existErr } = await admin
+        .from("news")
+        .select("id")
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+    if (!existing) {
+        return NextResponse.json({ error: "News not found in current shop" }, { status: 404 });
     }
 
     const updateData: NewsUpdatePayload = {};
@@ -190,10 +249,11 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
         .from("news")
         .update(updateData)
         .eq("id", id)
+        .eq("shop_id", currentShopId)
         .select()
         .single();
 
@@ -206,17 +266,53 @@ export async function PUT(req: NextRequest) {
 }
 
 /* =========================
-   DELETE /api/news?id=...
-========================= */
+    DELETE /api/news?id=...
+ ========================= */
 export async function DELETE(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const id = new URL(req.url).searchParams.get("id");
 
     if (!id) {
         return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("news").delete().eq("id", id);
+    const { data: existing, error: existErr } = await admin
+        .from("news")
+        .select("id")
+        .eq("id", id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 });
+    if (!existing) {
+        return NextResponse.json({ error: "News not found in current shop" }, { status: 404 });
+    }
+
+    const { error } = await admin.from("news").delete().eq("id", id).eq("shop_id", currentShopId);
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
