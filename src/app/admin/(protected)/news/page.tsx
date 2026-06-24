@@ -58,6 +58,8 @@ type NewsWritePayload = {
 export default function NewsAdminPage() {
     const [news, setNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [canManageNews, setCanManageNews] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
 
     // manual categories used for news form
     const [categories, setCategories] = useState<string[]>([
@@ -132,6 +134,35 @@ export default function NewsAdminPage() {
         queueMicrotask(() => {
             void fetchNews();
         });
+    }, []);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || !isRecord(data) || !("canEditShopSettings" in data)) {
+                    setCanManageNews(false);
+                    return;
+                }
+
+                setCanManageNews((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageNews(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
     }, []);
 
     /* -------------------------
@@ -373,6 +404,12 @@ export default function NewsAdminPage() {
     return (
         <div className="p-6 space-y-6">
             <Card title="News">
+                {!permissionLoading && !canManageNews ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can manage news.
+                    </div>
+                ) : null}
+
                 {/* === FILTER === */}
                 <div className="mb-4 space-y-3">
                     <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาข่าว..." />
@@ -465,7 +502,9 @@ export default function NewsAdminPage() {
 
                 {/* ADD BUTTON */}
                 <div className="flex justify-end mb-4">
-                    <Button onClick={() => openModal()}>+ Add News</Button>
+                    <Button onClick={() => openModal()} disabled={!canManageNews || permissionLoading}>
+                        + Add News
+                    </Button>
                 </div>
 
                 {/* TABLE */}
@@ -499,16 +538,22 @@ export default function NewsAdminPage() {
                                 ).toLocaleDateString("th-TH")
                                 : "-",
                             <div key={item.id + "_actions"} className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => openModal(item)}>
-                                    Edit
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => void deleteNews(item.id)}
-                                >
-                                    Delete
-                                </Button>
+                                {canManageNews && !permissionLoading ? (
+                                    <>
+                                        <Button variant="outline" size="sm" onClick={() => openModal(item)}>
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={() => void deleteNews(item.id)}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                )}
                             </div>,
                         ])}
                     />
