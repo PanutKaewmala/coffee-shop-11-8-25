@@ -63,6 +63,19 @@ type AnalyticsResponse = {
     abnormalToday?: boolean;
     abnormalLabel?: string;
     topMenus?: AnalyticsTopMenu[];
+    usage?: {
+        avgDailyUsage7?: number;
+        totalUsage7?: number;
+        todayUsage?: number;
+        daysLeft?: number | null;
+        daysLeftLabel?: string;
+        abnormalToday?: boolean;
+        abnormalLabel?: string;
+    };
+};
+
+type IngredientDetailResponse = {
+    ingredient?: unknown;
 };
 
 type StockEventItemFromApi = {
@@ -236,25 +249,22 @@ function extractLogsFromStockEvents(data: unknown, ingredientId: string): StockL
     return out;
 }
 
-function parseAnalytics(data: unknown): { ingredient: IngredientLite | null; meta: Omit<AnalyticsResponse, "ingredient"> } {
-    if (!isRecord(data)) return { ingredient: null, meta: {} };
+function parseIngredient(data: unknown): IngredientLite | null {
+    if (!isRecord(data)) return null;
 
-    const ingRaw = (data as AnalyticsResponse).ingredient;
-    if (!isRecord(ingRaw)) return { ingredient: null, meta: {} };
-
-    const id = toStringOrNull(ingRaw.id) ?? "";
-    const name = toStringOrNull(ingRaw.name) ?? "-";
-    const stock = toNumber(ingRaw.stock, 0);
-    const unit = toStringOrNull(ingRaw.unit);
-    const min_stock = toNumber((ingRaw as { min_stock?: unknown }).min_stock, 0);
-    const updated_at = (ingRaw as { updated_at?: unknown }).updated_at ?? null;
+    const id = toStringOrNull(data.id) ?? "";
+    const name = toStringOrNull(data.name) ?? "-";
+    const stock = toNumber(data.stock, 0);
+    const unit = toStringOrNull(data.unit);
+    const min_stock = toNumber(data.min_stock, 0);
+    const updated_at = data.updated_at ?? null;
 
     const fallbackUnit: BaseUnit = normalizeBaseUnitFromLegacyUnit(unit ?? "");
-    const base_unit = pickBaseUnit(ingRaw.base_unit, fallbackUnit);
+    const base_unit = pickBaseUnit(data.base_unit, fallbackUnit);
 
-    if (!id) return { ingredient: null, meta: {} };
+    if (!id) return null;
 
-    const ingredient: IngredientLite = {
+    return {
         id,
         name,
         stock,
@@ -263,23 +273,29 @@ function parseAnalytics(data: unknown): { ingredient: IngredientLite | null; met
         min_stock,
         updated_at: typeof updated_at === "string" ? updated_at : null,
     };
+}
+
+function parseAnalytics(data: unknown): Omit<AnalyticsResponse, "ingredient"> {
+    if (!isRecord(data)) return {};
+
+    const usage = isRecord(data.usage) ? data.usage : data;
 
     const meta: Omit<AnalyticsResponse, "ingredient"> = {
-        avgDailyUsage7: toNumber((data as AnalyticsResponse).avgDailyUsage7, 0),
-        totalUsage7: toNumber((data as AnalyticsResponse).totalUsage7, 0),
-        todayUsage: toNumber((data as AnalyticsResponse).todayUsage, 0),
-        daysLeft: (data as AnalyticsResponse).daysLeft ?? null,
-        daysLeftLabel: toStringOrNull((data as AnalyticsResponse).daysLeftLabel) ?? "",
-        abnormalToday: !!(data as AnalyticsResponse).abnormalToday,
-        abnormalLabel: toStringOrNull((data as AnalyticsResponse).abnormalLabel) ?? "",
-        topMenus: Array.isArray((data as AnalyticsResponse).topMenus)
-            ? ((data as AnalyticsResponse).topMenus as AnalyticsTopMenu[]).filter(
+        avgDailyUsage7: toNumber(usage.avgDailyUsage7, 0),
+        totalUsage7: toNumber(usage.totalUsage7, 0),
+        todayUsage: toNumber(usage.todayUsage, 0),
+        daysLeft: typeof usage.daysLeft === "number" ? usage.daysLeft : null,
+        daysLeftLabel: toStringOrNull(usage.daysLeftLabel) ?? "",
+        abnormalToday: usage.abnormalToday === true,
+        abnormalLabel: toStringOrNull(usage.abnormalLabel) ?? "",
+        topMenus: Array.isArray(data.topMenus)
+            ? (data.topMenus as AnalyticsTopMenu[]).filter(
                 (x) => isRecord(x) && !!toStringOrNull((x as AnalyticsTopMenu).menu_id)
             )
             : [],
     };
 
-    return { ingredient, meta };
+    return meta;
 }
 
 type LogRange = "today" | "7d" | "all";
@@ -293,6 +309,8 @@ export default function IngredientDetailPage() {
     const [loadingLogs, setLoadingLogs] = useState(true);
 
     const [ingredient, setIngredient] = useState<IngredientLite | null>(null);
+    const [ingredientNotFound, setIngredientNotFound] = useState(false);
+    const [ingredientLoadError, setIngredientLoadError] = useState<string | null>(null);
     const [logs, setLogs] = useState<StockLogItem[]>([]);
 
     // analytics
@@ -318,58 +336,105 @@ export default function IngredientDetailPage() {
         return getStockStatus(toNumber(ingredient.stock, 0), toNumber(ingredient.min_stock, 0));
     }, [ingredient]);
 
-    async function fetchAnalytics(targetId: string) {
+    function resetAnalytics() {
+        setAvgDailyUsage7(0);
+        setTodayUsage(0);
+        setDaysLeft(null);
+        setDaysLeftLabel("");
+        setAbnormalToday(false);
+        setAbnormalLabel("");
+        setTopMenus([]);
+    }
+
+    async function fetchIngredient(
+        targetId: string,
+        signal?: AbortSignal
+    ): Promise<IngredientLite | null> {
+        const res = await fetch(`/api/ingredients/${encodeURIComponent(targetId)}`, {
+            cache: "no-store",
+            signal,
+        });
+
+        if (res.status === 404) return null;
+        if (!res.ok) {
+            throw new Error(`Ingredient request failed: ${res.status}`);
+        }
+
+        const data: unknown = await res.json();
+        if (!isRecord(data)) {
+            throw new Error("Invalid ingredient response");
+        }
+
+        const parsed = parseIngredient((data as IngredientDetailResponse).ingredient);
+        if (!parsed) {
+            throw new Error("Invalid ingredient data");
+        }
+
+        return parsed;
+    }
+
+    async function fetchAnalytics(targetId: string, signal?: AbortSignal) {
         await Promise.resolve(); // guard for effect timing
 
-        setLoading(true);
         try {
             const res = await fetch(
                 `/api/ingredients/analytics?ingredient_id=${encodeURIComponent(targetId)}`,
-                { cache: "no-store" }
+                { cache: "no-store", signal }
             );
-            const data: unknown = await res.json();
+            if (!res.ok) {
+                if (!signal?.aborted) resetAnalytics();
+                return;
+            }
 
-            const parsed = parseAnalytics(data);
-            setIngredient(parsed.ingredient);
+            const data: unknown = await res.json().catch(() => null);
+            if (signal?.aborted) return;
+            if (!data) {
+                resetAnalytics();
+                return;
+            }
 
-            setAvgDailyUsage7(toNumber(parsed.meta.avgDailyUsage7, 0));
-            setTodayUsage(toNumber(parsed.meta.todayUsage, 0));
-            setDaysLeft(typeof parsed.meta.daysLeft === "number" ? parsed.meta.daysLeft : null);
-            setDaysLeftLabel(parsed.meta.daysLeftLabel ?? "");
-            setAbnormalToday(!!parsed.meta.abnormalToday);
-            setAbnormalLabel(parsed.meta.abnormalLabel ?? "");
-            setTopMenus(Array.isArray(parsed.meta.topMenus) ? parsed.meta.topMenus : []);
-        } catch (e) {
-            console.error("fetchAnalytics error:", e);
-            setIngredient(null);
-            setAvgDailyUsage7(0);
-            setTodayUsage(0);
-            setDaysLeft(null);
-            setDaysLeftLabel("");
-            setAbnormalToday(false);
-            setAbnormalLabel("");
-            setTopMenus([]);
-        } finally {
-            setLoading(false);
+            const meta = parseAnalytics(data);
+
+            setAvgDailyUsage7(toNumber(meta.avgDailyUsage7, 0));
+            setTodayUsage(toNumber(meta.todayUsage, 0));
+            setDaysLeft(typeof meta.daysLeft === "number" ? meta.daysLeft : null);
+            setDaysLeftLabel(meta.daysLeftLabel ?? "");
+            setAbnormalToday(!!meta.abnormalToday);
+            setAbnormalLabel(meta.abnormalLabel ?? "");
+            setTopMenus(Array.isArray(meta.topMenus) ? meta.topMenus : []);
+        } catch {
+            if (signal?.aborted) return;
+            resetAnalytics();
         }
     }
 
-    async function fetchLogs(targetId: string) {
+    async function fetchLogs(targetId: string, signal?: AbortSignal) {
         await Promise.resolve();
 
         setLoadingLogs(true);
         try {
             const res = await fetch(`/api/stock?ingredient_id=${encodeURIComponent(targetId)}&limit=250`, {
                 cache: "no-store",
+                signal,
             });
-            const data: unknown = await res.json();
+            if (!res.ok) {
+                if (!signal?.aborted) setLogs([]);
+                return;
+            }
+
+            const data: unknown = await res.json().catch(() => null);
+            if (signal?.aborted) return;
+            if (!data) {
+                setLogs([]);
+                return;
+            }
             const flat = extractLogsFromStockEvents(data, targetId);
             setLogs(flat);
-        } catch (e) {
-            console.error("fetchLogs error:", e);
+        } catch {
+            if (signal?.aborted) return;
             setLogs([]);
         } finally {
-            setLoadingLogs(false);
+            if (!signal?.aborted) setLoadingLogs(false);
         }
     }
 
@@ -377,12 +442,43 @@ export default function IngredientDetailPage() {
         if (!ingredientId) return;
 
         const id = String(ingredientId);
-        void fetchAnalytics(id);
-        void fetchLogs(id);
+        const controller = new AbortController();
+
+        setLoading(true);
+        setIngredient(null);
+        setIngredientNotFound(false);
+        setIngredientLoadError(null);
+        setLogs([]);
+        resetAnalytics();
+
+        void (async () => {
+            try {
+                const baseIngredient = await fetchIngredient(id, controller.signal);
+                if (controller.signal.aborted) return;
+
+                if (!baseIngredient) {
+                    setIngredientNotFound(true);
+                    return;
+                }
+
+                setIngredient(baseIngredient);
+            } catch (e) {
+                if (controller.signal.aborted) return;
+                console.error("fetchIngredient error:", e);
+                setIngredientLoadError("โหลดข้อมูลวัตถุดิบไม่สำเร็จ");
+            } finally {
+                if (!controller.signal.aborted) setLoading(false);
+            }
+        })();
+
+        void fetchAnalytics(id, controller.signal);
+        void fetchLogs(id, controller.signal);
 
         // reset UI defaults for new ingredient
         setLogRange("today");
         setLogLimit(10);
+
+        return () => controller.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ingredientId]);
 
@@ -476,9 +572,16 @@ export default function IngredientDetailPage() {
             <Card title="ภาพรวม (ตัดสินใจเร็ว)">
                 {loading ? (
                     <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
-                ) : !ingredient ? (
+                ) : ingredientNotFound ? (
                     <div className="space-y-2">
                         <div className="text-sm text-[var(--text-secondary)]">ไม่พบวัตถุดิบนี้</div>
+                        <div className="text-xs text-[var(--text-secondary)]">ID: {String(ingredientId)}</div>
+                    </div>
+                ) : !ingredient ? (
+                    <div className="space-y-2">
+                        <div className="text-sm text-[var(--text-secondary)]">
+                            {ingredientLoadError ?? "โหลดข้อมูลวัตถุดิบไม่สำเร็จ"}
+                        </div>
                         <div className="text-xs text-[var(--text-secondary)]">ID: {String(ingredientId)}</div>
                     </div>
                 ) : (
@@ -522,7 +625,7 @@ export default function IngredientDetailPage() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                            <div className="rounded-2xl border border-white/10 p-4 bg-[var(--surface)]">
                                 <div className="text-xs text-[var(--text-secondary)]">คาดว่าจะหมด</div>
                                 <div className="mt-1 text-base font-semibold">{daysLeftUI}</div>
                                 <div className="mt-2 text-xs text-[var(--text-secondary)]">
@@ -533,7 +636,7 @@ export default function IngredientDetailPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                            <div className="rounded-2xl border border-white/10 p-4 bg-[var(--surface)]">
                                 <div className="text-xs text-[var(--text-secondary)]">วันนี้ใช้ไป</div>
                                 <div className="mt-1 text-base font-semibold tabular-nums">
                                     {todayUsage > 0 ? `${todayUsage.toFixed(2)} ${unitLabel}` : `0 ${unitLabel}`}
@@ -543,7 +646,7 @@ export default function IngredientDetailPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                            <div className="rounded-2xl border border-white/10 p-4 bg-[var(--surface)]">
                                 <div className="text-xs text-[var(--text-secondary)]">อ้างอิง</div>
                                 <div className="mt-1 text-sm font-medium">{shortId(String(ingredientId), 16)}</div>
                                 <div className="mt-2 text-xs text-[var(--text-secondary)]">หน่วยระบบ: {unitLabel}</div>
@@ -570,7 +673,7 @@ export default function IngredientDetailPage() {
                             const pct = topMenusUI.max > 0 ? Math.round((used / topMenusUI.max) * 100) : 0;
 
                             return (
-                                <div key={m.menu_id} className="rounded-2xl border border-white/10 p-4 bg-black/10">
+                                <div key={m.menu_id} className="rounded-2xl border border-white/10 p-4 bg-[var(--surface)]">
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="font-semibold truncate">{m.menu_name}</div>
@@ -728,6 +831,14 @@ export default function IngredientDetailPage() {
                     onClose={() => setAdjustItem(null)}
                     onUpdated={() => {
                         const id = String(ingredientId);
+                        void (async () => {
+                            try {
+                                const baseIngredient = await fetchIngredient(id);
+                                if (baseIngredient) setIngredient(baseIngredient);
+                            } catch (e) {
+                                console.error("fetchIngredient refresh error:", e);
+                            }
+                        })();
                         void fetchAnalytics(id);
                         void fetchLogs(id);
                     }}

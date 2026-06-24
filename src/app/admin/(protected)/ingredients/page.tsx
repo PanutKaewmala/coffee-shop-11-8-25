@@ -3,6 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import Link from "next/link";
+
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
 import Modal from "@/components/admin/Modal";
@@ -753,14 +755,14 @@ export default function IngredientsAdminPage() {
                             const isDeletingThis = deletingId === item.id;
 
                             return [
-                                <a
+                                <Link
                                     key={`${item.id}-name`}
                                     href={`/admin/ingredients/${item.id}`}
                                     className="block"
                                     title="ดูรายละเอียด"
                                 >
                                     <div className="font-medium text-text-primary hover:underline">{item.name ?? "-"}</div>
-                                </a>,
+                                </Link>,
 
                                 <div key={`${item.id}-stock`} className="font-semibold tabular-nums text-text-primary">
                                     {toNumber(item.stock, 0)}{" "}
@@ -796,12 +798,12 @@ export default function IngredientsAdminPage() {
                                                 </summary>
 
                                                 <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
-                                                    <a
+                                                    <Link
                                                         href={`/admin/ingredients/${item.id}`}
                                                         className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
                                                     >
                                                         รายละเอียด
-                                                    </a>
+                                                    </Link>
 
                                                     <button
                                                         type="button"

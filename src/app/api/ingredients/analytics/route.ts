@@ -115,11 +115,14 @@ export async function GET(req: NextRequest) {
         .eq("id", ingredientId)
         .eq("shop_id", currentShopId)
         .filter("branch_id", "eq", currentBranchId)
-        .single<IngredientRow>();
+        .maybeSingle<IngredientRow>();
 
-    if (ingRes.error || !ingRes.data) {
+    if (ingRes.error) {
+        return NextResponse.json({ error: ingRes.error.message }, { status: 500 });
+    }
+    if (!ingRes.data) {
         return NextResponse.json(
-            { error: ingRes.error?.message ?? "Ingredient not found" },
+            { error: "Ingredient not found" },
             { status: 404 }
         );
     }
@@ -138,11 +141,7 @@ export async function GET(req: NextRequest) {
         .gte("created_at", since7d)
         .order("created_at", { ascending: false });
 
-    if (logsRes.error) {
-        return NextResponse.json({ error: logsRes.error.message }, { status: 500 });
-    }
-
-    const logs = (logsRes.data ?? []) as Pick<
+    const logs = (logsRes.error ? [] : (logsRes.data ?? [])) as Pick<
         StockLogRow,
         "id" | "ingredient_id" | "amount" | "type" | "created_at"
     >[];
@@ -179,11 +178,7 @@ export async function GET(req: NextRequest) {
         .eq("shop_id", currentShopId)
         .eq("ingredient_id", ingredientId);
 
-    if (recipeRes.error) {
-        return NextResponse.json({ error: recipeRes.error.message }, { status: 500 });
-    }
-
-    const recipeItems = (recipeRes.data ?? []) as Pick<
+    const recipeItems = (recipeRes.error ? [] : (recipeRes.data ?? [])) as Pick<
         RecipeItemRow,
         "variant_id" | "ingredient_id" | "quantity"
     >[];
@@ -202,6 +197,7 @@ export async function GET(req: NextRequest) {
 
         // B) order_items last 30 days (sum qty per variant)
         const variantOrderQty = new Map<UUID, number>();
+        let topMenuQueriesOk = true;
         for (const c of chunk(variantIds, 200)) {
             const oiRes = await admin
                 .from("order_items")
@@ -211,7 +207,8 @@ export async function GET(req: NextRequest) {
                 .gte("created_at", since30d);
 
             if (oiRes.error) {
-                return NextResponse.json({ error: oiRes.error.message }, { status: 500 });
+                topMenuQueriesOk = false;
+                break;
             }
 
             const items = (oiRes.data ?? []) as Pick<
@@ -233,34 +230,31 @@ export async function GET(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .in("id", variantIds);
 
-        if (mvRes.error) {
-            return NextResponse.json({ error: mvRes.error.message }, { status: 500 });
+        if (!mvRes.error && topMenuQueriesOk) {
+            const mvs = (mvRes.data ?? []) as unknown as MenuVariantJoin[];
+            const menuAgg = new Map<UUID, { menu_name: string; total_used: number }>();
+
+            for (const mv of mvs) {
+                const vid = mv.id;
+                const mid = mv.menu_id;
+                const menuName = mv.menu?.name ?? "Unknown";
+
+                const perUnit = variantToPerUnit.get(vid) ?? 0;
+                const orderedQty = variantOrderQty.get(vid) ?? 0;
+
+                const used = perUnit * orderedQty;
+                if (used <= 0) continue;
+
+                const prev = menuAgg.get(mid);
+                if (!prev) menuAgg.set(mid, { menu_name: menuName, total_used: used });
+                else menuAgg.set(mid, { menu_name: prev.menu_name, total_used: prev.total_used + used });
+            }
+
+            topMenus = Array.from(menuAgg.entries())
+                .map(([menu_id, v]) => ({ menu_id, menu_name: v.menu_name, total_used: v.total_used }))
+                .sort((a, b) => b.total_used - a.total_used)
+                .slice(0, 5);
         }
-
-        const mvs = (mvRes.data ?? []) as unknown as MenuVariantJoin[];
-
-        const menuAgg = new Map<UUID, { menu_name: string; total_used: number }>();
-
-        for (const mv of mvs) {
-            const vid = mv.id;
-            const mid = mv.menu_id;
-            const menuName = mv.menu?.name ?? "Unknown";
-
-            const perUnit = variantToPerUnit.get(vid) ?? 0;
-            const orderedQty = variantOrderQty.get(vid) ?? 0;
-
-            const used = perUnit * orderedQty;
-            if (used <= 0) continue;
-
-            const prev = menuAgg.get(mid);
-            if (!prev) menuAgg.set(mid, { menu_name: menuName, total_used: used });
-            else menuAgg.set(mid, { menu_name: prev.menu_name, total_used: prev.total_used + used });
-        }
-
-        topMenus = Array.from(menuAgg.entries())
-            .map(([menu_id, v]) => ({ menu_id, menu_name: v.menu_name, total_used: v.total_used }))
-            .sort((a, b) => b.total_used - a.total_used)
-            .slice(0, 5);
     }
 
     return NextResponse.json({
