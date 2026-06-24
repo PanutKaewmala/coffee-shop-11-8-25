@@ -108,6 +108,8 @@ function normalizeServePricesFromItem(item: MenuItem): ServePrice[] {
 ====================================================================== */
 export default function MenuAdminPage() {
     const [showDisabled, setShowDisabled] = useState(false);
+    const [canManageMenu, setCanManageMenu] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
     const {
         loading,
         paginatedItems,
@@ -124,6 +126,35 @@ export default function MenuAdminPage() {
         setServeFilter,
         refreshData,
     } = useMenuSearch({ rowsPerPage: 20, includeDisabled: showDisabled });
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || typeof data !== "object" || !("canEditShopSettings" in data)) {
+                    setCanManageMenu(false);
+                    return;
+                }
+
+                setCanManageMenu((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageMenu(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     /* ======================================================================
        LOAD CATEGORY + SERVE TYPES FROM DB
@@ -205,6 +236,7 @@ export default function MenuAdminPage() {
     const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
 
     const openModal = (item?: MenuItem) => {
+        if (!canManageMenu || permissionLoading) return;
         setEditingItem(item ?? null);
         setShowModal(true);
     };
@@ -380,6 +412,11 @@ export default function MenuAdminPage() {
     return (
         <div className="p-6 space-y-6">
             <Card title="Menu Management">
+                {!permissionLoading && !canManageMenu ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can manage menu items.
+                    </div>
+                ) : null}
                 {/* Filter bar */}
                 <div className="sticky top-0 z-40 -mx-6 px-6 py-4 bg-[var(--background)]/80 backdrop-blur border-b border-[var(--text-muted)]/20">
                     <div className="flex flex-col gap-3">
@@ -467,7 +504,7 @@ export default function MenuAdminPage() {
                                     {showDisabled ? "ซ่อนเมนูที่ปิดสาขา" : "แสดงเมนูที่ปิดสาขา"}
                                 </Button>
 
-                                <Button onClick={() => openModal()} className="h-10">
+                                <Button onClick={() => openModal()} className="h-10" disabled={!canManageMenu || permissionLoading}>
                                     + Add Menu
                                 </Button>
                             </div>
@@ -523,7 +560,7 @@ export default function MenuAdminPage() {
                                 <Button variant="outline" onClick={clearAll} disabled={!hasActiveFilters}>
                                     Clear filters
                                 </Button>
-                                <Button onClick={() => openModal()}>+ Add Menu</Button>
+                                <Button onClick={() => openModal()} disabled={!canManageMenu || permissionLoading}>+ Add Menu</Button>
                             </div>
                         </div>
                     ) : (
@@ -619,40 +656,46 @@ export default function MenuAdminPage() {
                                                 key={item.id}
                                                 className="w-full h-full flex items-center justify-start gap-2 py-2 flex-nowrap"
                                             >
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-9 px-3 whitespace-nowrap"
-                                                    disabled={availabilitySavingId === item.id}
-                                                    onClick={() =>
-                                                        void setMenuAvailabilityForCurrentBranch(
-                                                            item.id,
-                                                            !isEnabledInBranch
-                                                        )
-                                                    }
-                                                >
-                                                    {availabilitySavingId === item.id
-                                                        ? "กำลังบันทึก"
-                                                        : isEnabledInBranch
-                                                            ? "ปิดสาขา"
-                                                            : "เปิดสาขา"}
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-9 px-3 whitespace-nowrap"
-                                                    onClick={() => openModal(item)}
-                                                >
-                                                    แก้ไข
-                                                </Button>
-                                                <Button
-                                                    variant="destructive"
-                                                    size="sm"
-                                                    className="h-9 px-3 whitespace-nowrap"
-                                                    onClick={() => deleteMenu(item.id, item.name)}
-                                                >
-                                                    ลบทั้งร้าน
-                                                </Button>
+                                                {canManageMenu && !permissionLoading ? (
+                                                    <>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-9 px-3 whitespace-nowrap"
+                                                            disabled={availabilitySavingId === item.id}
+                                                            onClick={() =>
+                                                                void setMenuAvailabilityForCurrentBranch(
+                                                                    item.id,
+                                                                    !isEnabledInBranch
+                                                                )
+                                                            }
+                                                        >
+                                                            {availabilitySavingId === item.id
+                                                                ? "กำลังบันทึก"
+                                                                : isEnabledInBranch
+                                                                    ? "ปิดสาขา"
+                                                                    : "เปิดสาขา"}
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-9 px-3 whitespace-nowrap"
+                                                            onClick={() => openModal(item)}
+                                                        >
+                                                            แก้ไข
+                                                        </Button>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            className="h-9 px-3 whitespace-nowrap"
+                                                            onClick={() => deleteMenu(item.id, item.name)}
+                                                        >
+                                                            ลบทั้งร้าน
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                                )}
                                             </div>,
                                         ];
                                     })}
