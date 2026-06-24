@@ -27,10 +27,12 @@ export default function RecipeItemsTable({
     rows,
     onEdit,
     onDelete,
+    readOnly = false,
 }: {
     rows: RecipeItemView[];
     onEdit: (row: RecipeItemView) => void;
     onDelete: (id: string) => void;
+    readOnly?: boolean;
 }) {
     const data = rows.map((r) => {
         const nameCell = (
@@ -48,12 +50,18 @@ export default function RecipeItemsTable({
 
         const actionsCell = (
             <div key={`a-${r.id}`} className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
-                    Edit
-                </Button>
-                <Button variant="destructive" size="sm" onClick={() => onDelete(r.id)}>
-                    Delete
-                </Button>
+                {readOnly ? (
+                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                ) : (
+                    <>
+                        <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
+                            Edit
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => onDelete(r.id)}>
+                            Delete
+                        </Button>
+                    </>
+                )}
             </div>
         );
 

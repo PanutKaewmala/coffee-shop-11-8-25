@@ -66,6 +66,8 @@ export default function RecipeEditorPanel({
     selectedVariantId,
     setSelectedVariantId,
     onRefreshBase,
+    canManageRecipes,
+    permissionLoading,
 }: {
     loadingBase: boolean;
     ingredients: Ingredient[];
@@ -74,6 +76,8 @@ export default function RecipeEditorPanel({
     selectedVariantId: string;
     setSelectedVariantId: (id: string) => void;
     onRefreshBase: () => Promise<void>;
+    canManageRecipes: boolean;
+    permissionLoading: boolean;
 }) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
@@ -313,7 +317,7 @@ export default function RecipeEditorPanel({
                 </div>
 
                 <div className="pt-7">
-                    <Button onClick={openAdd} disabled={!canEdit}>
+                    <Button onClick={openAdd} disabled={!canEdit || !canManageRecipes || permissionLoading}>
                         + Add Ingredient
                     </Button>
                 </div>
@@ -337,6 +341,7 @@ export default function RecipeEditorPanel({
                         rows={paginated}
                         onEdit={openEdit}
                         onDelete={(id: string) => void del(id)}
+                        readOnly={!canManageRecipes || permissionLoading}
                     />
                     <Pagination
                         page={page}

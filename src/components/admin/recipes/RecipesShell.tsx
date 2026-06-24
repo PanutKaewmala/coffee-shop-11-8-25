@@ -209,6 +209,8 @@ function getCoverageStatus(variantCount: number, recipeVariantCount: number): Re
 export default function RecipesShell() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [canManageRecipes, setCanManageRecipes] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
 
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
     const [menuItems, setMenuItems] = useState<MenuView[]>([]);
@@ -287,6 +289,35 @@ export default function RecipesShell() {
     useEffect(() => {
         void fetchBase();
     }, [fetchBase]);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || !isRecord(data) || !("canEditShopSettings" in data)) {
+                    setCanManageRecipes(false);
+                    return;
+                }
+
+                setCanManageRecipes((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageRecipes(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     const menuCards = useMemo(() => {
         const q = searchMenu.trim().toLowerCase();
@@ -381,6 +412,11 @@ export default function RecipesShell() {
                         {loadError}
                     </div>
                 ) : null}
+                {!permissionLoading && !canManageRecipes ? (
+                    <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                        Read-only mode: only owners can manage recipes.
+                    </div>
+                ) : null}
                 <div className="grid grid-cols-12 gap-4">
                     <div className="col-span-12 lg:col-span-4">
                         <MenuPickerPanel
@@ -404,6 +440,8 @@ export default function RecipesShell() {
                             selectedVariantId={selectedVariantId}
                             setSelectedVariantId={setSelectedVariantId}
                             onRefreshBase={fetchBase}
+                            canManageRecipes={canManageRecipes}
+                            permissionLoading={permissionLoading}
                         />
                     </div>
                 </div>
