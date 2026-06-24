@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useTheme } from "@/context/ThemeContext";
 import { Menu, LogOut, Moon, Sun, Store, GitBranch } from "lucide-react";
 
 export interface AdminNavbarProps {
@@ -53,8 +54,7 @@ export default function AdminNavbar({
     currentBranchName,
 }: AdminNavbarProps) {
     const router = useRouter();
-
-    const [isDark, setIsDark] = useState(false);
+    const { theme, toggleTheme } = useTheme();
 
     const [meLabel, setMeLabel] = useState<string>("");
 
@@ -70,17 +70,6 @@ export default function AdminNavbar({
             return;
         }
         router.refresh();
-    };
-
-    const toggleTheme = () => {
-        const root = document.documentElement;
-        if (root.classList.contains("dark")) {
-            root.classList.remove("dark");
-            setIsDark(false);
-        } else {
-            root.classList.add("dark");
-            setIsDark(true);
-        }
     };
 
     const handleLogout = async () => {
@@ -107,11 +96,6 @@ export default function AdminNavbar({
     const noBranchInCurrentShop = useMemo(() => {
         return Boolean(currentShopId) && !loadingSwitchers && branches.length === 0;
     }, [currentShopId, loadingSwitchers, branches.length]);
-
-    useEffect(() => {
-        if (typeof document === "undefined") return;
-        setIsDark(document.documentElement.classList.contains("dark"));
-    }, []);
 
     useEffect(() => {
         let alive = true;
@@ -267,7 +251,7 @@ export default function AdminNavbar({
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition-colors"
                         aria-label="Toggle theme"
                     >
-                        {isDark ? (
+                        {theme === "dark" ? (
                             <Sun size={18} className="text-[var(--text-secondary)]" />
                         ) : (
                             <Moon size={18} className="text-[var(--text-secondary)]" />
