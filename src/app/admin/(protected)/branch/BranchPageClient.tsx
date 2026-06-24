@@ -63,6 +63,7 @@ export default function BranchPageClient() {
     const [receiptSaving, setReceiptSaving] = useState(false);
     const [receiptError, setReceiptError] = useState<string | null>(null);
     const [receiptSuccess, setReceiptSuccess] = useState<string | null>(null);
+    const canManageBranches = receiptSettings?.canEditShopSettings ?? false;
 
     useEffect(() => {
         let alive = true;
@@ -361,8 +362,16 @@ export default function BranchPageClient() {
 
                 <BranchFilter primary={primary} setPrimary={setPrimary} />
 
+                {!canManageBranches ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can manage branches.
+                    </div>
+                ) : null}
+
                 <div className="flex justify-end mb-4">
-                    <Button onClick={openModalNew}>+ Add Branch</Button>
+                    <Button onClick={openModalNew} disabled={!canManageBranches}>
+                        + Add Branch
+                    </Button>
                 </div>
 
                 {error ? (
@@ -408,20 +417,26 @@ export default function BranchPageClient() {
                                     </div>,
 
                                     <div key={`actions-${branch.id}`} className="flex items-center gap-2 shrink-0">
-                                        {!branch.is_primary && (
-                                            <Button size="sm" variant="outline" onClick={() => handleSetPrimary(branch.id)}>
-                                                Primary
-                                            </Button>
-                                        )}
+                                        {canManageBranches ? (
+                                            <>
+                                                {!branch.is_primary && (
+                                                    <Button size="sm" variant="outline" onClick={() => handleSetPrimary(branch.id)}>
+                                                        Primary
+                                                    </Button>
+                                                )}
 
-                                        <Button size="sm" variant="outline" onClick={() => openModalEdit(branch)}>
-                                            Edit
-                                        </Button>
+                                                <Button size="sm" variant="outline" onClick={() => openModalEdit(branch)}>
+                                                    Edit
+                                                </Button>
 
-                                        {!branch.is_primary && (
-                                            <Button size="sm" variant="destructive" onClick={() => handleDelete(branch.id)}>
-                                                Delete
-                                            </Button>
+                                                {!branch.is_primary && (
+                                                    <Button size="sm" variant="destructive" onClick={() => handleDelete(branch.id)}>
+                                                        Delete
+                                                    </Button>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-[var(--text-secondary)]">View only</span>
                                         )}
                                     </div>,
                                 ])}
