@@ -1,6 +1,7 @@
 // src/app/api/orders/[id]/cancel/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +109,28 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const supabase = await getSupabaseServer();
+        const admin = getSupabaseAdmin();
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        const user = auth.user;
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { currentShopId } = await getCurrentContextFromCookies();
+        if (!currentShopId) {
+            return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+
+        const { data: member, error: mErr } = await admin
+            .from("shop_members")
+            .select("shop_id")
+            .eq("user_id", user.id)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+
         const { id } = await params;
 
         const fromParams = (id ?? "").trim();
@@ -122,6 +145,18 @@ export async function POST(
                 },
                 { status: 400 }
             );
+        }
+
+        const { data: orderRow, error: orderErr } = await admin
+            .from("orders")
+            .select("id")
+            .eq("id", rawId)
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (orderErr) return NextResponse.json({ error: orderErr.message }, { status: 500 });
+        if (!orderRow) {
+            return NextResponse.json({ error: "Order not found in current shop" }, { status: 404 });
         }
 
         const body: unknown = await req.json().catch(() => null);
@@ -149,7 +184,6 @@ export async function POST(
             return NextResponse.json({ error: "Note is required when reason is 'อื่นๆ'" }, { status: 400 });
         }
 
-        const supabase = await getSupabaseServer();
         const noteForRpc: string | undefined = cancelNote ?? undefined;
 
         const { data, error } = await supabase.rpc("cancel_order", {
