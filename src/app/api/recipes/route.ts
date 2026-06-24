@@ -325,6 +325,29 @@ export async function POST(req: NextRequest) {
 ============================================================ */
 export async function PUT(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const source = getSource(req);
 
     try {
@@ -345,7 +368,21 @@ export async function PUT(req: NextRequest) {
             if (!isNonEmptyString(body.ingredient_id)) {
                 return NextResponse.json({ error: "ingredient_id must be string" }, { status: 400 });
             }
-            updateData.ingredient_id = body.ingredient_id.trim();
+            const ingId = body.ingredient_id.trim();
+
+            const { data: ingRow, error: ingErr } = await supabase
+                .from("ingredients")
+                .select("id")
+                .eq("id", ingId)
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
+            if (!ingRow) {
+                return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
+            }
+
+            updateData.ingredient_id = ingId;
         }
 
         if (body.quantity !== undefined) {
@@ -360,22 +397,48 @@ export async function PUT(req: NextRequest) {
         }
 
         if (source === "variant") {
-            // ไม่แนะนำให้เปลี่ยน variant_id ของแถวเดิม (มันคือ “ย้ายสูตร”)
             if (body.variant_id !== undefined) {
                 if (!isNonEmptyString(body.variant_id)) {
                     return NextResponse.json({ error: "variant_id must be string" }, { status: 400 });
                 }
-                updateData.variant_id = body.variant_id.trim();
+                const vId = body.variant_id.trim();
+
+                const { data: varRow, error: varErr } = await supabase
+                    .from("menu_variants")
+                    .select("id")
+                    .eq("id", vId)
+                    .eq("shop_id", currentShopId)
+                    .maybeSingle();
+
+                if (varErr) return NextResponse.json({ error: varErr.message }, { status: 500 });
+                if (!varRow) {
+                    return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
+                }
+
+                updateData.variant_id = vId;
             }
 
             if (Object.keys(updateData).length === 0) {
                 return NextResponse.json({ error: "No fields to update" }, { status: 400 });
             }
 
+            const { data: targetItem, error: targetErr } = await supabase
+                .from("recipe_items")
+                .select("id")
+                .eq("id", id.trim())
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (targetErr) return NextResponse.json({ error: targetErr.message }, { status: 500 });
+            if (!targetItem) {
+                return NextResponse.json({ error: "Recipe item not found in current shop" }, { status: 404 });
+            }
+
             const { data, error } = await supabase
                 .from("recipe_items")
                 .update(updateData)
                 .eq("id", id.trim())
+                .eq("shop_id", currentShopId)
                 .select()
                 .single();
 
@@ -392,17 +455,44 @@ export async function PUT(req: NextRequest) {
             if (!isNonEmptyString(body.menu_id)) {
                 return NextResponse.json({ error: "menu_id must be string" }, { status: 400 });
             }
-            updateData.menu_id = body.menu_id.trim();
+            const mId = body.menu_id.trim();
+
+            const { data: menuRow, error: menuErr } = await supabase
+                .from("menu")
+                .select("id")
+                .eq("id", mId)
+                .eq("shop_id", currentShopId)
+                .maybeSingle();
+
+            if (menuErr) return NextResponse.json({ error: menuErr.message }, { status: 500 });
+            if (!menuRow) {
+                return NextResponse.json({ error: "Menu not found in current shop" }, { status: 404 });
+            }
+
+            updateData.menu_id = mId;
         }
 
         if (Object.keys(updateData).length === 0) {
             return NextResponse.json({ error: "No fields to update" }, { status: 400 });
         }
 
+        const { data: targetRecipe, error: targetErr } = await supabase
+            .from("recipes")
+            .select("id")
+            .eq("id", id.trim())
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (targetErr) return NextResponse.json({ error: targetErr.message }, { status: 500 });
+        if (!targetRecipe) {
+            return NextResponse.json({ error: "Recipe not found in current shop" }, { status: 404 });
+        }
+
         const { data, error } = await supabase
             .from("recipes")
             .update(updateData)
             .eq("id", id.trim())
+            .eq("shop_id", currentShopId)
             .select()
             .single();
 
