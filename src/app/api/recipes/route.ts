@@ -509,12 +509,35 @@ export async function PUT(req: NextRequest) {
 }
 
 /* ============================================================
-   DELETE /api/recipes?id=...
-   - default deletes from recipes
-   - ?source=variant deletes from recipe_items
+    DELETE /api/recipes?id=...
+    - default deletes from recipes
+    - ?source=variant deletes from recipe_items
 ============================================================ */
 export async function DELETE(req: NextRequest) {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const user = auth.user;
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member || member.role !== "owner") {
+        return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    }
+
     const source = getSource(req);
 
     try {
@@ -524,7 +547,27 @@ export async function DELETE(req: NextRequest) {
         }
 
         const table = source === "variant" ? "recipe_items" : "recipes";
-        const { error } = await supabase.from(table).delete().eq("id", id.trim());
+
+        const { data: targetRow, error: targetErr } = await supabase
+            .from(table)
+            .select("id")
+            .eq("id", id.trim())
+            .eq("shop_id", currentShopId)
+            .maybeSingle();
+
+        if (targetErr) return NextResponse.json({ error: targetErr.message }, { status: 500 });
+        if (!targetRow) {
+            return NextResponse.json(
+                { error: "Recipe not found in current shop" },
+                { status: 404 }
+            );
+        }
+
+        const { error } = await supabase
+            .from(table)
+            .delete()
+            .eq("id", id.trim())
+            .eq("shop_id", currentShopId);
 
         if (error) {
             console.error(`DELETE /api/recipes (table=${table}):`, error);
