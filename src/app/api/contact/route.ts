@@ -72,10 +72,33 @@ function checkRateLimit(req: NextRequest): boolean {
 =========================================== */
 export async function GET() {
     const supabase = await getSupabaseServer();
+    const admin = getSupabaseAdmin();
 
-    const { data, error } = await supabase
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (authErr || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { currentShopId } = await getCurrentContextFromCookies();
+    if (!currentShopId) {
+        return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    }
+
+    const { data: member, error: mErr } = await admin
+        .from("shop_members")
+        .select("shop_id")
+        .eq("user_id", user.id)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
+
+    if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+    if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+
+    const { data, error } = await admin
         .from("contact")
         .select("*")
+        .eq("shop_id", currentShopId)
         .order("created_at", { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -84,7 +107,6 @@ export async function GET() {
 
     return NextResponse.json(
         list.map((item) => {
-            // item is `any` from supabase types sometimes, so guard hard
             const categoryRaw: unknown = (item as Record<string, unknown>)?.category;
 
             return {
