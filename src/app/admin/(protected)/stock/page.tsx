@@ -64,36 +64,40 @@ function fmtSignedImpactFull(ev: StockEvent) {
 function rowFlags(ev: StockEvent) {
     const flags: string[] = [];
     if (ev.flags?.has_big_amount) flags.push("⚠");
-    if (ev.flags?.manual_adjust) flags.push("🛠");
     return flags.length ? flags.join(" ") : "";
 }
 
 function stockActionMeta(type: StockEvent["type"]) {
     switch (type) {
+        case "add":
+            return {
+                label: "เพิ่มสต็อก",
+                className: "border-green-500/30 bg-green-500/10 text-green-400",
+            };
         case "restock":
             return {
-                label: "Restock / คืนสต็อก",
+                label: "คืนสต็อก",
                 className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
             };
         case "waste":
             return {
-                label: "Waste / ของเสีย",
+                label: "ของเสีย",
                 className: "border-red-500/30 bg-red-500/10 text-red-400",
             };
-        case "add":
+        case "deduct":
             return {
-                label: "Stock in / เพิ่มสต็อก",
-                className: "border-green-500/30 bg-green-500/10 text-green-400",
+                label: "ตัดออก",
+                className: "border-amber-500/30 bg-amber-500/10 text-amber-400",
             };
         case "adjust":
             return {
-                label: "Adjust / ปรับสต็อก",
+                label: "ปรับยอด",
                 className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
             };
         default:
             return {
-                label: "Stock out / ตัดสต็อก",
-                className: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+                label: "ปรับยอด",
+                className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
             };
     }
 }
@@ -114,6 +118,19 @@ function fmtUnitBlock(label: string, val: number, unit: string) {
             <span className="text-[var(--text-muted)]">{unit}</span>
         </div>
     );
+}
+
+function fallbackDelta(type: StockEvent["type"], amount: number) {
+    if (type === "deduct" || type === "waste") return -Math.abs(amount);
+    return Math.abs(amount);
+}
+
+function fmtSignedItemChange(type: StockEvent["type"], amount: number, delta: number | null, unit: string | null) {
+    const value = delta ?? fallbackDelta(type, amount);
+    const rounded = Math.round(value);
+    const sign = rounded > 0 ? "+" : "";
+    const unitText = unit ? ` ${unit}` : "";
+    return `${sign}${rounded}${unitText}`;
 }
 
 function criticalChip(c: CriticalItem) {
@@ -204,7 +221,7 @@ export default function StockHistoryPage() {
     };
 
     // ✅ ใหม่: 3 columns แบบร้านจริง
-    const headers = ["เวลา", "ขายอะไร / เหตุการณ์", "ตัด/เพิ่มอะไร"];
+    const headers = ["เวลา", "เหตุการณ์", "จำนวนที่เปลี่ยน"];
 
     const rows = useMemo(() => {
         return paginatedEvents.map((ev) => {
@@ -234,11 +251,13 @@ export default function StockHistoryPage() {
                         ) : null}
                     </div>
 
-                    <div className="text-sm truncate mt-0.5">{ref}</div>
+                    {ref !== "-" ? (
+                        <div className="text-sm truncate mt-0.5">{ref}</div>
+                    ) : null}
 
                     {ev.order_id ? (
                         <div className="text-xs text-[var(--text-muted)] truncate mt-0.5">
-                            Order #{String(ev.order_id).slice(0, 10)}…
+                            ออเดอร์ #{String(ev.order_id).slice(0, 10)}…
                         </div>
                     ) : null}
                 </div>,
@@ -246,7 +265,7 @@ export default function StockHistoryPage() {
                 <div key={`${ev.event_id}-impact`} className="whitespace-nowrap">
                     <div className="text-sm font-semibold">{impact}</div>
                     <div className="text-xs text-[var(--text-muted)]">
-                        {action.label}: {ev.items_count} รายการ
+                        รวม {ev.items_count} รายการ
                     </div>
                 </div>,
             ];
@@ -300,11 +319,11 @@ export default function StockHistoryPage() {
                         </div>
 
                         <div className="rounded-xl border border-white/10 p-3 bg-white/5">
-                            <div className="text-xs text-[var(--text-muted)] mb-2">เข้า / ออก (ตาม base unit)</div>
+                            <div className="text-xs text-[var(--text-muted)] mb-2">สรุปเข้า-ออกตามหน่วยหลัก</div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="rounded-lg border border-white/10 p-3 bg-black/20">
-                                    <div className="text-xs text-[var(--text-muted)] mb-2">เข้า (Add)</div>
+                                    <div className="text-xs text-[var(--text-muted)] mb-2">ของเข้า</div>
                                     {loadingKpi ? (
                                         <div className="text-sm text-[var(--text-muted)]">กำลังโหลด…</div>
                                     ) : (
@@ -322,7 +341,7 @@ export default function StockHistoryPage() {
                                 </div>
 
                                 <div className="rounded-lg border border-white/10 p-3 bg-black/20">
-                                    <div className="text-xs text-[var(--text-muted)] mb-2">ออก (Deduct)</div>
+                                    <div className="text-xs text-[var(--text-muted)] mb-2">ของออก</div>
                                     {loadingKpi ? (
                                         <div className="text-sm text-[var(--text-muted)]">กำลังโหลด…</div>
                                     ) : (
@@ -463,7 +482,7 @@ export default function StockHistoryPage() {
                                 </div>
                                 {selectedEvent.order_id ? (
                                     <div className="text-xs text-[var(--text-muted)] truncate">
-                                        Order #{String(selectedEvent.order_id).slice(0, 18)}…
+                                        ออเดอร์ #{String(selectedEvent.order_id).slice(0, 18)}…
                                     </div>
                                 ) : selectedEvent.subtitle ? (
                                     <div className="text-xs text-[var(--text-muted)] truncate">
@@ -479,7 +498,7 @@ export default function StockHistoryPage() {
                         {/* Context / Reference */}
                         <div className="rounded-xl border border-white/10 p-3 bg-white/5 space-y-2">
                             <div className="flex items-center justify-between gap-3">
-                                <div className="text-xs text-[var(--text-muted)]">อ้างอิง</div>
+                                <div className="text-xs text-[var(--text-muted)]">ที่มา</div>
                                 <div className="font-semibold">{fmtSignedImpactFull(selectedEvent)}</div>
                             </div>
 
@@ -524,15 +543,19 @@ export default function StockHistoryPage() {
                             ) : null}
                         </div>
 
-                        {/* Top 3 impact */}
+                        {/* Largest item changes */}
                         {topItems.length ? (
                             <div className="rounded-xl border border-white/10 p-3">
-                                <div className="text-xs text-[var(--text-muted)] mb-2">กระทบหนักสุด (Top 3)</div>
+                                <div className="text-xs text-[var(--text-muted)] mb-2">เปลี่ยนเยอะสุด</div>
                                 <div className="space-y-2">
                                     {topItems.map((it) => {
                                         const delta = it.delta ?? null;
-                                        const dSign = delta == null ? "" : delta > 0 ? "+" : "−";
-                                        const dAbs = delta == null ? 0 : Math.abs(delta);
+                                        const changeText = fmtSignedItemChange(
+                                            selectedEvent.type,
+                                            Number(it.amount ?? 0),
+                                            delta,
+                                            it.unit
+                                        );
 
                                         return (
                                             <div
@@ -548,19 +571,18 @@ export default function StockHistoryPage() {
                                                     </div>
                                                     {delta != null ? (
                                                         <div className="text-xs text-[var(--text-muted)]">
-                                                            Δ {dSign}
-                                                            {dAbs} {it.unit ?? ""}
+                                                            เปลี่ยน {changeText}
                                                         </div>
                                                     ) : (
                                                         <div className="text-xs text-[var(--text-muted)]">
-                                                            ปริมาณ {it.amount} {it.unit ?? ""}
+                                                            เปลี่ยน {changeText}
                                                         </div>
                                                     )}
                                                 </div>
 
                                                 <div className="text-right whitespace-nowrap">
                                                     <div className="font-semibold">
-                                                        {it.amount} {it.unit ?? ""}
+                                                        {changeText}
                                                     </div>
                                                 </div>
                                             </div>
@@ -573,14 +595,18 @@ export default function StockHistoryPage() {
                         {/* All ingredient impacts */}
                         <div className="rounded-xl border border-white/10 p-3">
                             <div className="text-xs text-[var(--text-muted)] mb-2">
-                                ผลกระทบวัตถุดิบ ({selectedEvent.items_count})
+                                รายการวัตถุดิบที่เปลี่ยน ({selectedEvent.items_count})
                             </div>
 
                             <div className="space-y-2">
                                 {selectedEvent.items.map((it) => {
                                     const delta = it.delta ?? null;
-                                    const dSign = delta == null ? "" : delta > 0 ? "+" : "−";
-                                    const dAbs = delta == null ? 0 : Math.abs(delta);
+                                    const changeText = fmtSignedItemChange(
+                                        selectedEvent.type,
+                                        Number(it.amount ?? 0),
+                                        delta,
+                                        it.unit
+                                    );
 
                                     return (
                                         <div
@@ -597,12 +623,8 @@ export default function StockHistoryPage() {
 
                                                 {delta != null ? (
                                                     <div className="text-xs">
-                                                        <span className="text-[var(--text-muted)]">Δ</span>{" "}
-                                                        <span className="font-semibold">
-                                                            {dSign}
-                                                            {dAbs}
-                                                        </span>{" "}
-                                                        <span className="text-[var(--text-muted)]">{it.unit ?? ""}</span>
+                                                        <span className="text-[var(--text-muted)]">เปลี่ยน</span>{" "}
+                                                        <span className="font-semibold">{changeText}</span>
                                                     </div>
                                                 ) : null}
 
@@ -612,7 +634,7 @@ export default function StockHistoryPage() {
                                             </div>
 
                                             <div className="font-semibold whitespace-nowrap">
-                                                {it.amount} {it.unit ?? ""}
+                                                {changeText}
                                             </div>
                                         </div>
                                     );

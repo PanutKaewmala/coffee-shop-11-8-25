@@ -26,7 +26,7 @@ type StockLogJoinRow = {
     ingredient_id: UUID;
     order_id: string | null; // text ใน DB
     amount: number | string;
-    type: StockLogType;
+    type: string | null;
     note: string | null;
     before_stock: number | string | null;
     after_stock: number | string | null;
@@ -157,6 +157,20 @@ function isStockLogType(v: string | null): v is StockLogType {
     return v === "deduct" || v === "add" || v === "adjust" || v === "restock" || v === "waste";
 }
 
+function normalizeStockLogType(v: string | null): StockLogType | null {
+    const s = (v ?? "").trim().toLowerCase();
+
+    if (s === "delete") return null;
+    if (s === "deduct" || s === "decrease") return "deduct";
+    if (s === "waste" || s === "loss") return "waste";
+    if (s === "add" || s === "increase") return "add";
+    if (s === "restock") return "restock";
+    if (s === "adjust" || s === "set" || s === "") return "adjust";
+
+    console.warn("[stock] unknown stock log type:", v);
+    return "adjust";
+}
+
 function normalizeFromTo(input: string | null, mode: "from" | "to"): string | null {
     if (!input) return null;
     const s = input.trim();
@@ -228,26 +242,24 @@ function isBigAmountDeduct(amountAbs: number, unit: UnitKey): boolean {
 }
 
 function buildTitle(type: StockLogType, hasOrder: boolean): string {
-    if (hasOrder && type === "deduct") return "POS Checkout";
+    if (hasOrder && type === "deduct") return "ขายผ่าน POS";
     if (hasOrder && type === "restock") {
-        return "Order cancelled: restock / คืนสต็อกจากออเดอร์ที่ยกเลิก";
+        return "คืนสต็อกจากออเดอร์ที่ยกเลิก";
     }
     if (hasOrder && type === "waste") {
-        return "Order cancelled: waste / ของเสียจากออเดอร์ที่ยกเลิก";
+        return "ของเสียจากออเดอร์ที่ยกเลิก";
     }
-    if (type === "adjust") return "ปรับสต็อก";
+    if (type === "adjust") return "ปรับยอด";
     if (type === "add") return "เพิ่มสต็อก";
     if (type === "restock") return "คืนสต็อก";
     if (type === "waste") return "ของเสีย";
-    return "ตัดสต็อก";
+    return "ตัดออก";
 }
 
-function buildSubtitle(type: StockLogType, order_id: string | null, note: string | null): string | null {
-    if (order_id) return `Order #${shortId(order_id, 10)}`;
+function buildSubtitle(order_id: string | null, note: string | null): string | null {
+    if (order_id) return `ออเดอร์ #${shortId(order_id, 10)}`;
     const n = (note ?? "").trim();
     if (n) return n.length > 60 ? `${n.slice(0, 60)}…` : n;
-    if (type === "adjust") return "Manual adjustment";
-    if (type === "add") return "Stock added";
     return null;
 }
 
@@ -500,16 +512,21 @@ export async function GET(req: NextRequest) {
                 restock: 0,
                 waste: 0,
             };
+            let movementCount = 0;
 
             for (const r of data ?? []) {
-                byType[r.type] += 1;
+                const logType = normalizeStockLogType(r.type);
+                if (!logType) continue;
+
+                movementCount += 1;
+                byType[logType] += 1;
 
                 const amount = toNumber(r.amount, 0);
                 const before_stock = r.before_stock == null ? null : toNumber(r.before_stock, 0);
                 const after_stock = r.after_stock == null ? null : toNumber(r.after_stock, 0);
 
                 const uKey = unitKey(r.ingredient?.base_unit ?? r.ingredient?.unit ?? null);
-                const signed = calcSignedImpact({ type: r.type, amount, before_stock, after_stock });
+                const signed = calcSignedImpact({ type: logType, amount, before_stock, after_stock });
 
                 if (signed > 0) inflow[uKey] += signed;
                 if (signed < 0) outflow[uKey] += Math.abs(signed);
@@ -523,7 +540,7 @@ export async function GET(req: NextRequest) {
 
             const payload: KpiSummary = {
                 range: { from: from ?? null, to: to ?? null },
-                events_count: (data ?? []).length,
+                events_count: movementCount,
                 critical_count: criticalCount,
                 inflow,
                 outflow,
@@ -605,6 +622,9 @@ export async function GET(req: NextRequest) {
         const orderIdsSet = new Set<string>();
 
         for (const r of rows) {
+            const logType = normalizeStockLogType(r.type);
+            if (!logType) continue;
+
             if (r.order_id) orderIdsSet.add(r.order_id);
 
             const amount = toNumber(r.amount, 0);
@@ -615,7 +635,7 @@ export async function GET(req: NextRequest) {
             const uKey = unitKey(r.ingredient?.base_unit ?? r.ingredient?.unit ?? null);
 
             const signedImpact = calcSignedImpact({
-                type: r.type,
+                type: logType,
                 amount,
                 before_stock,
                 after_stock,
@@ -623,7 +643,7 @@ export async function GET(req: NextRequest) {
 
             const key = eventKey({
                 order_id: r.order_id ?? null,
-                type: r.type,
+                type: logType,
                 note: r.note ?? null,
                 created_at: r.created_at,
             });
@@ -634,18 +654,18 @@ export async function GET(req: NextRequest) {
                 ev = {
                     event_id: key,
                     happened_at: r.created_at,
-                    type: r.type,
+                    type: logType,
                     order_id: r.order_id ?? null,
 
-                    title: buildTitle(r.type, hasOrder),
-                    subtitle: buildSubtitle(r.type, r.order_id ?? null, r.note ?? null),
+                    title: buildTitle(logType, hasOrder),
+                    subtitle: buildSubtitle(r.order_id ?? null, r.note ?? null),
 
                     note: r.note ?? null,
 
                     items_count: 0,
                     impact_by_unit: initImpact(),
                     flags: {
-                        manual_adjust: r.type === "adjust",
+                        manual_adjust: logType === "adjust",
                         has_big_amount: false,
                     },
                     items: [],
@@ -654,7 +674,7 @@ export async function GET(req: NextRequest) {
             }
 
             const isSafe = ingName ? SAFE_BIG_INGREDIENTS.has(ingName.trim()) : false;
-            const big = (r.type === "deduct" || r.type === "waste")
+            const big = (logType === "deduct" || logType === "waste")
                 && !isSafe
                 && isBigAmountDeduct(Math.abs(amount), uKey);
 

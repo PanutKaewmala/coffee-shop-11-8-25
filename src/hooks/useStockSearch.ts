@@ -166,6 +166,8 @@ function emptyKpi(): KpiSummary {
 ========================= */
 // ✅ ทำให้ type ฝั่ง UI “นิ่ง” แม้ backend จะเพิ่ม type ใหม่
 function normalizeType(t: ApiStockLogType): StockLogType | null {
+    if (t === "delete") return null;
+
     // กลุ่ม “ออก”
     if (t === "deduct" || t === "decrease") return "deduct";
     if (t === "waste" || t === "loss") return "waste";
@@ -175,8 +177,7 @@ function normalizeType(t: ApiStockLogType): StockLogType | null {
     // กลุ่ม “ปรับ”
     if (t === "adjust" || t === "set") return "adjust";
 
-    // delete หรือ type แปลก ๆ → ไม่โชว์ timeline
-    return null;
+    return "adjust";
 }
 
 function normalizeUnitKey(u: unknown): UnitKey {
