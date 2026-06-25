@@ -49,6 +49,30 @@ type IngredientMini = {
     is_active?: boolean | null;
 };
 
+type StockLogType = "deduct" | "add" | "adjust" | "restock" | "waste";
+type AdjustmentReason = "in" | "waste" | "deduct" | "count";
+
+function normalizeAdjustmentReason(v: unknown): AdjustmentReason | null {
+    const raw = toStringOrNull(v);
+    if (!raw) return null;
+
+    const s = raw.toLowerCase().replace(/[\s_-]+/g, "");
+
+    if (["in", "receive", "received", "stockin", "add", "restock"].includes(s)) return "in";
+    if (["waste", "loss", "lost", "discard", "discarded"].includes(s)) return "waste";
+    if (["deduct", "out", "stockout"].includes(s)) return "deduct";
+    if (["count", "manual", "correction", "adjust"].includes(s)) return "count";
+
+    return null;
+}
+
+function pickLogType(reason: AdjustmentReason | null, amount: number): StockLogType {
+    if (reason === "in" && amount > 0) return "add";
+    if (reason === "waste" && amount < 0) return "waste";
+    if (reason === "deduct" && amount < 0) return "deduct";
+    return "adjust";
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
@@ -62,6 +86,10 @@ export async function POST(req: NextRequest) {
         const ingredient_id = toStringOrNull(body.ingredient_id);
         const amount = toNumberOrNull(body.amount);
         const note = toStringOrNull(body.note);
+        const reason =
+            normalizeAdjustmentReason(body.reason) ??
+            normalizeAdjustmentReason(body.intent) ??
+            normalizeAdjustmentReason(body.operation);
 
         if (!ingredient_id) {
             return NextResponse.json({ error: "Missing ingredient_id" }, { status: 400 });
@@ -120,6 +148,7 @@ export async function POST(req: NextRequest) {
         const before = toNumber(row.stock, 0);
         const after = Math.max(0, before + amount);
         const now = new Date().toISOString();
+        const logType = pickLogType(reason, amount);
 
         const { error: upErr } = await admin
             .from("ingredients")
@@ -134,7 +163,7 @@ export async function POST(req: NextRequest) {
             ingredient_id,
             order_id: null,
             amount: Math.abs(amount),
-            type: "adjust",
+            type: logType,
             note: note ?? null,
             before_stock: before,
             after_stock: after,
@@ -154,6 +183,7 @@ export async function POST(req: NextRequest) {
                 stock: after,
                 unit: row.unit,
             },
+            type: logType,
         });
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Internal Server Error";

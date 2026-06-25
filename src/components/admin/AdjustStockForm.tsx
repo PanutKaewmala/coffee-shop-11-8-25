@@ -143,6 +143,7 @@ export default function AdjustStockForm({ ingredient, onClose, onUpdated }: Prop
                 body: JSON.stringify({
                     ingredient_id: ingredient.id,
                     amount: diff,
+                    reason,
                     note: note.trim() || null,
                 }),
             });

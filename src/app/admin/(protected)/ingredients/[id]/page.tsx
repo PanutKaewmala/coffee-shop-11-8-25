@@ -15,7 +15,7 @@ type UUID = string;
 
 type BaseUnit = "ml" | "g" | "piece";
 type StockStatus = "ok" | "low" | "out";
-type StockLogType = "deduct" | "add" | "adjust";
+type StockLogType = "deduct" | "add" | "adjust" | "restock" | "waste";
 
 type IngredientLite = {
     id: UUID;
@@ -188,13 +188,15 @@ function TypeBadge({ type }: { type: StockLogType }) {
     const base =
         "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium border border-white/10";
     if (type === "add") return <span className={`${base} bg-green-500/10 text-green-200`}>เพิ่ม</span>;
+    if (type === "restock") return <span className={`${base} bg-emerald-500/10 text-emerald-200`}>คืนสต็อก</span>;
+    if (type === "waste") return <span className={`${base} bg-red-500/10 text-red-200`}>ของเสีย</span>;
     if (type === "deduct") return <span className={`${base} bg-white/10 text-[var(--text-secondary)]`}>ตัดออก</span>;
     return <span className={`${base} bg-blue-500/10 text-blue-200`}>ปรับยอด</span>;
 }
 
 function parseStockLogType(v: unknown): StockLogType {
     const s = toStringOrNull(v);
-    if (s === "add" || s === "deduct" || s === "adjust") return s;
+    if (s === "add" || s === "deduct" || s === "adjust" || s === "restock" || s === "waste") return s;
     return "adjust";
 }
 
@@ -767,12 +769,19 @@ export default function IngredientDetailPage() {
                             <tbody>
                                 {visibleLogs.map((r) => {
                                     const amt = Math.round(toNumber(r.amount, 0));
-                                    const signAmt = r.type === "deduct" ? -Math.abs(amt) : Math.abs(amt);
+                                    const rawDelta =
+                                        r.before_stock != null && r.after_stock != null
+                                            ? r.after_stock - r.before_stock
+                                            : r.type === "deduct" || r.type === "waste"
+                                                ? -Math.abs(amt)
+                                                : Math.abs(amt);
+                                    const signAmt = Math.round(rawDelta);
+                                    const signAmtText = signAmt > 0 ? `+${signAmt}` : String(signAmt);
                                     const amtClass =
-                                        r.type === "add"
+                                        signAmt > 0
                                             ? "text-green-200"
-                                            : r.type === "deduct"
-                                                ? "text-[var(--text)]"
+                                            : signAmt < 0
+                                                ? "text-red-200"
                                                 : "text-blue-200";
 
                                     return (
@@ -783,7 +792,7 @@ export default function IngredientDetailPage() {
                                             </td>
                                             <td className="py-2 pr-3 whitespace-nowrap">
                                                 <span className={`font-semibold tabular-nums ${amtClass}`}>
-                                                    {signAmt}
+                                                    {signAmtText}
                                                 </span>{" "}
                                                 <span className="text-[var(--text-secondary)]">{unitLabel}</span>
                                             </td>
