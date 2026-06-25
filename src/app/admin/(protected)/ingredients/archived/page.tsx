@@ -172,7 +172,6 @@ export default function ArchivedIngredientsPage() {
                     <Button
                         variant="outline"
                         onClick={() => (window.location.href = "/admin/ingredients")}
-                        disabled={disableActions}
                     >
                         ← Back
                     </Button>
