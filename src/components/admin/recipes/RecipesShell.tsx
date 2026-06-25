@@ -38,16 +38,20 @@ type RecipeItemLite = {
 
 type MenuRecipeCoverage = {
     variantCount: number;
-    recipeVariantCount: number;
+    readyVariantCount: number;
+    missingVariantLabels: string[];
 };
 
 type RecipeCoverageStatus = "empty_variant" | "no_recipe" | "partial_recipe" | "full_recipe";
+type MenuRecipeStatus = "no_recipe" | "partial_recipe" | "full_recipe";
 
 export type VariantOption = {
     variant_id: UUID;
     menu_id: UUID;
     label: string;
+    displayLabel: string;
     is_default: boolean;
+    isReadyForPos: boolean;
 };
 
 type MenuCardView = {
@@ -57,7 +61,11 @@ type MenuCardView = {
     created_at: string;
     variantCount: number;
     recipeItemCount: number;
+    readyVariantCount: number;
+    missingVariantCount: number;
+    missingVariantLabels: string[];
     coverageStatus: RecipeCoverageStatus;
+    recipeStatus: MenuRecipeStatus;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -93,6 +101,12 @@ function normalizeSizeLabel(sizeRaw: unknown): string {
     if (!s) return "";
     if (s.toLowerCase() === "default") return "";
     return ` • ${s}`;
+}
+
+function displayVariantLabel(full: string): string {
+    const parts = full.split("•").map((s) => s.trim()).filter(Boolean);
+    if (parts.length <= 1) return full;
+    return parts.slice(1).join(" • ");
 }
 
 const SERVE_PRIORITY = ["iced", "hot", "blend", "frappe"];
@@ -206,6 +220,12 @@ function getCoverageStatus(variantCount: number, recipeVariantCount: number): Re
     return "full_recipe";
 }
 
+function getRecipeStatus(variantCount: number, readyVariantCount: number): MenuRecipeStatus {
+    if (variantCount === 0 || readyVariantCount === 0) return "no_recipe";
+    if (readyVariantCount < variantCount) return "partial_recipe";
+    return "full_recipe";
+}
+
 export default function RecipesShell() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -259,6 +279,7 @@ export default function RecipesShell() {
             setMenuItems(menus);
             setRecipeItems(rList);
 
+            const readyVariantIds = new Set(rList.map((r) => r.variant_id));
             const menuNameMap = new Map<UUID, string>(menus.map((m) => [m.id, m.name]));
             const opts: VariantOption[] = vList.map((v) => {
                 const menuName = menuNameMap.get(v.menu_id) ?? v.menu_id;
@@ -270,7 +291,11 @@ export default function RecipesShell() {
                     label: `${menuName} • ${serveName}${sizeLabel}`,
                     is_default: Boolean(v.is_default),
                 };
-            });
+            }).map((v) => ({
+                ...v,
+                displayLabel: displayVariantLabel(v.label),
+                isReadyForPos: readyVariantIds.has(v.variant_id),
+            }));
 
             opts.sort(sortVariantsSmart);
             setVariantOptions(opts);
@@ -322,10 +347,12 @@ export default function RecipesShell() {
     const menuCards = useMemo(() => {
         const q = searchMenu.trim().toLowerCase();
 
-        const variantIdsByMenu = new Map<string, Set<string>>();
+        const variantsByMenu = new Map<string, VariantOption[]>();
         const variantIdToMenu = new Map<string, string>();
         for (const v of variantOptions) {
-            addToSetMap(variantIdsByMenu, v.menu_id, v.variant_id);
+            const current = variantsByMenu.get(v.menu_id);
+            if (current) current.push(v);
+            else variantsByMenu.set(v.menu_id, [v]);
             variantIdToMenu.set(v.variant_id, v.menu_id);
         }
 
@@ -334,32 +361,45 @@ export default function RecipesShell() {
             const menuId = variantIdToMenu.get(r.variant_id) ?? r.menu_id ?? "";
             if (!menuId) continue;
 
-            const variantsOfMenu = variantIdsByMenu.get(menuId);
-            if (!variantsOfMenu || !variantsOfMenu.has(r.variant_id)) continue;
+            const variantsOfMenu = variantsByMenu.get(menuId);
+            if (!variantsOfMenu?.some((v) => v.variant_id === r.variant_id)) continue;
 
             addToSetMap(recipeVariantIdsByMenu, menuId, r.variant_id);
         }
 
         const coverageByMenu = new Map<string, MenuRecipeCoverage>();
         for (const m of menuItems) {
-            const variantCount = variantIdsByMenu.get(m.id)?.size ?? 0;
-            const recipeVariantCount = recipeVariantIdsByMenu.get(m.id)?.size ?? 0;
-            coverageByMenu.set(m.id, { variantCount, recipeVariantCount });
+            const variants = variantsByMenu.get(m.id) ?? [];
+            const readyVariantIds = recipeVariantIdsByMenu.get(m.id) ?? new Set<string>();
+            const missingVariantLabels = variants
+                .filter((v) => !readyVariantIds.has(v.variant_id))
+                .map((v) => v.displayLabel || displayVariantLabel(v.label));
+
+            coverageByMenu.set(m.id, {
+                variantCount: variants.length,
+                readyVariantCount: readyVariantIds.size,
+                missingVariantLabels,
+            });
         }
 
         let list: MenuCardView[] = menuItems
             .filter((m) => (q ? m.name.toLowerCase().includes(q) : true))
             .map((m) => {
                 const variantCount = coverageByMenu.get(m.id)?.variantCount ?? 0;
-                const recipeVariantCount = coverageByMenu.get(m.id)?.recipeVariantCount ?? 0;
+                const readyVariantCount = coverageByMenu.get(m.id)?.readyVariantCount ?? 0;
+                const missingVariantLabels = coverageByMenu.get(m.id)?.missingVariantLabels ?? [];
                 return {
                     id: m.id,
                     name: m.name,
                     category: m.category,
                     created_at: m.created_at,
                     variantCount,
-                    recipeItemCount: recipeVariantCount,
-                    coverageStatus: getCoverageStatus(variantCount, recipeVariantCount),
+                    recipeItemCount: readyVariantCount,
+                    readyVariantCount,
+                    missingVariantCount: missingVariantLabels.length,
+                    missingVariantLabels,
+                    coverageStatus: getCoverageStatus(variantCount, readyVariantCount),
+                    recipeStatus: getRecipeStatus(variantCount, readyVariantCount),
                 };
             })
             .sort((a, b) => a.name.localeCompare(b.name));

@@ -37,6 +37,7 @@ type PosCheckoutPayload = {
 type PosCheckoutResponse = {
     success?: boolean;
     error?: string;
+    code?: string;
     order?: unknown;
     deducted?: unknown;
     debug?: unknown;
@@ -248,7 +249,7 @@ function paymentMethodLabel(method: "cash" | "promptpay") {
 }
 
 function generateIdempotencyKey(): string {
-    const c = typeof globalThis !== "undefined" ? (globalThis as any).crypto : undefined;
+    const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
     if (c && typeof c.randomUUID === "function") {
         try {
             return c.randomUUID();
@@ -727,9 +728,16 @@ export default function POSPage() {
                     )}; raw=${rawDump}; text=${debugText}`
                 );
 
+                if (data.code === "NO_RECIPE") {
+                    alert("This item is not ready for sale. Ask the owner to add a recipe for this variant.");
+                    return;
+                }
+
+                const rawMessage =
+                    isRecord(raw) && typeof raw.message === "string" ? raw.message : "";
                 const msg =
                     (typeof data.error === "string" && data.error) ||
-                    (isRecord(raw) && typeof (raw as any).message === "string" ? (raw as any).message : "") ||
+                    rawMessage ||
                     (debugText.trim() ? debugText : "") ||
                     (res.status === 400
                         ? "ข้อมูลไม่ครบ/สต็อกไม่พอ/ไม่มีสูตร (เช็ค recipe_items)"
@@ -747,7 +755,8 @@ export default function POSPage() {
             }
 
             const order = isRecord(data.order) ? (data.order as Record<string, unknown>) : null;
-            const orderId = order && (order.id ?? (order as any).order_id) ? String(order.id ?? (order as any).order_id) : "";
+            const orderIdRaw = order ? order.id ?? order.order_id : null;
+            const orderId = orderIdRaw ? String(orderIdRaw) : "";
             const receiptPaidAmount =
                 paymentMethod === "cash" ? parseNumberInput(paidAmount) ?? 0 : total;
             const receiptChangeAmount =

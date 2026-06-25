@@ -29,17 +29,38 @@ export default function VariantSelector({
     }
 
     return (
-        <select
-            className="w-full p-2 rounded-lg bg-background border border-text-muted/40"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            disabled={disabled}
-        >
+        <div className="space-y-2" role="listbox" aria-label="Recipe variants">
             {variants.map((v) => (
-                <option key={v.variant_id} value={v.variant_id}>
-                    {displayVariantLabel(v.label)}
-                </option>
+                <button
+                    key={v.variant_id}
+                    type="button"
+                    role="option"
+                    aria-selected={value === v.variant_id}
+                    disabled={disabled}
+                    onClick={() => onChange(v.variant_id)}
+                    className={[
+                        "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition",
+                        value === v.variant_id
+                            ? "border-[var(--accent)] bg-[var(--accent)]/10"
+                            : "border-text-muted/30 bg-background hover:border-[var(--text-muted)]/50",
+                        disabled ? "cursor-not-allowed opacity-60" : "",
+                    ].join(" ")}
+                >
+                    <span className="min-w-0 truncate">
+                        {v.displayLabel || displayVariantLabel(v.label)}
+                    </span>
+                    <span
+                        className={[
+                            "shrink-0 rounded-full border px-2 py-0.5 text-xs",
+                            v.isReadyForPos
+                                ? "border-[var(--accent)]/40 text-[var(--accent)]"
+                                : "border-amber-400/40 text-amber-300",
+                        ].join(" ")}
+                    >
+                        {v.isReadyForPos ? "Ready" : "Missing recipe"}
+                    </span>
+                </button>
             ))}
-        </select>
+        </div>
     );
 }
