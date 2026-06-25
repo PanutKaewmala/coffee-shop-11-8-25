@@ -51,6 +51,37 @@ export default function ArchivedIngredientsPage() {
     const rowsPerPage = 20;
 
     const [restoringId, setRestoringId] = useState<string | null>(null);
+    const [canManageIngredients, setCanManageIngredients] = useState(false);
+    const [permissionLoading, setPermissionLoading] = useState(true);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadPermission() {
+            try {
+                const res = await fetch("/api/receipt-settings", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok || !data || typeof data !== "object" || !("canEditShopSettings" in data)) {
+                    setCanManageIngredients(false);
+                    return;
+                }
+
+                setCanManageIngredients((data as Record<string, unknown>).canEditShopSettings === true);
+            } catch {
+                if (!alive) return;
+                setCanManageIngredients(false);
+            } finally {
+                if (alive) setPermissionLoading(false);
+            }
+        }
+
+        void loadPermission();
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     useEffect(() => setInputPage(String(page)), [page]);
 
@@ -96,6 +127,7 @@ export default function ArchivedIngredientsPage() {
     useEffect(() => setPage(1), [search, unitFilter]);
 
     async function restoreIngredient(id: string) {
+        if (!canManageIngredients || permissionLoading) return;
         if (restoringId) return;
         if (!confirm("Restore this ingredient?")) return;
 
@@ -126,11 +158,16 @@ export default function ArchivedIngredientsPage() {
 
     const headers = ["Name", "Stock", "Unit", "Archived At", "Actions"];
 
-    const disableActions = loading || !!restoringId;
+    const disableActions = loading || !!restoringId || permissionLoading || !canManageIngredients;
 
     return (
         <div className="p-6 space-y-6">
             <Card title="Archived Ingredients">
+                {!permissionLoading && !canManageIngredients ? (
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                        Read-only mode: only owners can restore archived ingredients.
+                    </div>
+                ) : null}
                 <div className="flex justify-between items-center mb-4 gap-2">
                     <Button
                         variant="outline"
@@ -193,14 +230,18 @@ export default function ArchivedIngredientsPage() {
                                 BASE_UNIT_LABEL[base],
                                 archivedAt,
                                 <div key={item.id} className="flex gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => restoreIngredient(item.id)}
-                                        disabled={disableActions}
-                                    >
-                                        {isRestoringThis ? "Restoring..." : "Restore"}
-                                    </Button>
+                                    {canManageIngredients && !permissionLoading ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => restoreIngredient(item.id)}
+                                            disabled={disableActions}
+                                        >
+                                            {isRestoringThis ? "Restoring..." : "Restore"}
+                                        </Button>
+                                    ) : (
+                                        <span className="text-xs text-text-secondary">View only</span>
+                                    )}
                                 </div>,
                             ];
                         })}
