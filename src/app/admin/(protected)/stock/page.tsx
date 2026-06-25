@@ -43,7 +43,7 @@ function fmtSignedImpactCompact(ev: StockEvent) {
     addPart(ev.impact_by_unit.ml || 0, "ml");
     addPart(ev.impact_by_unit.piece || 0, "ชิ้น");
 
-    if (!parts.length) return "-";
+    if (!parts.length) return "ไม่เปลี่ยนสต็อก";
     if (parts.length <= 2) return parts.join(" • ");
     return `${parts[0]} • ${parts[1]} (+${parts.length - 2})`;
 }
@@ -58,7 +58,7 @@ function fmtSignedImpactFull(ev: StockEvent) {
     addPart(ev.impact_by_unit.g || 0, "g");
     addPart(ev.impact_by_unit.ml || 0, "ml");
     addPart(ev.impact_by_unit.piece || 0, "ชิ้น");
-    return parts.length ? parts.join(" • ") : "-";
+    return parts.length ? parts.join(" • ") : "ไม่เปลี่ยนสต็อก";
 }
 
 function rowFlags(ev: StockEvent) {

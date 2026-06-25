@@ -21,6 +21,13 @@ type IngredientJoinRow = {
     is_active?: boolean | null;
 };
 
+type OrderJoinRow = {
+    id: UUID;
+    status: string | null;
+    stock_refunded: boolean | null;
+    cancelled_at: string | null;
+};
+
 type StockLogJoinRow = {
     id: UUID;
     ingredient_id: UUID;
@@ -234,6 +241,27 @@ function calcSignedImpact(params: { type: StockLogType; amount: number; before_s
     return 0;
 }
 
+function isCancelWithoutRestockLog(params: {
+    type: StockLogType;
+    order_id: string | null;
+    before_stock: number | null;
+    after_stock: number | null;
+    order?: OrderJoinRow | null;
+}): boolean {
+    const { type, order_id, before_stock, after_stock, order } = params;
+    if (type !== "waste" || !order_id) return false;
+
+    if (order?.cancelled_at && order.stock_refunded === false) {
+        return true;
+    }
+
+    if (before_stock != null && after_stock != null) {
+        return before_stock === after_stock;
+    }
+
+    return false;
+}
+
 function isBigAmountDeduct(amountAbs: number, unit: UnitKey): boolean {
     if (unit === "g") return amountAbs >= 500;
     if (unit === "ml") return amountAbs >= 1000;
@@ -247,7 +275,7 @@ function buildTitle(type: StockLogType, hasOrder: boolean): string {
         return "คืนสต็อกจากออเดอร์ที่ยกเลิก";
     }
     if (hasOrder && type === "waste") {
-        return "ของเสียจากออเดอร์ที่ยกเลิก";
+        return "ยกเลิกแบบไม่คืนสต็อก";
     }
     if (type === "adjust") return "ปรับยอด";
     if (type === "add") return "เพิ่มสต็อก";
@@ -352,6 +380,42 @@ async function fetchOrderMenuLinesByOrderIds(
     for (const [oid, lines] of map.entries()) {
         lines.sort((a, b) => b.qty - a.qty || a.menu_name.localeCompare(b.menu_name));
         map.set(oid, lines);
+    }
+
+    return map;
+}
+
+async function fetchOrdersByIds(
+    admin: ReturnType<typeof getSupabaseAdmin>,
+    orderIds: string[],
+    currentShopId: string,
+    currentBranchId: string | null
+): Promise<Map<string, OrderJoinRow>> {
+    const map = new Map<string, OrderJoinRow>();
+    const ids = Array.from(new Set(orderIds.map((id) => id.trim()).filter(Boolean)));
+    if (ids.length === 0) return map;
+
+    const CHUNK = 150;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+        const batch = ids.slice(i, i + CHUNK);
+
+        let q = admin
+            .from("orders")
+            .select("id,status,stock_refunded,cancelled_at")
+            .eq("shop_id", currentShopId)
+            .in("id", batch);
+
+        if (currentBranchId) q = q.eq("branch_id", currentBranchId);
+
+        const { data, error } = await q.returns<OrderJoinRow[]>();
+        if (error) {
+            console.warn("[stock] order lookup failed:", error.message);
+            continue;
+        }
+
+        for (const order of data ?? []) {
+            map.set(order.id, order);
+        }
     }
 
     return map;
@@ -472,6 +536,7 @@ export async function GET(req: NextRequest) {
 
             const select2 = `
         id,
+        order_id,
         amount,
         type,
         note,
@@ -503,6 +568,14 @@ export async function GET(req: NextRequest) {
             const { data, error } = await q.returns<StockLogJoinRow[]>();
             if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+            const rows = data ?? [];
+            const ordersById = await fetchOrdersByIds(
+                admin,
+                rows.flatMap((r) => (r.order_id ? [r.order_id] : [])),
+                currentShopId,
+                currentBranchId
+            );
+
             const inflow = initImpact();
             const outflow = initImpact();
             const byType: Record<StockLogType, number> = {
@@ -514,20 +587,30 @@ export async function GET(req: NextRequest) {
             };
             let movementCount = 0;
 
-            for (const r of data ?? []) {
+            for (const r of rows) {
                 const logType = normalizeStockLogType(r.type);
                 if (!logType) continue;
-
-                movementCount += 1;
-                byType[logType] += 1;
 
                 const amount = toNumber(r.amount, 0);
                 const before_stock = r.before_stock == null ? null : toNumber(r.before_stock, 0);
                 const after_stock = r.after_stock == null ? null : toNumber(r.after_stock, 0);
+                const noStockChange = isCancelWithoutRestockLog({
+                    type: logType,
+                    order_id: r.order_id ?? null,
+                    before_stock,
+                    after_stock,
+                    order: r.order_id ? ordersById.get(r.order_id) ?? null : null,
+                });
 
                 const uKey = unitKey(r.ingredient?.base_unit ?? r.ingredient?.unit ?? null);
-                const signed = calcSignedImpact({ type: logType, amount, before_stock, after_stock });
+                const signed = noStockChange
+                    ? 0
+                    : calcSignedImpact({ type: logType, amount, before_stock, after_stock });
 
+                if (signed === 0) continue;
+
+                movementCount += 1;
+                byType[logType] += 1;
                 if (signed > 0) inflow[uKey] += signed;
                 if (signed < 0) outflow[uKey] += Math.abs(signed);
             }
@@ -620,6 +703,12 @@ export async function GET(req: NextRequest) {
 
         const map = new Map<string, StockEvent>();
         const orderIdsSet = new Set<string>();
+        const ordersById = await fetchOrdersByIds(
+            admin,
+            rows.flatMap((r) => (r.order_id ? [r.order_id] : [])),
+            currentShopId,
+            currentBranchId
+        );
 
         for (const r of rows) {
             const logType = normalizeStockLogType(r.type);
@@ -630,16 +719,25 @@ export async function GET(req: NextRequest) {
             const amount = toNumber(r.amount, 0);
             const before_stock = r.before_stock == null ? null : toNumber(r.before_stock, 0);
             const after_stock = r.after_stock == null ? null : toNumber(r.after_stock, 0);
+            const noStockChange = isCancelWithoutRestockLog({
+                type: logType,
+                order_id: r.order_id ?? null,
+                before_stock,
+                after_stock,
+                order: r.order_id ? ordersById.get(r.order_id) ?? null : null,
+            });
 
             const ingName = r.ingredient?.name ?? null;
             const uKey = unitKey(r.ingredient?.base_unit ?? r.ingredient?.unit ?? null);
 
-            const signedImpact = calcSignedImpact({
-                type: logType,
-                amount,
-                before_stock,
-                after_stock,
-            });
+            const signedImpact = noStockChange
+                ? 0
+                : calcSignedImpact({
+                    type: logType,
+                    amount,
+                    before_stock,
+                    after_stock,
+                });
 
             const key = eventKey({
                 order_id: r.order_id ?? null,
@@ -674,7 +772,8 @@ export async function GET(req: NextRequest) {
             }
 
             const isSafe = ingName ? SAFE_BIG_INGREDIENTS.has(ingName.trim()) : false;
-            const big = (logType === "deduct" || logType === "waste")
+            const big = !noStockChange
+                && (logType === "deduct" || logType === "waste")
                 && !isSafe
                 && isBigAmountDeduct(Math.abs(amount), uKey);
 
@@ -685,7 +784,11 @@ export async function GET(req: NextRequest) {
                 unit: r.ingredient?.unit ?? null,
                 base_unit: r.ingredient?.base_unit ?? null,
                 amount,
-                delta: before_stock != null && after_stock != null ? after_stock - before_stock : null,
+                delta: noStockChange
+                    ? 0
+                    : before_stock != null && after_stock != null
+                        ? after_stock - before_stock
+                        : null,
                 before_stock,
                 after_stock,
                 flags: { big_amount: big },
