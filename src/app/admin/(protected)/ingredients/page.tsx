@@ -181,6 +181,7 @@ export default function IngredientsAdminPage() {
 
     const isAnyModalOpen = showModal || !!adjustItem;
     const disableActions = loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading;
+    const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || permissionLoading;
 
     useEffect(() => setInputPage(String(page)), [page]);
 
@@ -547,8 +548,7 @@ export default function IngredientsAdminPage() {
     };
 
     const openAdjust = (item: IngredientRow) => {
-        if (!canManageIngredients || permissionLoading) return;
-        if (saving) return;
+        if (adjustDisabled) return;
         setShowModal(false);
         setEditingItem(null);
         setAdjustItem(item);
@@ -719,9 +719,9 @@ export default function IngredientsAdminPage() {
                                         </div>
                                     ))}
                             </div>
-                        ) : (
-                            <div className="mt-3 text-sm text-text-muted">ตัวเหลืองยังว่างๆ อยู่</div>
-                        )}
+                            ) : (
+                                <div className="mt-3 text-sm text-text-muted">ตัวเหลืองยังว่างๆ อยู่</div>
+                            )}
                     </div>
                 </div>
 
@@ -781,53 +781,49 @@ export default function IngredientsAdminPage() {
                                 </div>,
 
                                 <div key={`${item.id}-actions`} className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openAdjust(item)}
+                                        disabled={adjustDisabled}
+                                    >
+                                        ปรับสต็อก
+                                    </Button>
+
                                     {canManageIngredients && !permissionLoading ? (
-                                        <>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => openAdjust(item)}
-                                                disabled={disableActions}
-                                            >
-                                                ปรับสต็อก
-                                            </Button>
+                                        <details className="relative">
+                                            <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
+                                                ⋯
+                                            </summary>
 
-                                            <details className="relative">
-                                                <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
-                                                    ⋯
-                                                </summary>
+                                            <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
+                                                <Link
+                                                    href={`/admin/ingredients/${item.id}`}
+                                                    className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
+                                                >
+                                                    รายละเอียด
+                                                </Link>
 
-                                                <div className="absolute right-0 mt-2 w-44 rounded-xl border border-text-muted/25 bg-surface/95 backdrop-blur p-2 shadow-lg z-50">
-                                                    <Link
-                                                        href={`/admin/ingredients/${item.id}`}
-                                                        className="block px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary"
-                                                    >
-                                                        รายละเอียด
-                                                    </Link>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openRename(item)}
+                                                    disabled={disableActions}
+                                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
+                                                >
+                                                    เปลี่ยนชื่อ
+                                                </button>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openRename(item)}
-                                                        disabled={disableActions}
-                                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
-                                                    >
-                                                        เปลี่ยนชื่อ
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => deleteIngredient(item.id)}
-                                                        disabled={disableActions}
-                                                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
-                                                    >
-                                                        {isDeletingThis ? "กำลังลบ..." : "ลบ"}
-                                                    </button>
-                                                </div>
-                                            </details>
-                                        </>
-                                    ) : (
-                                        <span className="text-xs text-[var(--text-secondary)]">View only</span>
-                                    )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => deleteIngredient(item.id)}
+                                                    disabled={disableActions}
+                                                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
+                                                >
+                                                    {isDeletingThis ? "กำลังลบ..." : "ลบ"}
+                                                </button>
+                                            </div>
+                                        </details>
+                                    ) : null}
                                 </div>,
                             ];
                         })}

@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
-        if (!member || member.role !== "owner") {
-            return NextResponse.json({ error: "Owner only" }, { status: 403 });
+        if (!member || !["owner", "staff"].includes(String(member.role))) {
+            return NextResponse.json({ error: "Owner or staff only" }, { status: 403 });
         }
 
         const { data: ing, error: ingErr } = await admin
