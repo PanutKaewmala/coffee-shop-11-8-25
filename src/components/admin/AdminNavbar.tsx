@@ -54,7 +54,7 @@ export default function AdminNavbar({
     currentBranchName,
 }: AdminNavbarProps) {
     const router = useRouter();
-    const { theme, toggleTheme } = useTheme();
+    const { toggleTheme } = useTheme();
 
     const [meLabel, setMeLabel] = useState<string>("");
 
@@ -251,11 +251,10 @@ export default function AdminNavbar({
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition-colors"
                         aria-label="Toggle theme"
                     >
-                        {theme === "dark" ? (
-                            <Sun size={18} className="text-[var(--text-secondary)]" />
-                        ) : (
-                            <Moon size={18} className="text-[var(--text-secondary)]" />
-                        )}
+                        <span className="inline-flex h-[18px] w-[18px] items-center justify-center">
+                            <Sun size={18} className="hidden dark:block text-[var(--text-secondary)]" />
+                            <Moon size={18} className="block dark:hidden text-[var(--text-secondary)]" />
+                        </span>
                     </button>
 
                     <span className="text-[var(--text-secondary)] text-sm hidden sm:inline truncate max-w-[220px]">
