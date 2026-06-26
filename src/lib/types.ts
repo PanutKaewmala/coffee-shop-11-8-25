@@ -2,8 +2,10 @@
 // ✅ Single source of truth + backward compatible aliases
 import type { Tables, Enums } from "@/lib/database.types";
 
+export type RecipeStatus = "no_recipe" | "partial_recipe" | "full_recipe";
+
 /* =========================
-   Primitives
+    Primitives
 ========================= */
 export type UUID = string;
 
@@ -91,6 +93,9 @@ export type MenuWithRelations = {
   is_enabled_in_branch?: boolean;
 
   created_at?: string | null;
+
+  recipe_status?: RecipeStatus;
+  is_ready_for_pos?: boolean;
 };
 
 /* =========================
@@ -358,6 +363,8 @@ export type MenuAPIItem = {
   image_url?: string | null;
   description?: string | null;
   created_at?: string | null;
+  recipe_status?: RecipeStatus;
+  is_ready_for_pos?: boolean;
 };
 
 export type MenuAPIResponse = {

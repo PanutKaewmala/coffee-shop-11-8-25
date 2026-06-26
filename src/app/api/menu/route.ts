@@ -17,7 +17,10 @@ export const dynamic = "force-dynamic";
 ========================= */
 type UUID = string;
 
+type RecipeStatus = "no_recipe" | "partial_recipe" | "full_recipe";
+
 type VariantRow = {
+    id: UUID;
     menu_id: UUID;
     serve_type_id: UUID;
     price_override: number | null;
@@ -42,6 +45,8 @@ type ApiMenuRow = {
     serve_types: string[];
     serve_prices: ApiServePrice[];
     is_enabled_in_branch: boolean;
+    recipe_status?: RecipeStatus;
+    is_ready_for_pos?: boolean;
     created_at: string;
 };
 
@@ -284,7 +289,7 @@ export async function GET(req: NextRequest) {
 
     const { data: variants, error: vErr } = await db
         .from("menu_variants")
-        .select("menu_id,serve_type_id,price_override,is_default,size")
+        .select("id,menu_id,serve_type_id,price_override,is_default,size")
         .eq("shop_id", selectedShopId!)
         .in("menu_id", menuIds);
     if (vErr) {
@@ -292,6 +297,14 @@ export async function GET(req: NextRequest) {
     }
 
     const variantRows = (variants ?? []) as VariantRow[];
+
+    const variantIdsByMenu = new Map<UUID, UUID[]>();
+    for (const v of variantRows) {
+        const arr = variantIdsByMenu.get(v.menu_id) ?? [];
+        arr.push(v.id);
+        variantIdsByMenu.set(v.menu_id, arr);
+    }
+
     const serveTypeIds = Array.from(
         new Set(variantRows.map((v) => v.serve_type_id).filter(Boolean))
     ) as UUID[];
@@ -354,12 +367,73 @@ export async function GET(req: NextRequest) {
         }
     }
 
+    const allVariantIds = variantRows.map((v) => v.id);
+    let recipeRows: { variant_id: string; ingredient_id: string | null }[] = [];
+    if (allVariantIds.length > 0) {
+        const { data: recipeData, error: recipeErr } = await db
+            .from("recipe_items")
+            .select("variant_id,ingredient_id")
+            .eq("shop_id", selectedShopId!)
+            .in("variant_id", allVariantIds);
+
+        if (recipeErr) {
+            return NextResponse.json({ error: recipeErr.message }, { status: 500 });
+        }
+        recipeRows = (recipeData ?? []) as { variant_id: string; ingredient_id: string | null }[];
+    }
+
+    const validIngredientIds = new Set<string>();
+    if (currentBranchId && recipeRows.length > 0) {
+        const ingredientIds = Array.from(
+            new Set(
+                recipeRows
+                    .map((r) => r.ingredient_id)
+                    .filter((v): v is string => typeof v === "string" && v.length > 0)
+            )
+        );
+
+        if (ingredientIds.length > 0) {
+            const { data: ingredientRows, error: ingredientErr } = await db
+                .from("ingredients")
+                .select("id")
+                .eq("shop_id", selectedShopId!)
+                .filter("branch_id", "eq", currentBranchId)
+                .in("id", ingredientIds);
+
+            if (ingredientErr) {
+                return NextResponse.json({ error: ingredientErr.message }, { status: 500 });
+            }
+
+            for (const r of ingredientRows ?? []) {
+                if (r.id) validIngredientIds.add(r.id);
+            }
+        }
+    }
+
+    const readyVariantIds = new Set<string>();
+    for (const row of recipeRows) {
+        if (row.ingredient_id && validIngredientIds.has(row.ingredient_id)) {
+            readyVariantIds.add(row.variant_id);
+        }
+    }
+
     const final: ApiMenuRow[] = menusScoped.map((m) => {
         const bucket = byMenuId.get(m.id);
         const serve_prices = Array.from(bucket?.servePrices.values() ?? []);
         const serve_types = bucket ? Array.from(bucket.serveNames.values()) : [];
         const isEnabledInBranch =
             user && currentBranchId ? isMenuEnabledInBranch(m.id, availabilityMap) : true;
+
+        const menuVariantIds = variantIdsByMenu.get(m.id) ?? [];
+        const totalVariants = menuVariantIds.length;
+        const readyVariants = menuVariantIds.filter((vid) => readyVariantIds.has(vid)).length;
+
+        let recipe_status: RecipeStatus = "no_recipe";
+        if (totalVariants > 0 && readyVariants === totalVariants) {
+            recipe_status = "full_recipe";
+        } else if (readyVariants > 0) {
+            recipe_status = "partial_recipe";
+        }
 
         return {
             id: m.id,
@@ -371,6 +445,8 @@ export async function GET(req: NextRequest) {
             serve_types: serve_types.length ? serve_types : serve_prices.map((x) => x.serve_type),
             serve_prices,
             is_enabled_in_branch: isEnabledInBranch,
+            recipe_status,
+            is_ready_for_pos: recipe_status === "full_recipe",
             created_at: m.created_at!,
         };
     });
