@@ -19,6 +19,7 @@ type Preset = "today" | "7days" | "month";
 
 type RevenueSummary = {
     preset: Preset;
+    legacy_paid_at_fallback_count: number;
     current: { total: number; count: number };
     previous: { total: number; count: number };
     delta: { total: number; count: number };
@@ -71,6 +72,7 @@ function parseRevenueSummary(j: unknown): RevenueSummary | null {
 
     return {
         preset,
+        legacy_paid_at_fallback_count: toNum(j.legacy_paid_at_fallback_count, 0),
         current: { total: toNum(current.total), count: toNum(current.count) },
         previous: { total: toNum(previous.total), count: toNum(previous.count) },
         delta: { total: toNum(delta.total), count: toNum(delta.count) },
@@ -465,6 +467,13 @@ export default function AdminOrdersPage() {
                         </div>
                     ) : (
                         <>
+                            {revToShow && revToShow.legacy_paid_at_fallback_count > 0 && (
+                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                                    มีรายการเก่า {revToShow.legacy_paid_at_fallback_count} รายการที่ไม่มีวันที่ชำระเงิน
+                                    ระบบจึงใช้วันที่สร้างรายการแทนในการคำนวณช่วงเปรียบเทียบนี้
+                                </div>
+                            )}
+
                             {/* SUMMARY */}
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 mb-6">
                                 <StatCard
