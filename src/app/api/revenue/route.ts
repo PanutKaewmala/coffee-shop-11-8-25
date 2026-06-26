@@ -82,14 +82,6 @@ type OrderItem = {
   variant_label: string | null; // ✅ NEW (serve type label)
 };
 
-type RawOrderRow = {
-  id: string;
-  total: number | string | null;
-  created_at: string | null;
-  paid_at: string | null;
-  status: OrderStatus | null;
-  order_items: unknown[] | null;
-};
 
 type FormattedOrder = {
   id: string;

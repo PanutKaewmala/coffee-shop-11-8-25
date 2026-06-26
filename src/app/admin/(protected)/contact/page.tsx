@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
@@ -12,7 +12,7 @@ import ContactFilter from "@/components/admin/ContactFilter";
 import SearchBox from "@/components/admin/search/SearchBox";
 import useContactSearch from "@/hooks/useContactSearch";
 
-import type { ContactRow, ContactCategory } from "@/lib/types";
+import type { ContactCategory } from "@/lib/types";
 
 // UI-facing contact shape (returned by useContactSearch) — keep minimal and permissive
 type ContactUI = {

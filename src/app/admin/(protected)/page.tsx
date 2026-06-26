@@ -1,7 +1,7 @@
 // src/app/admin/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import Link from "next/link";
 
 import Card from "@/components/admin/Card";
@@ -154,8 +154,10 @@ export default function AdminDashboard() {
         return 0;
     }
 
-    const fmtCurrency = (v: number) =>
-        `${Number.isFinite(v) ? v.toLocaleString("th-TH") : "0"} ฿`;
+    const fmtCurrency = useCallback((v: number) =>
+        `${Number.isFinite(v) ? v.toLocaleString("th-TH") : "0"} ฿`,
+        [],
+    );
 
     const fmtDateTime = (iso: string) =>
         new Date(iso).toLocaleString("th-TH", {

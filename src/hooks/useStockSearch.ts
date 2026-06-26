@@ -180,14 +180,6 @@ function normalizeType(t: ApiStockLogType): StockLogType | null {
     return "adjust";
 }
 
-function normalizeUnitKey(u: unknown): UnitKey {
-    const s = (typeof u === "string" ? u : "").toLowerCase().trim();
-    if (s === "g") return "g";
-    if (s === "ml") return "ml";
-    if (s === "piece") return "piece";
-    return "unknown";
-}
-
 function normalizeImpact(v: unknown): Record<UnitKey, number> {
     // backend ส่งมาแบบ {g, ml, piece, unknown} อยู่แล้วส่วนใหญ่
     if (isRecord(v)) {
