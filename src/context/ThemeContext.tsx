@@ -29,9 +29,7 @@ const ThemeContext = createContext<ThemeContextProps>({
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setTheme] = useState<Theme>("light");
-
-    useEffect(() => {
+    const [theme, setTheme] = useState<Theme>(() => {
         let savedTheme: Theme | null = null;
 
         if (typeof window !== "undefined") {
@@ -50,8 +48,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
                 : "light");
 
         applyThemeToDocument(initialTheme);
-        setTheme(initialTheme);
-    }, []);
+        return initialTheme;
+    });
+
+    useEffect(() => {
+        applyThemeToDocument(theme);
+    }, [theme]);
 
     const toggleTheme = () => {
         const newTheme: Theme = theme === "light" ? "dark" : "light";

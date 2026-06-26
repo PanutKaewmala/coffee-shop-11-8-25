@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function SaasLandingPage() {
     return (
         <main className="flex flex-col min-h-screen font-sans bg-background text-foreground transition-colors duration-300">
@@ -10,12 +12,12 @@ export default function SaasLandingPage() {
                         across multiple locations with our modern POS platform.
                     </p>
                     <div className="pt-4">
-                        <a
+                        <Link
                             href="/#demo-shops"
                             className="px-6 py-3 rounded-full font-semibold text-white bg-gradient-to-r from-accent to-accent-dark transition-all duration-300 hover:brightness-110"
                         >
                             View Demo Shops
-                        </a>
+                        </Link>
                     </div>
                 </div>
             </section>
@@ -52,24 +54,24 @@ export default function SaasLandingPage() {
                 <div className="max-w-4xl mx-auto">
                     <h2 className="text-3xl font-bold text-center mb-12">Demo Shops</h2>
                     <div className="grid md:grid-cols-3 gap-6">
-                        <a
+                        <Link
                             href="/coffeespace-a"
                             className="p-6 rounded-2xl bg-gradient-to-r from-accent to-accent-dark text-white text-center transition-all duration-300 hover:brightness-110"
                         >
                             CoffeeSpace A
-                        </a>
-                        <a
+                        </Link>
+                        <Link
                             href="/coffeespace-b"
                             className="p-6 rounded-2xl bg-gradient-to-r from-accent to-accent-dark text-white text-center transition-all duration-300 hover:brightness-110"
                         >
                             CoffeeSpace B
-                        </a>
-                        <a
+                        </Link>
+                        <Link
                             href="/coffeespace-c"
                             className="p-6 rounded-2xl bg-gradient-to-r from-accent to-accent-dark text-white text-center transition-all duration-300 hover:brightness-110"
                         >
                             CoffeeSpace C
-                        </a>
+                        </Link>
                     </div>
                 </div>
             </section>

@@ -643,7 +643,7 @@ export default function MenuAdminPage() {
                                                         </div>
                                                     )}
                                                     {/* Recipe readiness badge: if enabled in branch but likely hidden in POS due to missing recipe */}
-                                                    {isEnabledInBranch && ((item as any).is_ready_for_pos === false || (item as any).recipe_status === "no_recipe" || (item as any).recipe_status === "partial_recipe") && (
+                                                    {isEnabledInBranch && ((item as Record<string, unknown>).is_ready_for_pos === false || (item as Record<string, unknown>).recipe_status === "no_recipe" || (item as Record<string, unknown>).recipe_status === "partial_recipe") && (
                                                         <div className="text-[11px] text-yellow-300 mt-1">
                                                             Enabled for branch • Not ready for POS
                                                         </div>

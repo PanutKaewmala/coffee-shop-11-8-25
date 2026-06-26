@@ -1,6 +1,6 @@
 "use client";
 import { usePathname } from "next/navigation";
-import { useTheme } from "@/context/ThemeContext";
+import Link from "next/link";
 import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
 export default function Footer({ shopName }: { shopName?: string | null }) {
@@ -69,12 +69,12 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
                             </button>
                         </div>
                     ) : (
-                        <a
+                        <Link
                             href="/login"
                             className="px-6 py-2 rounded-full font-semibold text-white bg-gradient-to-r from-accent to-accent-dark transition-all duration-300 hover:brightness-110"
                         >
                             Login to Admin
-                        </a>
+                        </Link>
                     )}
                 </div>
             </div>

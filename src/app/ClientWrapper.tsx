@@ -12,6 +12,11 @@ type PublicTenantShop = {
     slug: string;
 };
 
+type ShopNameState = {
+    slug: string;
+    name: string | null;
+} | null;
+
 function getTenantSlug(pathname: string): string | null {
     const tenantSlug = pathname.split("/")[1]?.trim().toLowerCase();
 
@@ -24,18 +29,15 @@ function getTenantSlug(pathname: string): string | null {
 
 export default function ClientWrapper({ children }: { children: ReactNode }) {
     const pathname = usePathname();
-    const [shopName, setShopName] = useState<string | null>(null);
+    const tenantSlug = getTenantSlug(pathname);
+    const [shopNameState, setShopNameState] = useState<ShopNameState>(null);
 
     useEffect(() => {
-        const tenantSlug = getTenantSlug(pathname);
-
         if (!tenantSlug) {
-            setShopName(null);
             return;
         }
 
         let alive = true;
-        setShopName(null);
 
         fetch(`/api/public/tenant?slug=${encodeURIComponent(tenantSlug)}`)
             .then(async (res) => {
@@ -44,18 +46,21 @@ export default function ClientWrapper({ children }: { children: ReactNode }) {
                 return data.shop?.name ?? null;
             })
             .then((name) => {
-                if (alive) setShopName(name);
+                if (alive) setShopNameState({ slug: tenantSlug, name });
             })
             .catch(() => {
-                if (alive) setShopName(null);
+                if (alive) setShopNameState({ slug: tenantSlug, name: null });
             });
 
         return () => {
             alive = false;
         };
-    }, [pathname]);
+    }, [tenantSlug]);
 
-    const displayShopName = shopName ?? "Coffee SaaS";
+    const displayShopName =
+        tenantSlug && shopNameState?.slug === tenantSlug
+            ? shopNameState.name ?? "Coffee SaaS"
+            : "Coffee SaaS";
 
     // ซ่อน Navbar / Footer ในหน้า admin, login และ pos
     const hideNavAndFooter =

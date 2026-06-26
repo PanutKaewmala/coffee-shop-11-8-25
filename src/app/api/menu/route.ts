@@ -173,7 +173,7 @@ export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
-    let user = auth.user ?? null;
+    const user = auth.user ?? null;
 
     if (authErr && !isAuthSessionMissingError(authErr)) {
         return NextResponse.json({ error: authErr.message }, { status: 500 });
