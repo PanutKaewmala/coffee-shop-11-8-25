@@ -9,13 +9,24 @@ type Preset = "today" | "7days" | "month";
 
 type Summary = {
     preset: Preset;
+    legacy_paid_at_fallback_count: number;
     current: { start: string; end: string; total: number; count: number };
     previous: { start: string; end: string; total: number; count: number };
     delta: { total: number; count: number };
     percent: { total: number | null; count: number | null };
 };
 
-type PaidOrderRow = { total: number | null };
+type PaidOrderRow = {
+    total: number | null;
+    paid_at: string | null;
+    created_at: string | null;
+};
+
+type SumResult = {
+    total: number;
+    count: number;
+    legacy_paid_at_fallback_count: number;
+};
 
 const TZ = "Asia/Bangkok";
 
@@ -101,29 +112,45 @@ async function sumAndCountPaid(
     endISO: string,
     currentShopId: string,
     currentBranchId: string | null
-) {
+): Promise<SumResult> {
     const supabase = await getSupabaseServer();
 
-    let query = supabase
+    let paidQ = supabase
         .from("orders")
         .select("total", { count: "exact" })
         .eq("status", "paid")
-        .eq("shop_id", currentShopId)
-        .gte("paid_at", startISO)
-        .lt("paid_at", endISO);
+        .eq("shop_id", currentShopId);
+
+    let legacyQ = supabase
+        .from("orders")
+        .select("total", { count: "exact" })
+        .eq("status", "paid")
+        .eq("shop_id", currentShopId);
 
     if (currentBranchId) {
-        query = query.eq("branch_id", currentBranchId);
+        paidQ = paidQ.eq("branch_id", currentBranchId);
+        legacyQ = legacyQ.eq("branch_id", currentBranchId);
     }
 
-    const { data, error, count } = await query.returns<PaidOrderRow[]>();
+    const [paidRes, legacyRes] = await Promise.all([
+        paidQ.gte("paid_at", startISO).lt("paid_at", endISO).returns<PaidOrderRow[]>(),
+        legacyQ.is("paid_at", null).gte("created_at", startISO).lt("created_at", endISO).returns<PaidOrderRow[]>(),
+    ]);
 
-    if (error) throw new Error(error.message);
+    if (paidRes.error) throw new Error(paidRes.error.message);
+    if (legacyRes.error) throw new Error(legacyRes.error.message);
 
-    const rows = Array.isArray(data) ? data : [];
-    const total = rows.reduce((sum, r) => sum + (typeof r.total === "number" ? r.total : 0), 0);
+    const paidRows = Array.isArray(paidRes.data) ? paidRes.data : [];
+    const legacyRows = Array.isArray(legacyRes.data) ? legacyRes.data : [];
 
-    return { total, count: typeof count === "number" ? count : rows.length };
+    const paidTotal = paidRows.reduce((sum, r) => sum + (typeof r.total === "number" ? r.total : 0), 0);
+    const legacyTotal = legacyRows.reduce((sum, r) => sum + (typeof r.total === "number" ? r.total : 0), 0);
+
+    const total = paidTotal + legacyTotal;
+    const count = (paidRes.count ?? paidRows.length) + (legacyRes.count ?? legacyRows.length);
+    const legacyFallbackCount = legacyRes.count ?? legacyRows.length;
+
+    return { total, count, legacy_paid_at_fallback_count: legacyFallbackCount };
 }
 
 export async function GET(req: NextRequest) {
@@ -181,6 +208,7 @@ export async function GET(req: NextRequest) {
 
         const out: Summary = {
             preset,
+            legacy_paid_at_fallback_count: cur.legacy_paid_at_fallback_count + prev.legacy_paid_at_fallback_count,
             current: { start: current.startISO, end: current.endISO, total: cur.total, count: cur.count },
             previous: { start: previous.startISO, end: previous.endISO, total: prev.total, count: prev.count },
             delta: { total: cur.total - prev.total, count: cur.count - prev.count },
