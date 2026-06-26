@@ -4,31 +4,32 @@ import { useEffect, useState } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { HeroData } from "@/lib/types";
 import { withPublicShopId } from "@/lib/publicShop";
+import Image from "next/image";
 
 export default function Hero({ shopId }: { shopId?: string | null }) {
     const { theme } = useTheme();
 
-    // default UI ของ Hero
-    const defaultData: HeroData = {
-        title: "Slow moments, great coffee.",
-        subtitle: "A minimal coffee shop serving seasonal coffee & handcrafted drinks. Quiet space — good vibes.",
-        ctaText: "View Menu",
-        ctaLink: "#menu",
-        secondaryText: "Latest Events",
-        secondaryLink: "#news",
-        signature: "Caramel Oat Latte",
-        seasonal: "Chestnut Cold Brew",
-        imageUrl: "https://images.unsplash.com/photo-1541167760496-1628856ab772?q=80&w=1200&auto=format&fit=crop",
-    };
-
-    const [data, setData] = useState<HeroData>(defaultData);
+    const [data, setData] = useState<HeroData | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        const defaultData: HeroData = {
+            title: "Slow moments, great coffee.",
+            subtitle: "A minimal coffee shop serving seasonal coffee & handcrafted drinks. Quiet space — good vibes.",
+            ctaText: "View Menu",
+            ctaLink: "#menu",
+            secondaryText: "Latest Events",
+            secondaryLink: "#news",
+            signature: "Caramel Oat Latte",
+            seasonal: "Chestnut Cold Brew",
+            imageUrl: "https://images.unsplash.com/photo-1541167760496-1628856ab772?q=80&w=1200&auto=format&fit=crop",
+        };
+
         const fetchHero = async () => {
             try {
                 const res = await fetch(withPublicShopId("/api/hero", shopId));
                 if (!res.ok) {
+                    setData(defaultData);
                     return;
                 }
                 const json = await res.json();
@@ -47,16 +48,16 @@ export default function Hero({ shopId }: { shopId?: string | null }) {
 
                 setData(mapped);
             } catch {
-                // silently use default data
+                setData(defaultData);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchHero();
+        void fetchHero();
     }, [shopId]);
 
-    if (loading) {
+    if (loading || !data) {
         return (
             <section className="py-16 text-center">
                 <p className="text-text-secondary">Loading...</p>
@@ -139,11 +140,17 @@ export default function Hero({ shopId }: { shopId?: string | null }) {
             {/* RIGHT */}
             <div
                 className="
-                    rounded-2xl overflow-hidden shadow-lg transition-transform duration-500
+                    relative rounded-2xl overflow-hidden shadow-lg transition-transform duration-500
                     hover:scale-[1.02]
                 "
             >
-                <img src={imageUrl} alt="coffee shop" className="w-full h-full object-cover" />
+                <Image
+                    src={imageUrl}
+                    alt="coffee shop"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                />
             </div>
         </section>
     );

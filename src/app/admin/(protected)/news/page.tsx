@@ -7,6 +7,7 @@ import Modal from "@/components/admin/Modal";
 import { Button } from "@/components/ui/button";
 import SearchBox from "@/components/admin/search/SearchBox";
 import Pagination from "@/components/admin/Pagination";
+import Image from "next/image";
 import type { NewsItem } from "@/lib/types";
 import {
     Select,
@@ -520,11 +521,14 @@ export default function NewsAdminPage() {
                                 ? asString(item.content).slice(0, 60) + "..."
                                 : "-",
                             asString(item.image_url) ? (
-                                <img
+                                <Image
                                     key={item.id + "_img"}
                                     src={asString(item.image_url)}
                                     alt={asString(item.title) || "news"}
-                                    className="w-16 h-16 object-cover rounded"
+                                    width={64}
+                                    height={64}
+                                    className="object-cover rounded"
+                                    unoptimized
                                 />
                             ) : (
                                 "-"
@@ -671,10 +675,13 @@ export default function NewsAdminPage() {
 
                             {imagePreview && (
                                 <div className="mt-2">
-                                    <img
+                                    <Image
                                         src={imagePreview}
                                         alt="preview"
-                                        className="w-32 h-32 object-cover rounded"
+                                        width={128}
+                                        height={128}
+                                        className="object-cover rounded"
+                                        unoptimized
                                     />
                                 </div>
                             )}
