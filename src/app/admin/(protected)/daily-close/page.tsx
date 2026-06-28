@@ -411,7 +411,7 @@ export default function DailyClosePage() {
                                 </div>
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                     <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
-                                    <MetricCard label="เงินสดคาดหวัง" value={formatMoney(expectedCash)} />
+                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(expectedCash)} />
                                 </div>
                                 <div className="space-y-3">
                                     <div>
@@ -454,8 +454,8 @@ export default function DailyClosePage() {
                                 </div>
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                     <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
-                                    <MetricCard label="เงินสดที่นับได้" value={close.counted_cash != null ? formatMoney(close.counted_cash) : "-"} />
-                                    <MetricCard label="เงินสดคาดหวัง" value={formatMoney(close.expected_cash)} />
+                                    <MetricCard label="เงินสดที่นับได้จริง" value={close.counted_cash != null ? formatMoney(close.counted_cash) : "-"} />
+                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(close.expected_cash)} />
                                     <MetricCard
                                         label="ส่วนต่าง"
                                         value={
