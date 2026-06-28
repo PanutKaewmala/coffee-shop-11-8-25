@@ -94,6 +94,17 @@ type DailyClose = {
     updated_at: string;
 };
 
+type DailyCloseRecord = {
+    business_date: string;
+    status: "draft" | "closed" | "approved";
+    gross_sales: number;
+    paid_order_count: number;
+    expected_cash: number;
+    counted_cash: number | null;
+    cash_difference: number | null;
+    closed_at: string | null;
+};
+
 function bangkokDateKey() {
     const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Bangkok",
@@ -177,6 +188,9 @@ export default function DailyClosePage() {
     const [openingCashFloat, setOpeningCashFloat] = useState<number | string>("");
     const [countedCash, setCountedCash] = useState<number | string>("");
     const [notes, setNotes] = useState("");
+    const [history, setHistory] = useState<DailyCloseRecord[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -252,6 +266,45 @@ export default function DailyClosePage() {
         void loadClose();
         return () => controller.abort();
     }, [date, reloadKey]);
+
+    useEffect(() => {
+        let alive = true;
+
+        async function loadHistory() {
+            setHistoryLoading(true);
+            setHistoryError(null);
+
+            try {
+                const response = await fetch("/api/daily-close?history=1&limit=14", {
+                    cache: "no-store",
+                });
+                const data: unknown = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const message =
+                        data && typeof data === "object" && "error" in data && typeof data.error === "string"
+                            ? data.error
+                            : "โหลดประวัติการปิดยอดไม่สำเร็จ";
+                    throw new Error(message);
+                }
+
+                if (!alive) return;
+                const parsed = data as { history?: DailyCloseRecord[] };
+                setHistory(parsed.history ?? []);
+            } catch (loadError: unknown) {
+                if (!alive) return;
+                setHistory([]);
+                setHistoryError(loadError instanceof Error ? loadError.message : "โหลดประวัติไม่สำเร็จ");
+            } finally {
+                if (alive) setHistoryLoading(false);
+            }
+        }
+
+        void loadHistory();
+        return () => {
+            alive = false;
+        };
+    }, [reloadKey]);
 
     const isEmpty = useMemo(
         () =>
@@ -654,6 +707,93 @@ export default function DailyClosePage() {
                                 </table>
                             </div>
                         </Card>
+
+                        {historyLoading ? (
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div key={index} className="h-16 animate-pulse rounded-xl bg-white/5" />
+                                ))}
+                            </div>
+                        ) : historyError ? (
+                            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+                                {historyError}
+                            </div>
+                        ) : (
+                            <Card title="ประวัติการปิดยอด">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[900px] text-sm">
+                                        <thead className="text-left text-xs text-text-secondary">
+                                            <tr className="border-b border-white/10">
+                                                <th className="px-3 py-2">วันที่</th>
+                                                <th className="px-3 py-2">สถานะ</th>
+                                                <th className="px-3 py-2 text-right">ยอดขายรวม</th>
+                                                <th className="px-3 py-2 text-right">จำนวนออเดอร์</th>
+                                                <th className="px-3 py-2 text-right">เงินสดที่ควรนับได้</th>
+                                                <th className="px-3 py-2 text-right">เงินสดที่นับได้จริง</th>
+                                                <th className="px-3 py-2 text-right">ส่วนต่าง</th>
+                                                <th className="px-3 py-2">เวลาปิดยอด</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {history.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="px-3 py-6 text-center text-text-secondary">
+                                                        ยังไม่มีประวัติการปิดยอด
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                history.map((row) => {
+                                                    const isSelected = date === row.business_date;
+                                                    return (
+                                                        <tr
+                                                            key={row.business_date}
+                                                            onClick={() => setDate(row.business_date)}
+                                                            className={`border-b border-white/5 transition-colors cursor-pointer ${
+                                                                isSelected ? "bg-white/10" : "hover:bg-white/5"
+                                                            }`}
+                                                        >
+                                                            <td className="px-3 py-3 whitespace-nowrap font-medium">
+                                                                {row.business_date}
+                                                                {isSelected ? " (ปัจจุบัน)" : ""}
+                                                            </td>
+                                                            <td className="px-3 py-3">
+                                                                {row.status === "draft" ? (
+                                                                    <span className="text-amber-300">Draft</span>
+                                                                ) : row.status === "closed" ? (
+                                                                    <span className="text-green-300">Closed</span>
+                                                                ) : row.status === "approved" ? (
+                                                                    <span className="text-emerald-300">Approved</span>
+                                                                ) : (
+                                                                    row.status
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right tabular-nums">
+                                                                {formatMoney(row.gross_sales)}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right tabular-nums">
+                                                                {row.paid_order_count}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right tabular-nums">
+                                                                {formatMoney(row.expected_cash)}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right tabular-nums">
+                                                                {row.counted_cash != null ? formatMoney(row.counted_cash) : "-"}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right tabular-nums">
+                                                                {row.cash_difference != null ? formatMoney(row.cash_difference) : "-"}
+                                                            </td>
+                                                            <td className="px-3 py-3 whitespace-nowrap text-text-secondary">
+                                                                {row.closed_at ? formatBangkokTime(row.closed_at) : "-"}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+                        )}
                     </>
                 ) : null}
             </div>

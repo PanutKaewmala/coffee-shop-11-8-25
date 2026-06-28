@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 type DailyCloseQuery = {
      select: (cols: string) => DailyCloseQuery;
      eq: (col: string, val: string | undefined) => DailyCloseQuery;
+     order: (col: string, opts: { ascending: boolean }) => DailyCloseQuery;
+     limit: (count: number) => DailyCloseQuery;
      maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
      insert: (payload: unknown) => {
          select: (cols: string) => {
@@ -51,13 +53,9 @@ function toMoney(value: unknown): number {
 
 export async function GET(req: NextRequest) {
     try {
+        const historyParam = req.nextUrl.searchParams.get("history");
+        const limitParam = req.nextUrl.searchParams.get("limit");
         const date = req.nextUrl.searchParams.get("date");
-        if (!isValidDateKey(date)) {
-            return NextResponse.json(
-                { error: "Invalid date. Use YYYY-MM-DD." },
-                { status: 400 }
-            );
-        }
 
         const supabase = await getSupabaseServer();
         const admin = getSupabaseAdmin();
@@ -91,6 +89,50 @@ export async function GET(req: NextRequest) {
         }
         if (!membership) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+
+        if (historyParam === "1") {
+            const parsedLimit = limitParam ? parseInt(limitParam, 10) : 14;
+            const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 30) : 14;
+
+            const historyResult = (await (dcAdmin
+                .from("daily_closes")
+                .select(
+                    "business_date,status,gross_sales,paid_order_count,expected_cash,counted_cash,cash_difference,closed_at"
+                )
+                .eq("shop_id", currentShopId)
+                .eq("branch_id", currentBranchId)
+                .order("business_date", { ascending: false })
+                .limit(limit) as unknown)) as { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
+
+            const { data: history, error: historyError } = historyResult;
+
+            if (historyError) {
+                return NextResponse.json({ error: (historyError as { message: string }).message }, { status: 500 });
+            }
+
+            const rows = (history ?? []).map((row) => ({
+                business_date: row.business_date,
+                status: row.status,
+                gross_sales: row.gross_sales,
+                paid_order_count: row.paid_order_count,
+                expected_cash: row.expected_cash,
+                counted_cash: row.counted_cash ?? null,
+                cash_difference: row.cash_difference ?? null,
+                closed_at: row.closed_at,
+            }));
+
+            return NextResponse.json({
+                context: { shopId: currentShopId, branchId: currentBranchId },
+                history: rows,
+            });
+        }
+
+        if (!isValidDateKey(date)) {
+            return NextResponse.json(
+                { error: "Invalid date. Use YYYY-MM-DD." },
+                { status: 400 }
+            );
         }
 
         const { data: close, error: closeError } = await dcAdmin
