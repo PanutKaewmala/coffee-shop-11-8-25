@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { deductStock } from "@/lib/deductStock";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkDailyClose } from "@/lib/dailyCloseGuard";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -371,6 +372,19 @@ export async function POST(req: NextRequest) {
         if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
         if (!member) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+
+        const closeGuard = await checkDailyClose(currentShopId, currentBranchId);
+        if (closeGuard.blocked) {
+            return NextResponse.json(
+                {
+                    error: "ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้ กรุณาเลือกวันขายถัดไปหรือให้ผู้ดูแลตรวจสอบ",
+                    code: "BUSINESS_DAY_CLOSED",
+                    business_date: closeGuard.businessDate,
+                    close_status: closeGuard.closeStatus,
+                },
+                { status: 409 }
+            );
         }
 
         const raw = (await req.json().catch(() => null)) as IncomingBody | null;

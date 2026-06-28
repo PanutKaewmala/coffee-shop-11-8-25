@@ -7,6 +7,7 @@ import {
     isMenuEnabledInBranch,
     loadBranchMenuAvailabilityMap,
 } from "@/lib/branchMenuAvailability";
+import { checkDailyClose } from "@/lib/dailyCloseGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -685,6 +686,20 @@ export async function POST(req: NextRequest) {
             if (insertProfileErr) {
                 console.warn("[pos] profile bootstrap failed:", insertProfileErr.message);
             }
+        }
+
+        // Gate: block checkout if daily close is closed/approved for this branch/date
+        const closeGuard = await checkDailyClose(currentShopId, branchRes.id);
+        if (closeGuard.blocked) {
+            return NextResponse.json(
+                {
+                    error: "ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้ กรุณาเลือกวันขายถัดไปหรือให้ผู้ดูแลตรวจสอบ",
+                    code: "BUSINESS_DAY_CLOSED",
+                    business_date: closeGuard.businessDate,
+                    close_status: closeGuard.closeStatus,
+                },
+                { status: 409 }
+            );
         }
 
         // 3) Build checkout in API directly (avoid legacy RPC that may miss shop_id).

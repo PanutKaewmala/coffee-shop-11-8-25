@@ -733,6 +733,11 @@ export default function POSPage() {
                     return;
                 }
 
+                if (data.code === "BUSINESS_DAY_CLOSED" && typeof data.error === "string") {
+                    alert(data.error);
+                    return;
+                }
+
                 const rawMessage =
                     isRecord(raw) && typeof raw.message === "string" ? raw.message : "";
                 const msg =
