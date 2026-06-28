@@ -244,6 +244,12 @@ function formatDateTime(iso: string) {
     });
 }
 
+function getBangkokToday(): string {
+    return new Date().toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Bangkok",
+    });
+}
+
 function paymentMethodLabel(method: "cash" | "promptpay") {
     return method === "cash" ? "เงินสด" : "PromptPay";
 }
@@ -319,6 +325,11 @@ export default function POSPage() {
         branchName: null,
     });
 
+    const [businessDate, setBusinessDate] = useState<string | null>(null);
+    const [dailyCloseStatus, setDailyCloseStatus] = useState<string | null>(null);
+    const [dailyCloseLoading, setDailyCloseLoading] = useState(false);
+    const [dailyCloseError, setDailyCloseError] = useState<string | null>(null);
+
     /* -------------------- LOAD CONTEXT (SHOP/BRANCH) -------------------- */
     useEffect(() => {
         let alive = true;
@@ -363,6 +374,55 @@ export default function POSPage() {
         }
 
         void fetchReceiptSettings();
+        return () => {
+            alive = false;
+        };
+    }, [context.shopId, context.branchId]);
+
+    /* -------------------- LOAD DAILY CLOSE STATUS -------------------- */
+    useEffect(() => {
+        let alive = true;
+
+        async function fetchDailyClose() {
+            if (!context.shopId || !context.branchId) return;
+            const today = getBangkokToday();
+            setBusinessDate(today);
+            setDailyCloseStatus(null);
+            setDailyCloseLoading(true);
+            setDailyCloseError(null);
+
+            try {
+                const res = await fetch(`/api/daily-close?date=${encodeURIComponent(today)}`, {
+                    cache: "no-store",
+                });
+
+                if (!res.ok) {
+                    if (res.status === 409) {
+                        setDailyCloseStatus(null);
+                        setDailyCloseError(null);
+                        return;
+                    }
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
+                const raw: unknown = await res.json().catch(() => null);
+                if (!alive) return;
+
+                const record = isRecord(raw) ? raw : null;
+                const close = isRecord(record?.close) ? record.close : null;
+                const status = isRecord(close) && typeof close.status === "string" ? close.status : null;
+                setDailyCloseStatus(status);
+            } catch (err) {
+                if (!alive) return;
+                const message = err instanceof Error ? err.message : "Failed to load daily close status";
+                setDailyCloseError(message);
+                setDailyCloseStatus(null);
+            } finally {
+                if (alive) setDailyCloseLoading(false);
+            }
+        }
+
+        void fetchDailyClose();
         return () => {
             alive = false;
         };
@@ -634,6 +694,17 @@ export default function POSPage() {
         );
     }, [cart]);
 
+    /* -------------------- CHECKOUT -------------------- */
+    const canCashCheckout = useMemo(() => {
+        if (paymentMethod !== "cash") return true;
+        const paid = parseNumberInput(paidAmount);
+        return paid != null && paid >= total && total > 0;
+    }, [paymentMethod, paidAmount, total]);
+
+    const isBusinessDayClosed = useMemo(() => {
+        return dailyCloseStatus === "closed" || dailyCloseStatus === "approved";
+    }, [dailyCloseStatus]);
+
     /* -------------------- KEYBOARD SHORTCUTS -------------------- */
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
@@ -651,20 +722,13 @@ export default function POSPage() {
                 if (cart.length > 0 && !loading) clearCart();
             }
             if (e.key === "Enter") {
-                if (cart.length > 0 && !loading) void checkout();
+                if (cart.length > 0 && !loading && !isBusinessDayClosed) void checkout();
             }
         }
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [cart.length, loading]);
-
-    /* -------------------- CHECKOUT -------------------- */
-    const canCashCheckout = useMemo(() => {
-        if (paymentMethod !== "cash") return true;
-        const paid = parseNumberInput(paidAmount);
-        return paid != null && paid >= total && total > 0;
-    }, [paymentMethod, paidAmount, total]);
+    }, [cart.length, loading, isBusinessDayClosed]);
 
     async function checkout() {
         if (cart.length === 0) return;
@@ -959,6 +1023,22 @@ export default function POSPage() {
                     <div className="text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
                 </div>
 
+                {dailyCloseLoading && (
+                    <div className="mb-3 rounded-xl border border-[var(--text-muted)]/20 bg-surface p-3 text-sm text-text-muted">
+                        กำลังตรวจสอบสถานะปิดบิล...
+                    </div>
+                )}
+                {isBusinessDayClosed && businessDate && (
+                    <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/15 p-3 text-sm font-medium text-red-700">
+                        ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้
+                    </div>
+                )}
+                {dailyCloseError && !dailyCloseLoading && !isBusinessDayClosed && (
+                    <div className="mb-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700">
+                        {dailyCloseError}
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto space-y-3">
                     {groupedCart.length === 0 ? (
                         <div className="p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
@@ -1164,7 +1244,7 @@ export default function POSPage() {
 
                     <button
                         onClick={() => void checkout()}
-                        disabled={loading || cart.length === 0 || !canCashCheckout}
+                        disabled={loading || cart.length === 0 || !canCashCheckout || isBusinessDayClosed}
                         className="mt-4 w-full py-3 rounded-xl text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? "กำลังปิดบิล..." : "ปิดบิล"}
