@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import Card from "@/components/admin/Card";
+import { Button } from "@/components/ui/button";
 
 type DataQualityWarning = {
     code: string;
@@ -63,6 +64,34 @@ type DailyCloseReport = {
     paidTransactions: PaidTransaction[];
     cancelledTransactions: CancelledTransaction[];
     dataQuality: DataQualityWarning[];
+};
+
+type DailyClose = {
+    id: string;
+    shop_id: string;
+    branch_id: string;
+    business_date: string;
+    opening_cash_float: number;
+    counted_cash: number | null;
+    expected_cash: number;
+    cash_difference: number | null;
+    gross_sales: number;
+    net_sales: number;
+    cash_sales: number;
+    promptpay_sales: number;
+    unknown_payment_sales: number;
+    paid_order_count: number;
+    cancelled_order_count: number;
+    refunded_order_count: number;
+    void_order_count: number;
+    status: "draft" | "closed" | "approved";
+    closed_by: string | null;
+    closed_at: string | null;
+    approved_by: string | null;
+    approved_at: string | null;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
 };
 
 function bangkokDateKey() {
@@ -142,6 +171,12 @@ export default function DailyClosePage() {
     const [report, setReport] = useState<DailyCloseReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [close, setClose] = useState<DailyClose | null>(null);
+    const [closeLoading, setCloseLoading] = useState(false);
+    const [closeError, setCloseError] = useState<string | null>(null);
+    const [openingCashFloat, setOpeningCashFloat] = useState<number | string>("");
+    const [countedCash, setCountedCash] = useState<number | string>("");
+    const [notes, setNotes] = useState("");
 
     useEffect(() => {
         const controller = new AbortController();
@@ -179,6 +214,45 @@ export default function DailyClosePage() {
         return () => controller.abort();
     }, [date, reloadKey]);
 
+    useEffect(() => {
+        const controller = new AbortController();
+
+        async function loadClose() {
+            setCloseLoading(true);
+            setCloseError(null);
+
+            try {
+                const response = await fetch(`/api/daily-close?date=${encodeURIComponent(date)}`, {
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                const data: unknown = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const message =
+                        data && typeof data === "object" && "error" in data && typeof data.error === "string"
+                            ? data.error
+                            : "โหลดข้อมูลการปิดยอดไม่สำเร็จ";
+                    throw new Error(message);
+                }
+
+                if (!controller.signal.aborted) {
+                    const parsed = data as { close?: DailyClose };
+                    setClose(parsed.close ?? null);
+                }
+            } catch (loadError: unknown) {
+                if (controller.signal.aborted) return;
+                setClose(null);
+                setCloseError(loadError instanceof Error ? loadError.message : "โหลดข้อมูลการปิดยอดไม่สำเร็จ");
+            } finally {
+                if (!controller.signal.aborted) setCloseLoading(false);
+            }
+        }
+
+        void loadClose();
+        return () => controller.abort();
+    }, [date, reloadKey]);
+
     const isEmpty = useMemo(
         () =>
             Boolean(report) &&
@@ -186,6 +260,75 @@ export default function DailyClosePage() {
             report!.cancelledTransactions.length === 0,
         [report]
     );
+
+    const handleCreateDraft = async () => {
+        setCloseLoading(true);
+        setCloseError(null);
+
+        try {
+            const res = await fetch("/api/daily-close", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    business_date: date,
+                    opening_cash_float: Number(openingCashFloat) || 0,
+                }),
+            });
+            const data: unknown = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(
+                    data && typeof data === "object" && "error" in data && typeof data.error === "string"
+                        ? data.error
+                        : "สร้าง Draft ไม่สำเร็จ"
+                );
+            }
+
+            setClose(data as DailyClose);
+            setReloadKey((v) => v + 1);
+        } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+        } finally {
+            setCloseLoading(false);
+        }
+    };
+
+    const handleClose = async () => {
+        setCloseLoading(true);
+        setCloseError(null);
+
+        try {
+            const res = await fetch("/api/daily-close", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    business_date: date,
+                    counted_cash: Number(countedCash),
+                    notes: notes.trim() || null,
+                }),
+            });
+            const data: unknown = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(
+                    data && typeof data === "object" && "error" in data && typeof data.error === "string"
+                        ? data.error
+                        : "ปิดยอดไม่สำเร็จ"
+                );
+            }
+
+            setClose(data as DailyClose);
+            setReloadKey((v) => v + 1);
+        } catch (err) {
+            setCloseError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+        } finally {
+            setCloseLoading(false);
+        }
+    };
+
+    const expectedCash = close
+        ? (close.opening_cash_float || 0) + (report?.cash.retained || 0)
+        : 0;
 
     return (
         <div className="p-6 text-text-primary">
@@ -226,6 +369,114 @@ export default function DailyClosePage() {
                         {error}
                     </div>
                 ) : null}
+
+                <Card title="สถานะปิดยอดวันนี้">
+                    <div className="space-y-4">
+                        {closeLoading ? (
+                            <div className="text-sm text-text-secondary">กำลังโหลด...</div>
+                        ) : closeError ? (
+                            <div className="text-sm text-red-400">{closeError}</div>
+                        ) : null}
+
+                        {!close ? (
+                            <>
+                                <div className="text-sm">
+                                    สถานะ: <span className="font-semibold text-text-secondary">ยังไม่ได้เริ่มปิดยอด</span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs text-text-secondary block mb-1">
+                                            เงินสดตั้งต้น
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={openingCashFloat}
+                                            onChange={(e) => setOpeningCashFloat(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                            disabled={closeLoading}
+                                        />
+                                    </div>
+                                    <Button onClick={handleCreateDraft} disabled={closeLoading || loading}>
+                                        {closeLoading ? "กำลังสร้าง..." : "สร้าง Draft ปิดยอด"}
+                                    </Button>
+                                </div>
+                            </>
+                        ) : close.status === "draft" ? (
+                            <>
+                                <div className="text-sm">
+                                    สถานะ: <span className="font-semibold text-amber-300">Draft</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                    <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
+                                    <MetricCard label="เงินสดคาดหวัง" value={formatMoney(expectedCash)} />
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs text-text-secondary block mb-1">
+                                            เงินสดที่นับได้จริง
+                                        </label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={countedCash}
+                                            onChange={(e) => setCountedCash(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                            disabled={closeLoading}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-secondary block mb-1">
+                                            หมายเหตุ (ไม่บังคับ)
+                                        </label>
+                                        <textarea
+                                            value={notes}
+                                            onChange={(e) => setNotes(e.target.value)}
+                                            placeholder="เช่น สรุปการขาด/เกินของวันนี้"
+                                            className="w-full max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                            rows={2}
+                                            disabled={closeLoading}
+                                        />
+                                    </div>
+                                    <Button onClick={handleClose} disabled={closeLoading || loading}>
+                                        {closeLoading ? "กำลังปิดยอด..." : "ปิดยอดวันนี้"}
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="text-sm">
+                                    สถานะ: <span className="font-semibold text-green-400">ปิดยอดแล้ว</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                    <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
+                                    <MetricCard label="เงินสดที่นับได้" value={close.counted_cash != null ? formatMoney(close.counted_cash) : "-"} />
+                                    <MetricCard label="เงินสดคาดหวัง" value={formatMoney(close.expected_cash)} />
+                                    <MetricCard
+                                        label="ส่วนต่าง"
+                                        value={
+                                            close.cash_difference != null
+                                                ? formatMoney(close.cash_difference)
+                                                : "-"
+                                        }
+                                    />
+                                </div>
+                                {close.closed_at ? (
+                                    <div className="text-xs text-text-secondary">
+                                        เวลาที่ปิดยอด: {formatBangkokDateTime(close.closed_at)}
+                                    </div>
+                                ) : null}
+                                {close.notes ? (
+                                    <div className="text-xs text-text-secondary mt-2">หมายเหตุ: {close.notes}</div>
+                                ) : null}
+                            </>
+                        )}
+                    </div>
+                </Card>
 
                 {loading ? (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
