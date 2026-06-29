@@ -59,6 +59,19 @@ export type DailyCloseReport = {
         retained: number;
         dataMissingCount: number;
     };
+    cashMovements: {
+        cashInTotal: number;
+        cashOutTotal: number;
+        cashMovementNet: number;
+        movements: Array<{
+            id: string;
+            type: "cash_in" | "cash_out";
+            reason: string;
+            amount: number;
+            note: string | null;
+            created_at: string;
+        }>;
+    };
     cancellations: {
         count: number;
         originalValue: number;
@@ -105,6 +118,15 @@ type CancelledRow = {
     cancelled_by: string | null;
     stock_refunded: boolean | null;
     stock_refunded_at: string | null;
+};
+
+type CashMovementRow = {
+    id: string;
+    type: "cash_in" | "cash_out";
+    reason: string;
+    amount: string | number;
+    note: string | null;
+    created_at: string;
 };
 
 function addOneDay(dateKey: string) {
@@ -235,6 +257,25 @@ async function fetchCancelledByCancelledAt(
     return rows;
 }
 
+async function fetchCashMovements(
+    admin: AdminClient,
+    shopId: string,
+    branchId: string,
+    businessDate: string
+): Promise<CashMovementRow[]> {
+    const q = toQB(admin, "cash_movements");
+
+    const result = (await q
+        .select("id,type,reason,amount,note,created_at")
+        .eq("shop_id", shopId)
+        .eq("branch_id", branchId)
+        .eq("business_date", businessDate)
+        .order("created_at", { ascending: true })) as unknown as PaginatedResult<CashMovementRow>;
+
+    if (result.error) throw new Error(result.error.message);
+    return result.data ?? [];
+}
+
 export async function computeDailyCloseReport(
     admin: AdminClient,
     shopId: string,
@@ -248,7 +289,7 @@ export async function computeDailyCloseReport(
     const shopQ = toQB(admin, "shops");
     const branchQ = toQB(admin, "branch");
 
-    const [shopResult, branchResult, paidRows, legacyPaidRows, cancelledRows] = await Promise.all([
+    const [shopResult, branchResult, paidRows, legacyPaidRows, cancelledRows, cashMovementRows] = await Promise.all([
         shopQ.select("id,name").eq("id", shopId).maybeSingle() as unknown as SingleResult<{ id: string; name: string }>,
         branchQ
             .select("id,name")
@@ -258,6 +299,7 @@ export async function computeDailyCloseReport(
         fetchPaidByPaidAt(admin, shopId, branchId, start, end),
         fetchLegacyPaidByCreatedAt(admin, shopId, branchId, start, end),
         fetchCancelledByCancelledAt(admin, shopId, branchId, start, end),
+        fetchCashMovements(admin, shopId, branchId, businessDate),
     ]);
 
     if ((shopResult as { error: { message: string } | null }).error) {
@@ -334,6 +376,27 @@ export async function computeDailyCloseReport(
         0
     );
 
+    let cashInTotal = 0;
+    let cashOutTotal = 0;
+    const cashMovementItems = cashMovementRows.map((row) => {
+        const amount = typeof row.amount === "number" ? row.amount : Number(row.amount);
+        const safeAmount = Number.isFinite(amount) ? amount : 0;
+        if (row.type === "cash_in") {
+            cashInTotal += safeAmount;
+        } else {
+            cashOutTotal += safeAmount;
+        }
+        return {
+            id: row.id,
+            type: row.type,
+            reason: row.reason,
+            amount: safeAmount,
+            note: row.note ?? null,
+            created_at: row.created_at,
+        };
+    });
+    const cashMovementNet = cashInTotal - cashOutTotal;
+
     const dataQuality: DataQualityWarning[] = [];
     if (legacyPaidRows.length > 0) {
         dataQuality.push({
@@ -393,6 +456,12 @@ export async function computeDailyCloseReport(
             retained: cashTendered - cashChange,
             dataMissingCount: cashDataMissingCount,
         },
+        cashMovements: {
+            cashInTotal,
+            cashOutTotal,
+            cashMovementNet,
+            movements: cashMovementItems,
+        },
         cancellations: {
             count: cancellationTransactions.length,
             originalValue: cancelledOriginalValue,
@@ -407,6 +476,7 @@ export async function computeDailyCloseReport(
 
 export function computeSnapshotFromReport(report: DailyCloseReport): DailyCloseSnapshot {
     const retained = report.cash.retained;
+    const cashMovementNet = report.cashMovements.cashMovementNet;
     return {
         gross_sales: report.summary.paidTotal,
         net_sales: report.summary.paidTotal,
@@ -417,7 +487,7 @@ export function computeSnapshotFromReport(report: DailyCloseReport): DailyCloseS
         cancelled_order_count: report.cancellations.count,
         refunded_order_count: 0,
         void_order_count: 0,
-        expected_cash: retained,
+        expected_cash: retained + cashMovementNet,
         cash_difference: null,
     };
 }

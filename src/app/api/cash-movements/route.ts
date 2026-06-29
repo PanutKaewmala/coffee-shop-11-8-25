@@ -46,7 +46,7 @@ function readNumber(v: unknown): number | null {
 const CASH_MOVEMENT_TYPES: CashMovementType[] = ["cash_in", "cash_out"];
 
 const CASH_MOVEMENT_REASONS = [
-    "เติมเงินท่อน",
+    "เติมเงินทอน",
     "ซื้อของเข้าร้าน",
     "เบิกเงินสด",
     "ฝากธนาคาร",
