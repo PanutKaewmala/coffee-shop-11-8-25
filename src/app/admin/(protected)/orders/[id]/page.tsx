@@ -123,6 +123,14 @@ type UIOrderDetail = {
     // optional flags if you later return them
     stock_refunded?: boolean | null;
     stock_refunded_at?: string | null;
+
+    cancelEligibility?: {
+        canCancel: boolean;
+        code: string | null;
+        message: string | null;
+        businessDate: string | null;
+        closeStatus: string | null;
+    } | null;
 };
 
 function parseUIOrderItem(v: unknown): UIOrderItem | null {
@@ -143,6 +151,17 @@ function parseUIOrderItem(v: unknown): UIOrderItem | null {
                 : null;
 
     return { id, name, price, qty, variant_label };
+}
+
+function parseCancelEligibility(v: unknown): UIOrderDetail["cancelEligibility"] {
+    if (!isRecord(v)) return null;
+    return {
+        canCancel: v.canCancel === true,
+        code: typeof v.code === "string" ? v.code : null,
+        message: typeof v.message === "string" ? v.message : null,
+        businessDate: typeof v.businessDate === "string" ? v.businessDate : null,
+        closeStatus: typeof v.closeStatus === "string" ? v.closeStatus : null,
+    };
 }
 
 function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
@@ -180,6 +199,10 @@ function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
     const stock_refunded = typeof stock_refunded_raw === "boolean" ? stock_refunded_raw : null;
     const stock_refunded_at = readString((raw as Record<string, unknown>).stock_refunded_at) ?? null;
 
+    const cancelEligibility = parseCancelEligibility(
+        (raw as Record<string, unknown>).cancelEligibility
+    );
+
     const rawItems = Array.isArray(raw.items)
         ? raw.items
         : Array.isArray(raw.order_items)
@@ -205,6 +228,7 @@ function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
         cancelled_by,
         stock_refunded,
         stock_refunded_at,
+        cancelEligibility,
     };
 }
 
@@ -876,17 +900,19 @@ export default function OrderDetailPage() {
 
     const canCancel = useMemo(() => {
         const s = (order?.status ?? "").toLowerCase();
-        return s === "paid";
-    }, [order?.status]);
+        if (s !== "paid") return false;
+        return order?.cancelEligibility?.canCancel !== false;
+    }, [order?.status, order?.cancelEligibility]);
 
     const openCancelModal = useCallback(() => {
+        if (!canCancel) return;
         setCancelOpen(true);
         setCancelNote("");
         setCancelRestock(true);
         setCancelConfirmStep(false);
         setCancelLoading(false);
         setCancelError(null);
-    }, []);
+    }, [canCancel]);
 
     const closeCancelModal = useCallback(() => {
         if (cancelLoading) return;
@@ -1037,6 +1063,12 @@ export default function OrderDetailPage() {
                     </button>
                 </div>
             </div>
+
+            {order?.cancelEligibility?.canCancel === false ? (
+                <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
+                    {order.cancelEligibility.message ?? "ออเดอร์นี้อยู่ในวันที่ปิดยอดแล้ว จึงไม่สามารถยกเลิกได้"}
+                </div>
+            ) : null}
 
             {/* Summary */}
             <Card title="สรุปออเดอร์">

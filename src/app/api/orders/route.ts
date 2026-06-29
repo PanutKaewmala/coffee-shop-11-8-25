@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { deductStock } from "@/lib/deductStock";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkDailyClose } from "@/lib/dailyCloseGuard";
+import { checkDailyClose, toBangkokBusinessDate } from "@/lib/dailyCloseGuard";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -190,6 +190,8 @@ export async function GET(req: NextRequest) {
     cancel_note,
     cancelled_at,
     cancelled_by,
+    shop_id,
+    branch_id,
     order_items(
       id,
       order_id,
@@ -221,7 +223,9 @@ export async function GET(req: NextRequest) {
             .filter("branch_id", "eq", currentBranchId)
             .single();
 
-        const { data, error } = await q.returns<OrderWithItemsRow>();
+        const { data, error } = await q.returns<
+            OrderWithItemsRow & { shop_id: string; branch_id: string }
+        >();
 
         if (error || !data) {
             return NextResponse.json(
@@ -251,6 +255,49 @@ export async function GET(req: NextRequest) {
             };
         });
 
+        let cancelEligibility: {
+            canCancel: boolean;
+            code: string | null;
+            message: string | null;
+            businessDate: string | null;
+            closeStatus: string | null;
+        } = {
+            canCancel: true,
+            code: null,
+            message: null,
+            businessDate: null,
+            closeStatus: null,
+        };
+
+        if (data.status === "paid") {
+            const timestamp = data.paid_at ?? data.created_at;
+            if (timestamp) {
+                const businessDate = toBangkokBusinessDate(timestamp);
+                const guardResult = await checkDailyClose(
+                    data.shop_id,
+                    data.branch_id,
+                    businessDate
+                );
+                if (guardResult.blocked && guardResult.closeStatus) {
+                    cancelEligibility = {
+                        canCancel: false,
+                        code: "BUSINESS_DAY_CLOSED",
+                        message: "ออเดอร์นี้อยู่ในวันที่ปิดยอดแล้ว จึงไม่สามารถยกเลิกได้",
+                        businessDate: guardResult.businessDate,
+                        closeStatus: guardResult.closeStatus,
+                    };
+                } else {
+                    cancelEligibility = {
+                        canCancel: true,
+                        code: null,
+                        message: null,
+                        businessDate,
+                        closeStatus: null,
+                    };
+                }
+            }
+        }
+
         return NextResponse.json({
             order: {
                 id: data.id,
@@ -268,6 +315,8 @@ export async function GET(req: NextRequest) {
                 cancel_note: data.cancel_note ?? null,
                 cancelled_at: data.cancelled_at ?? null,
                 cancelled_by: data.cancelled_by ?? null,
+
+                cancelEligibility,
 
                 items,
             },

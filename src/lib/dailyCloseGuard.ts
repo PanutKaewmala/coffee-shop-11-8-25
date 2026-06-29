@@ -20,6 +20,12 @@ type DailyCloseFrom = {
     from: (table: "daily_closes") => DailyCloseQuery;
 };
 
+export function toBangkokBusinessDate(timestamp: string): string {
+    return new Date(timestamp).toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Bangkok",
+    });
+}
+
 function getBangkokToday(): string {
     return new Date().toLocaleDateString("sv-SE", {
         timeZone: "Asia/Bangkok",
