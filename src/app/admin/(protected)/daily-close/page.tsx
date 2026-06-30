@@ -60,6 +60,19 @@ type DailyCloseReport = {
         retained: number;
         dataMissingCount: number;
     };
+    cashMovements: {
+        cashInTotal: number;
+        cashOutTotal: number;
+        cashMovementNet: number;
+        movements: Array<{
+            id: string;
+            type: "cash_in" | "cash_out";
+            reason: string;
+            amount: number;
+            note: string | null;
+            created_at: string;
+        }>;
+    };
     cancellations: { count: number; originalValue: number };
     paidTransactions: PaidTransaction[];
     cancelledTransactions: CancelledTransaction[];
@@ -191,6 +204,13 @@ export default function DailyClosePage() {
     const [history, setHistory] = useState<DailyCloseRecord[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState<string | null>(null);
+
+    const [cmType, setCmType] = useState<"cash_in" | "cash_out">("cash_in");
+    const [cmReason, setCmReason] = useState("เติมเงินทอน");
+    const [cmAmount, setCmAmount] = useState<number | string>("");
+    const [cmNote, setCmNote] = useState("");
+    const [cmLoading, setCmLoading] = useState(false);
+    const [cmError, setCmError] = useState<string | null>(null);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -380,8 +400,47 @@ export default function DailyClosePage() {
     };
 
     const expectedCash = close
-        ? (close.opening_cash_float || 0) + (report?.cash.retained || 0)
+        ? (close.opening_cash_float || 0) + (report?.cash.retained || 0) + (report?.cashMovements.cashMovementNet || 0)
         : 0;
+
+    const handleAddCashMovement = async () => {
+        setCmLoading(true);
+        setCmError(null);
+
+        try {
+            const res = await fetch("/api/cash-movements", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    business_date: date,
+                    type: cmType,
+                    reason: cmReason,
+                    amount: Number(cmAmount),
+                    note: cmNote.trim() || null,
+                }),
+            });
+
+            const data: unknown = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                const message =
+                    data && typeof data === "object" && "error" in data && typeof data.error === "string"
+                        ? data.error
+                        : "บันทึกรายการเงินสดไม่สำเร็จ";
+                throw new Error(message);
+            }
+
+            setCmAmount("");
+            setCmNote("");
+            setReloadKey((v) => v + 1);
+        } catch (err) {
+            setCmError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+        } finally {
+            setCmLoading(false);
+        }
+    };
+
+    const isCloseFinalized = close?.status === "closed" || close?.status === "approved";
 
     return (
         <div className="p-6 text-text-primary">
@@ -586,6 +645,135 @@ export default function DailyClosePage() {
                                     ยอดรับ เงินทอน และเงินสดคงเหลือเป็นผลรวมจากรายการที่มีข้อมูลเท่านั้น
                                 </div>
                             ) : null}
+                        </Card>
+
+                        <Card title="รายการเงินสดเข้า/ออก">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-4">
+                                <MetricCard label="เงินสดเข้า" value={formatMoney(report.cashMovements.cashInTotal)} />
+                                <MetricCard label="เงินสดออก" value={formatMoney(report.cashMovements.cashOutTotal)} />
+                                <MetricCard label="สุทธิ" value={formatMoney(report.cashMovements.cashMovementNet)} />
+                            </div>
+
+                            {!isCloseFinalized ? (
+                                <form
+                                    className="space-y-3 border-t border-white/10 pt-4"
+                                    onSubmit={(event) => {
+                                        event.preventDefault();
+                                        void handleAddCashMovement();
+                                    }}
+                                >
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                                        <div>
+                                            <label className="text-xs text-text-secondary block mb-1">ประเภท</label>
+                                            <select
+                                                value={cmType}
+                                                onChange={(e) => setCmType(e.target.value as "cash_in" | "cash_out")}
+                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                            >
+                                                <option value="cash_in">เงินสดเข้า</option>
+                                                <option value="cash_out">เงินสดออก</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-text-secondary block mb-1">เหตุผล</label>
+                                            <select
+                                                value={cmReason}
+                                                onChange={(e) => setCmReason(e.target.value)}
+                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                            >
+                                                <option value="เติมเงินทอน">เติมเงินทอน</option>
+                                                <option value="ซื้อของเข้าร้าน">ซื้อของเข้าร้าน</option>
+                                                <option value="เบิกเงินสด">เบิกเงินสด</option>
+                                                <option value="ฝากธนาคาร">ฝากธนาคาร</option>
+                                                <option value="ปรับยอดเงินสด">ปรับยอดเงินสด</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-text-secondary block mb-1">จำนวนเงิน</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0.01"
+                                                value={cmAmount}
+                                                onChange={(e) => setCmAmount(e.target.value)}
+                                                placeholder="0.00"
+                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                disabled={cmLoading}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-text-secondary block mb-1">หมายเหตุ (ไม่บังคับ)</label>
+                                            <input
+                                                type="text"
+                                                value={cmNote}
+                                                onChange={(e) => setCmNote(e.target.value)}
+                                                placeholder="เช่น เติมจากธนาคาร"
+                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                disabled={cmLoading}
+                                            />
+                                        </div>
+                                        <div className="flex items-end">
+                                            <Button
+                                                type="submit"
+                                                disabled={cmLoading || !cmAmount || Number(cmAmount) <= 0}
+                                                className="w-full"
+                                            >
+                                                {cmLoading ? "กำลังบันทึก..." : "บันทึกรายการ"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {cmError ? (
+                                        <div className="rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
+                                            {cmError}
+                                        </div>
+                                    ) : null}
+                                </form>
+                            ) : (
+                                <div className="border-t border-white/10 pt-3 text-xs text-text-secondary">
+                                    ปิดยอดแล้ว / อนุมัติแล้ว — ไม่สามารถเพิ่มรายการเงินสดได้
+                                </div>
+                            )}
+
+                            <div className="mt-4 overflow-x-auto">
+                                <table className="w-full min-w-[600px] text-sm">
+                                    <thead className="text-left text-xs text-text-secondary">
+                                        <tr className="border-b border-white/10">
+                                            <th className="px-3 py-2">เวลา</th>
+                                            <th className="px-3 py-2">ประเภท</th>
+                                            <th className="px-3 py-2">เหตุผล</th>
+                                            <th className="px-3 py-2 text-right">จำนวน</th>
+                                            <th className="px-3 py-2">หมายเหตุ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {report.cashMovements.movements.length ? (
+                                            report.cashMovements.movements.map((movement) => (
+                                                <tr key={movement.id} className="border-b border-white/5">
+                                                    <td className="px-3 py-3 whitespace-nowrap">
+                                                        {formatBangkokTime(movement.created_at)}
+                                                    </td>
+                                                    <td className="px-3 py-3">
+                                                        {movement.type === "cash_in" ? "เงินสดเข้า" : "เงินสดออก"}
+                                                    </td>
+                                                    <td className="px-3 py-3">{movement.reason}</td>
+                                                    <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                                                        {formatMoney(movement.amount)}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-text-secondary">
+                                                        {movement.note ?? "-"}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={5} className="px-3 py-6 text-center text-text-secondary">
+                                                    ยังไม่มีรายการเงินสดเข้า/ออก
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </Card>
 
                         {report.dataQuality.length > 0 ? (
