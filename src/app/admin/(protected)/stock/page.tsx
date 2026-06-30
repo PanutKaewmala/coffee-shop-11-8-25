@@ -72,32 +72,32 @@ function stockActionMeta(type: StockEvent["type"]) {
         case "add":
             return {
                 label: "เพิ่มสต็อก",
-                className: "border-green-500/30 bg-green-500/10 text-green-400",
+                className: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300",
             };
         case "restock":
             return {
                 label: "คืนสต็อก",
-                className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
             };
         case "waste":
             return {
                 label: "ของเสีย",
-                className: "border-red-500/30 bg-red-500/10 text-red-400",
+                className: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
             };
         case "deduct":
             return {
                 label: "ตัดออก",
-                className: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+                className: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
             };
         case "adjust":
             return {
                 label: "ปรับยอด",
-                className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+                className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
             };
         default:
             return {
                 label: "ปรับยอด",
-                className: "border-sky-500/30 bg-sky-500/10 text-sky-400",
+                className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
             };
     }
 }
@@ -135,9 +135,7 @@ function fmtSignedItemChange(type: StockEvent["type"], amount: number, delta: nu
 
 function criticalChip(c: CriticalItem) {
     const danger = c.status === "out";
-    const txt = danger ? "หมด" : "ใกล้หมด";
-    const badge = danger ? "🔴" : "🟡";
-    return `${badge} ${txt}`;
+    return danger ? "หมด" : "ใกล้หมด";
 }
 
 function criticalNumberText(c: CriticalItem) {
@@ -373,9 +371,9 @@ export default function StockHistoryPage() {
                             <p>กำลังโหลด...</p>
                         ) : criticalTop.length === 0 ? (
                             <div className="rounded-xl border border-white/10 p-4 bg-white/5">
-                                <div className="text-sm font-semibold">✅ วันนี้สบาย</div>
+                                <div className="text-sm font-semibold">วันนี้สต็อกยังโอเค</div>
                                 <div className="text-xs text-[var(--text-muted)]">
-                                    ไม่มีวัตถุดิบต่ำกว่า min_stock
+                                    ไม่มีวัตถุดิบต่ำกว่าจุดสั่งซื้อขั้นต่ำ
                                 </div>
                             </div>
                         ) : (
@@ -396,10 +394,10 @@ export default function StockHistoryPage() {
                                         </div>
 
                                         <Link
-                                            href="/admin/ingredients"
+                                            href={`/admin/ingredients/${encodeURIComponent(c.ingredient_id)}`}
                                             className="text-xs px-3 py-2 rounded-lg border border-white/10 hover:bg-white/5 whitespace-nowrap"
                                         >
-                                            ปรับสต็อก →
+                                            ดู/ปรับ →
                                         </Link>
                                     </div>
                                 ))}
@@ -407,7 +405,7 @@ export default function StockHistoryPage() {
                         )}
 
                         <div className="mt-3 text-xs text-[var(--text-muted)]">
-                            Tip: ตั้ง min_stock ให้ของ “พังร้าน” (นม/กาแฟ/น้ำแข็ง) สูงไว้ก่อน แล้วค่อยไล่ปรับ
+                            Tip: ตั้งจุดสั่งซื้อขั้นต่ำให้ของสำคัญ เช่น นม กาแฟ น้ำแข็ง สูงไว้ก่อน แล้วค่อยไล่ปรับ
                         </div>
                     </Card>
                 </div>
@@ -422,7 +420,7 @@ export default function StockHistoryPage() {
                 <SearchBox
                     value={search}
                     setValue={setSearch}
-                    placeholder="ค้นหา: วัตถุดิบ / เมนู / Order / หมายเหตุ"
+                    placeholder="ค้นหา: วัตถุดิบ / เมนู / ออเดอร์ / หมายเหตุ"
                 />
 
                 {loading ? (

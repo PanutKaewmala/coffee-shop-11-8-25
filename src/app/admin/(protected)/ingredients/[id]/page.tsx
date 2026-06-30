@@ -16,6 +16,7 @@ type UUID = string;
 type BaseUnit = "ml" | "g" | "piece";
 type StockStatus = "ok" | "low" | "out";
 type StockLogType = "deduct" | "add" | "adjust" | "restock" | "waste";
+type DailyCloseStatus = "draft" | "closed" | "approved" | null;
 
 type IngredientLite = {
     id: UUID;
@@ -33,10 +34,22 @@ type StockLogItem = {
     order_id: string | null;
     amount: number;
     type: StockLogType;
+    title: string | null;
+    subtitle: string | null;
     note: string | null;
+    order_menu_lines: OrderMenuLine[];
     before_stock: number | null;
     after_stock: number | null;
     created_at: string;
+};
+
+type OrderMenuLine = {
+    order_item_id: string;
+    menu_name: string;
+    serve_type: string | null;
+    size: string | null;
+    qty: number;
+    price: number;
 };
 
 type AnalyticsTopMenu = {
@@ -88,9 +101,12 @@ type StockEventItemFromApi = {
 
 type StockEventFromApi = {
     type?: unknown;
+    title?: unknown;
+    subtitle?: unknown;
     note?: unknown;
     order_id?: unknown;
     happened_at?: unknown;
+    order_menu_lines?: unknown;
     items?: unknown;
 };
 
@@ -136,6 +152,63 @@ function shortId(id: string, n = 10) {
     return s.length <= n ? s : `${s.slice(0, n)}…`;
 }
 
+function getBangkokToday(): string {
+    return new Date().toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Bangkok",
+    });
+}
+
+function readDailyCloseStatus(data: unknown): DailyCloseStatus {
+    if (!isRecord(data)) return null;
+    const close = isRecord(data.close) ? data.close : isRecord(data.dailyClose) ? data.dailyClose : null;
+    if (!close) return null;
+
+    const status = toStringOrNull(close.status);
+    if (status === "draft" || status === "closed" || status === "approved") return status;
+    return null;
+}
+
+function decodeOrderMenuLines(v: unknown): OrderMenuLine[] {
+    if (!Array.isArray(v)) return [];
+
+    const out: OrderMenuLine[] = [];
+    for (const raw of v) {
+        if (!isRecord(raw)) continue;
+
+        const order_item_id = toStringOrNull(raw.order_item_id);
+        const menu_name = toStringOrNull(raw.menu_name);
+        if (!order_item_id || !menu_name) continue;
+
+        out.push({
+            order_item_id,
+            menu_name,
+            serve_type: toStringOrNull(raw.serve_type),
+            size: toStringOrNull(raw.size),
+            qty: toNumber(raw.qty, 0),
+            price: toNumber(raw.price, 0),
+        });
+    }
+
+    return out;
+}
+
+function menuLineLabel(line: OrderMenuLine): string {
+    const meta: string[] = [];
+    if (line.serve_type) meta.push(line.serve_type);
+    if (line.size && line.size !== "default") meta.push(line.size);
+    const metaText = meta.length ? ` (${meta.join(" / ")})` : "";
+    return `${line.menu_name}${metaText} x${line.qty}`;
+}
+
+function compactOrderMenuHint(lines: OrderMenuLine[]): string | null {
+    if (lines.length === 0) return null;
+
+    const sorted = [...lines].sort((a, b) => b.qty - a.qty || a.menu_name.localeCompare(b.menu_name));
+    const shown = sorted.slice(0, 2).map(menuLineLabel);
+    const more = sorted.length - shown.length;
+    return more > 0 ? `${shown.join(", ")} +อีก ${more}` : shown.join(", ");
+}
+
 function startOfDay(d: Date) {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
@@ -165,20 +238,20 @@ function getStockStatus(stock: number, minStock: number): StockStatus {
 function StatusBadge({ status }: { status: StockStatus }) {
     if (status === "out") {
         return (
-            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-red-500/20 text-red-400 border border-red-500/20">
+            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/20">
                 หมด
             </span>
         );
     }
     if (status === "low") {
         return (
-            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-300 border border-yellow-500/20">
+            <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-800 dark:text-yellow-300 border border-yellow-500/20">
                 ใกล้หมด
             </span>
         );
     }
     return (
-        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/20">
+        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-green-500/20 text-green-700 dark:text-green-300 border border-green-500/20">
             ปกติ
         </span>
     );
@@ -187,17 +260,44 @@ function StatusBadge({ status }: { status: StockStatus }) {
 function TypeBadge({ type }: { type: StockLogType }) {
     const base =
         "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium border border-white/10";
-    if (type === "add") return <span className={`${base} bg-green-500/10 text-green-200`}>เพิ่ม</span>;
-    if (type === "restock") return <span className={`${base} bg-emerald-500/10 text-emerald-200`}>คืนสต็อก</span>;
-    if (type === "waste") return <span className={`${base} bg-red-500/10 text-red-200`}>ของเสีย</span>;
+    if (type === "add") return <span className={`${base} bg-green-500/10 text-green-700 dark:text-green-300`}>เพิ่ม</span>;
+    if (type === "restock") return <span className={`${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`}>คืนสต็อก</span>;
+    if (type === "waste") return <span className={`${base} bg-red-500/10 text-red-700 dark:text-red-300`}>ของเสีย</span>;
     if (type === "deduct") return <span className={`${base} bg-white/10 text-[var(--text-secondary)]`}>ตัดออก</span>;
-    return <span className={`${base} bg-blue-500/10 text-blue-200`}>ปรับยอด</span>;
+    return <span className={`${base} bg-blue-500/10 text-blue-700 dark:text-blue-300`}>ปรับยอด</span>;
 }
 
 function parseStockLogType(v: unknown): StockLogType {
     const s = toStringOrNull(v);
     if (s === "add" || s === "deduct" || s === "adjust" || s === "restock" || s === "waste") return s;
     return "adjust";
+}
+
+function fallbackMovementTitle(type: StockLogType): string {
+    if (type === "add") return "เพิ่มสต็อก";
+    if (type === "restock") return "คืนสต็อกจากออเดอร์ที่ยกเลิก";
+    if (type === "waste") return "ของเสีย/ไม่คืนสต็อก";
+    if (type === "deduct") return "ตัดออกจากการขาย";
+    return "ปรับยอด";
+}
+
+function cleanMovementNote(note: string | null): string | null {
+    const n = (note ?? "").trim();
+    if (!n) return null;
+    if (n === "in") return "รับของเข้า";
+    if (n === "waste") return "ของเสีย/ทิ้ง";
+    if (n === "count") return "นับสต็อกจริง";
+    return n;
+}
+
+function movementContext(row: StockLogItem): string | null {
+    const menuHint = compactOrderMenuHint(row.order_menu_lines);
+    if (menuHint) return `ขาย: ${menuHint}`;
+
+    const subtitle = (row.subtitle ?? "").trim();
+    if (subtitle && subtitle !== row.title) return subtitle;
+
+    return cleanMovementNote(row.note);
 }
 
 // ✅ แปลง /api/stock (events) -> logs flat list + filter เฉพาะ ingredientId
@@ -216,9 +316,12 @@ function extractLogsFromStockEvents(data: unknown, ingredientId: string): StockL
         if (!Array.isArray(itemsRaw)) continue;
 
         const type = parseStockLogType(ev.type);
+        const title = toStringOrNull(ev.title);
+        const subtitle = toStringOrNull(ev.subtitle);
         const note = toStringOrNull(ev.note);
         const order_id = toStringOrNull(ev.order_id);
         const created_at = toStringOrNull(ev.happened_at) ?? "";
+        const order_menu_lines = decodeOrderMenuLines(ev.order_menu_lines);
 
         for (const itRaw of itemsRaw) {
             if (!isRecord(itRaw)) continue;
@@ -239,7 +342,10 @@ function extractLogsFromStockEvents(data: unknown, ingredientId: string): StockL
                 order_id,
                 amount,
                 type,
+                title,
+                subtitle,
                 note,
+                order_menu_lines,
                 before_stock,
                 after_stock,
                 created_at,
@@ -314,6 +420,7 @@ export default function IngredientDetailPage() {
     const [ingredientNotFound, setIngredientNotFound] = useState(false);
     const [ingredientLoadError, setIngredientLoadError] = useState<string | null>(null);
     const [logs, setLogs] = useState<StockLogItem[]>([]);
+    const [dailyCloseStatus, setDailyCloseStatus] = useState<DailyCloseStatus>(null);
 
     // analytics
     const [avgDailyUsage7, setAvgDailyUsage7] = useState(0);
@@ -332,6 +439,7 @@ export default function IngredientDetailPage() {
 
     const baseUnit = useMemo(() => ingredient?.base_unit ?? ("piece" as BaseUnit), [ingredient]);
     const unitLabel = BASE_UNIT_LABEL[baseUnit];
+    const isBusinessDayClosed = dailyCloseStatus === "closed" || dailyCloseStatus === "approved";
 
     const status = useMemo(() => {
         if (!ingredient) return "ok" as StockStatus;
@@ -484,6 +592,31 @@ export default function IngredientDetailPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ingredientId]);
 
+    useEffect(() => {
+        const controller = new AbortController();
+        const date = getBangkokToday();
+
+        void (async () => {
+            try {
+                const res = await fetch(`/api/daily-close?date=${encodeURIComponent(date)}`, {
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                if (!res.ok) {
+                    if (!controller.signal.aborted) setDailyCloseStatus(null);
+                    return;
+                }
+
+                const data: unknown = await res.json().catch(() => null);
+                if (!controller.signal.aborted) setDailyCloseStatus(readDailyCloseStatus(data));
+            } catch {
+                if (!controller.signal.aborted) setDailyCloseStatus(null);
+            }
+        })();
+
+        return () => controller.abort();
+    }, []);
+
     const daysLeftUI = useMemo(() => {
         if (daysLeftLabel && daysLeftLabel.trim()) return daysLeftLabel;
         if (avgDailyUsage7 <= 0) return "ไม่มีการใช้";
@@ -527,7 +660,7 @@ export default function IngredientDetailPage() {
     if (!ingredientId) {
         return (
             <div className="p-6">
-                <Card title="Ingredient">
+                <Card title="วัตถุดิบ">
                     <div className="text-sm text-[var(--text-secondary)]">ไม่พบรหัสวัตถุดิบ</div>
                     <div className="mt-4">
                         <Link
@@ -557,18 +690,30 @@ export default function IngredientDetailPage() {
                     <Link
                         href={`/admin/stock?ingredient_id=${encodeURIComponent(String(ingredientId))}`}
                         className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5 text-sm"
-                        title="ไปดู Stock History แบบภาพรวม"
+                        title="ไปดูประวัติสต็อกแบบภาพรวม"
                     >
                         ดูประวัติทั้งหมด
                     </Link>
 
                     {ingredient && (
-                        <Button onClick={() => setAdjustItem(ingredient)}>
+                        <Button
+                            onClick={() => {
+                                if (!isBusinessDayClosed) setAdjustItem(ingredient);
+                            }}
+                            disabled={isBusinessDayClosed}
+                            title={isBusinessDayClosed ? "วันนี้ปิดยอดแล้ว ไม่สามารถปรับสต็อกได้" : undefined}
+                        >
                             ปรับสต็อก
                         </Button>
                     )}
                 </div>
             </div>
+
+            {isBusinessDayClosed ? (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                    วันนี้ปิดยอดแล้ว — ไม่สามารถปรับสต็อกของวันนี้ได้
+                </div>
+            ) : null}
 
             {/* Decision-first card */}
             <Card title="ภาพรวม (ตัดสินใจเร็ว)">
@@ -594,8 +739,8 @@ export default function IngredientDetailPage() {
                                     <div className="text-xl font-semibold truncate">{ingredient.name ?? "-"}</div>
                                     <StatusBadge status={status} />
                                     {showAbnormal && (
-                                        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-orange-500/15 text-orange-200 border border-orange-500/20">
-                                            ⚠️ {abnormalLabel?.trim() ? abnormalLabel : "ใช้มากผิดปกติ"}
+                                        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-orange-500/15 text-orange-800 dark:text-orange-200 border border-orange-500/20">
+                                            {abnormalLabel?.trim() ? abnormalLabel : "ใช้มากผิดปกติ"}
                                         </span>
                                     )}
                                 </div>
@@ -644,12 +789,12 @@ export default function IngredientDetailPage() {
                                     {todayUsage > 0 ? `${todayUsage.toFixed(2)} ${unitLabel}` : `0 ${unitLabel}`}
                                 </div>
                                 <div className="mt-2 text-xs text-[var(--text-secondary)]">
-                                    ถ้าวันนี้สูงกว่า avg×1.3 จะขึ้นเตือน
+                                    ถ้าวันนี้ใช้มากกว่าค่าเฉลี่ย ระบบจะแจ้งเตือน
                                 </div>
                             </div>
 
                             <div className="rounded-2xl border border-white/10 p-4 bg-[var(--surface)]">
-                                <div className="text-xs text-[var(--text-secondary)]">อ้างอิง</div>
+                                <div className="text-xs text-[var(--text-secondary)]">รหัสอ้างอิง</div>
                                 <div className="mt-1 text-sm font-medium">{shortId(String(ingredientId), 16)}</div>
                                 <div className="mt-2 text-xs text-[var(--text-secondary)]">หน่วยระบบ: {unitLabel}</div>
                             </div>
@@ -763,11 +908,14 @@ export default function IngredientDetailPage() {
                                     <th className="py-2 pr-3 whitespace-nowrap">ประเภท</th>
                                     <th className="py-2 pr-3 whitespace-nowrap">จำนวน</th>
                                     <th className="py-2 pr-3 whitespace-nowrap">ก่อน → หลัง</th>
-                                    <th className="py-2 pr-3 whitespace-nowrap">หมายเหตุ</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">สาเหตุ</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {visibleLogs.map((r) => {
+                                    const title = r.title ?? fallbackMovementTitle(r.type);
+                                    const context = movementContext(r);
+                                    const showOrderRef = Boolean(r.order_id && !context?.includes("ออเดอร์"));
                                     const amt = Math.round(toNumber(r.amount, 0));
                                     const rawDelta =
                                         r.before_stock != null && r.after_stock != null
@@ -779,10 +927,10 @@ export default function IngredientDetailPage() {
                                     const signAmtText = signAmt > 0 ? `+${signAmt}` : String(signAmt);
                                     const amtClass =
                                         signAmt > 0
-                                            ? "text-green-200"
+                                            ? "text-green-700 dark:text-green-300"
                                             : signAmt < 0
-                                                ? "text-red-200"
-                                                : "text-blue-200";
+                                                ? "text-red-700 dark:text-red-300"
+                                                : "text-blue-700 dark:text-blue-300";
 
                                     return (
                                         <tr key={r.id} className="border-b border-white/5">
@@ -805,8 +953,20 @@ export default function IngredientDetailPage() {
                                                     {r.after_stock == null ? "-" : Math.round(r.after_stock)}
                                                 </span>
                                             </td>
-                                            <td className="py-2 pr-3 min-w-[220px]">
-                                                <span className="text-[var(--text-secondary)]">{r.note ?? "-"}</span>
+                                            <td className="py-2 pr-3 min-w-[260px]">
+                                                <div className="font-medium">{title}</div>
+                                                {context ? (
+                                                    <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                                        {context}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-xs text-[var(--text-secondary)] mt-0.5">-</div>
+                                                )}
+                                                {showOrderRef && r.order_id ? (
+                                                    <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                                        ออเดอร์ #{shortId(r.order_id, 10)}
+                                                    </div>
+                                                ) : null}
                                             </td>
                                         </tr>
                                     );
@@ -836,7 +996,7 @@ export default function IngredientDetailPage() {
             {/* Adjust Modal */}
             {adjustItem && (
                 <AdjustStockForm
-                    ingredient={adjustItem as unknown as { id: string; name: string; stock: number }}
+                    ingredient={adjustItem}
                     onClose={() => setAdjustItem(null)}
                     onUpdated={() => {
                         const id = String(ingredientId);

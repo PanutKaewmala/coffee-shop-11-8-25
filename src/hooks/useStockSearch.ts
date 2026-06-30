@@ -214,7 +214,7 @@ function buildOrderMenuHint(
     if (!lines || lines.length === 0) return { hint: undefined, count: 0 };
     const shown = lines.slice(0, 2).map(menuLineLabel);
     const more = lines.length - shown.length;
-    const hint = more > 0 ? `${shown.join(", ")} +${more} more` : shown.join(", ");
+    const hint = more > 0 ? `${shown.join(", ")} +อีก ${more}` : shown.join(", ");
     return { hint, count: lines.length };
 }
 
