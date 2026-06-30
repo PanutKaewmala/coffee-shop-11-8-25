@@ -442,6 +442,232 @@ export default function DailyClosePage() {
 
     const isCloseFinalized = close?.status === "closed" || close?.status === "approved";
 
+    const handlePrint = () => {
+        if (loading || !report) return;
+
+        const escapeHtml = (text: string): string =>
+            text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+
+        const safeText = (value: unknown, fallback = "-"): string => {
+            if (value === null || value === undefined) return fallback;
+            if (typeof value === "number" && Number.isFinite(value)) return formatMoney(value);
+            if (typeof value === "string") return escapeHtml(value);
+            return fallback;
+        };
+
+        const printedAt = new Intl.DateTimeFormat("th-TH", {
+            timeZone: "Asia/Bangkok",
+            dateStyle: "medium",
+            timeStyle: "medium",
+        }).format(new Date());
+
+        const shopName = escapeHtml(report.context.shopName ?? "ร้านค้า");
+        const branchName = escapeHtml(report.context.branchName ?? "สาขา");
+        const selectedDate = escapeHtml(date);
+
+        let statusLabel = "ยังไม่ได้เริ่มปิดยอด";
+        let statusBg = "#666";
+        if (close) {
+            if (close.status === "draft") { statusLabel = "Draft"; statusBg = "#b45309"; }
+            else if (close.status === "closed") { statusLabel = "Closed"; statusBg = "#15803d"; }
+            else if (close.status === "approved") { statusLabel = "Approved"; statusBg = "#0f766e"; }
+        }
+
+        const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>รายงานปิดยอดประจำวัน</title>
+    <style>
+        @page { size: A4; margin: 18mm; }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 12pt;
+            color: #000;
+            background: #fff;
+            line-height: 1.45;
+            margin: 0;
+            padding: 0;
+        }
+        h1 { font-size: 18pt; margin: 0 0 10px 0; }
+        h2 { font-size: 13pt; margin: 18px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #bbb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th, td { border: 1px solid #bbb; padding: 5px 8px; text-align: left; font-size: 11pt; vertical-align: top; }
+        th { background: #f4f4f4; font-weight: 600; }
+        .right { text-align: right; }
+        .center { text-align: center; }
+        .meta { margin: 0 0 12px 0; font-size: 11pt; }
+        .meta div { margin: 3px 0; }
+        .section { margin-bottom: 14px; page-break-inside: avoid; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; page-break-inside: avoid; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; page-break-inside: avoid; }
+        .box { border: 1px solid #ddd; padding: 8px; border-radius: 4px; page-break-inside: avoid; }
+        .label { font-size: 10pt; color: #444; }
+        .value { font-size: 12pt; font-weight: 600; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 11pt; font-weight: 600; color: #fff; background: ${statusBg}; }
+        .footer { margin-top: 28px; font-size: 10pt; color: #555; border-top: 1px solid #ddd; padding-top: 8px; }
+        @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <h1>รายงานปิดยอดประจำวัน</h1>
+    <div class="meta">
+        <div><strong>ร้าน:</strong> ${shopName} • ${branchName}</div>
+        <div><strong>วันที่:</strong> ${selectedDate}</div>
+        <div><strong>สถานะ:</strong> <span class="badge">${statusLabel}</span></div>
+        ${close?.closed_at ? `<div><strong>เวลาปิดยอด:</strong> ${safeText(formatBangkokDateTime(close.closed_at))}</div>` : ""}
+        ${close?.notes ? `<div><strong>หมายเหตุ:</strong> ${safeText(close.notes)}</div>` : ""}
+        <div><strong>พิมพ์เมื่อ:</strong> ${printedAt}</div>
+    </div>
+
+    <h2>ข้อมูลเงินสด</h2>
+        <div class="grid-3" style="margin-bottom:8px;">
+            <div class="box"><div class="label">เงินสดตั้งต้น</div><div class="value">${close ? safeText(close.opening_cash_float) : "-"}</div></div>
+            <div class="box"><div class="label">ยอดขายเงินสด</div><div class="value">${safeText(report.cash.sales)}</div></div>
+            <div class="box"><div class="label">รับเงิน</div><div class="value">${safeText(report.cash.tendered)}</div></div>
+        </div>
+    <div class="grid-3" style="margin-bottom:8px;">
+        <div class="box"><div class="label">เงินทอน</div><div class="value">${safeText(report.cash.change)}</div></div>
+        <div class="box"><div class="label">เงินสดคงเหลือจากรายการ</div><div class="value">${safeText(report.cash.retained)}</div></div>
+        <div class="box"><div class="label">ข้อมูลเงินสดไม่ครบ</div><div class="value">${report.cash.dataMissingCount} รายการ</div></div>
+    </div>
+
+    <h2>ผลลัพธ์ปิดยอด</h2>
+    <div class="grid-3" style="margin-bottom:8px;">
+        <div class="box"><div class="label">เงินสดที่ควรมีทั้งหมด</div><div class="value">${safeText(expectedDrawerCashDisplay)}</div></div>
+        <div class="box"><div class="label">เงินสดที่นับได้จริง</div><div class="value">${close?.counted_cash != null ? safeText(close.counted_cash) : "-"}</div></div>
+        <div class="box"><div class="label">ส่วนต่าง</div><div class="value">${close?.cash_difference != null ? safeText(close.cash_difference) : "-"}</div></div>
+    </div>
+
+    <h2>รายการเงินสดเข้า/ออก</h2>
+    <div class="grid-3" style="margin-bottom:8px;">
+        <div class="box"><div class="label">เงินสดเข้า</div><div class="value">${safeText(report.cashMovements.cashInTotal)}</div></div>
+        <div class="box"><div class="label">เงินสดออก</div><div class="value">${safeText(report.cashMovements.cashOutTotal)}</div></div>
+        <div class="box"><div class="label">สุทธิ</div><div class="value">${safeText(report.cashMovements.cashMovementNet)}</div></div>
+    </div>
+    ${report.cashMovements.movements.length ? `
+    <table>
+        <thead>
+            <tr><th>เวลา</th><th>ประเภท</th><th>เหตุผล</th><th class="right">จำนวน</th><th>หมายเหตุ</th></tr>
+        </thead>
+        <tbody>
+            ${report.cashMovements.movements.map((m) => `
+                <tr>
+                    <td>${safeText(formatBangkokTime(m.created_at))}</td>
+                    <td>${m.type === "cash_in" ? "เงินสดเข้า" : "เงินสดออก"}</td>
+                    <td>${safeText(m.reason)}</td>
+                    <td class="right">${safeText(m.amount)}</td>
+                    <td>${safeText(m.note)}</td>
+                </tr>
+            `).join("")}
+        </tbody>
+    </table>
+    ` : "<p style='margin-top:6px;color:#555;'>ไม่มีรายการเงินสดเข้า/ออก</p>"}
+
+    <h2>สรุปยอดขาย</h2>
+    <div class="grid-2" style="margin-bottom:8px;">
+        <div class="box"><div class="label">ยอดขายที่ชำระแล้ว</div><div class="value">${safeText(report.summary.paidTotal)}</div></div>
+        <div class="box"><div class="label">ออเดอร์ชำระแล้ว</div><div class="value">${report.summary.paidOrderCount} รายการ</div></div>
+        <div class="box"><div class="label">บิลเฉลี่ย (AOV)</div><div class="value">${safeText(report.summary.averageOrderValue)}</div></div>
+        <div class="box"><div class="label">ยกเลิก / ปัญหา</div><div class="value">${report.cancellations.count} รายการ</div></div>
+    </div>
+
+    <h2>วิธีชำระ</h2>
+    <div class="grid-3" style="margin-bottom:8px;">
+        <div class="box"><div class="label">เงินสด</div><div class="value">${safeText(report.payments.cash.sales)}</div><div class="label">${report.payments.cash.orderCount} รายการ</div></div>
+        <div class="box"><div class="label">PromptPay</div><div class="value">${safeText(report.payments.promptPay.sales)}</div><div class="label">${report.payments.promptPay.orderCount} รายการ</div></div>
+        <div class="box"><div class="label">ไม่ทราบวิธีชำระ</div><div class="value">${safeText(report.payments.unknown.sales)}</div><div class="label">${report.payments.unknown.orderCount} รายการ</div></div>
+    </div>
+
+    ${report.paidTransactions.length ? `
+    <h2>รายการชำระแล้ว (${report.paidTransactions.length})</h2>
+    <table>
+        <thead>
+            <tr><th>เวลา</th><th>Order</th><th>วิธีจ่าย</th><th class="right">ยอดรวม</th><th class="right">รับ / ทอน</th></tr>
+        </thead>
+        <tbody>
+            ${report.paidTransactions.map((t) => `
+                <tr>
+                    <td>${safeText(formatBangkokTime(t.occurredAt))}${t.timestampSource === "created_at" ? " <span style='color:#b45309;' title='ใช้ created_at เพราะไม่มี paid_at'>*</span>" : ""}</td>
+                    <td>${safeText(shortId(t.id))}</td>
+                    <td>${safeText(paymentLabel(t.paymentMethod))}</td>
+                    <td class="right">${safeText(t.total)}</td>
+                    <td class="right">${t.paymentMethod?.toLowerCase() === "cash" ? `รับ ${t.paidAmount == null ? "-" : formatMoney(t.paidAmount)} / ทอน ${t.changeAmount == null ? "-" : formatMoney(t.changeAmount)}` : "-"}</td>
+                </tr>
+            `).join("")}
+        </tbody>
+    </table>
+    ` : ""}
+
+    ${report.cancelledTransactions.length ? `
+    <h2>รายการยกเลิก (${report.cancelledTransactions.length})</h2>
+    <table>
+        <thead>
+            <tr><th>เวลายกเลิก</th><th>Order</th><th class="right">มูลค่าเดิม</th><th>เหตุผล</th><th>หมายเหตุ</th><th>สต็อก</th></tr>
+        </thead>
+        <tbody>
+            ${report.cancelledTransactions.map((t) => `
+                <tr>
+                    <td>${safeText(formatBangkokTime(t.cancelledAt))}</td>
+                    <td>${safeText(shortId(t.id))}</td>
+                    <td class="right">${safeText(t.originalTotal)}</td>
+                    <td>${safeText(t.reason)}</td>
+                    <td>${safeText(t.note)}</td>
+                    <td>${t.stockRefunded ? "คืนสต็อกแล้ว" : "ไม่คืนสต็อก"}</td>
+                </tr>
+            `).join("")}
+        </tbody>
+    </table>
+    ` : ""}
+
+    ${report.dataQuality.length ? `
+    <h2>คำเตือนคุณภาพข้อมูล</h2>
+    <ul style="margin:6px 0;padding-left:20px;">
+        ${report.dataQuality.map((w) => `<li>${safeText(w.message)}${typeof w.count === "number" ? ` (${w.count})` : ""}</li>`).join("")}
+    </ul>
+    ` : ""}
+
+    <div class="footer">
+        พิมพ์เมื่อ: ${printedAt} • สร้างอัตโนมัติจากระบบ Daily Close
+    </div>
+</body>
+</html>`;
+
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "fixed";
+        iframe.style.right = "0";
+        iframe.style.bottom = "0";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "0";
+        iframe.style.opacity = "0";
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument;
+        if (doc) {
+            doc.open();
+            doc.write(html);
+            doc.close();
+            setTimeout(() => {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        document.body.removeChild(iframe);
+                    }
+                }, 300);
+            }, 100);
+        }
+    };
+
     return (
         <div className="p-6 text-text-primary">
             <div className="mx-auto max-w-7xl space-y-6">
@@ -468,6 +694,14 @@ export default function DailyClosePage() {
                             className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-text-secondary transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             รีเฟรช
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handlePrint()}
+                            disabled={loading || !report}
+                            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-text-secondary transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            พิมพ์รายงาน
                         </button>
                     </div>
                 </div>
