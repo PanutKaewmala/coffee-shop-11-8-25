@@ -399,9 +399,9 @@ export default function DailyClosePage() {
         }
     };
 
-    const expectedCash = close
-        ? (close.opening_cash_float || 0) + (report?.cash.retained || 0) + (report?.cashMovements.cashMovementNet || 0)
-        : 0;
+    const expectedDrawerCashDisplay = close
+        ? close.expected_cash
+        : (report?.cash.retained || 0) + (report?.cashMovements.cashMovementNet || 0);
 
     const handleAddCashMovement = async () => {
         setCmLoading(true);
@@ -523,7 +523,7 @@ export default function DailyClosePage() {
                                 </div>
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                     <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
-                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(expectedCash)} />
+                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(expectedDrawerCashDisplay)} />
                                 </div>
                                 <div className="space-y-3">
                                     <div>
@@ -567,7 +567,7 @@ export default function DailyClosePage() {
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                     <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
                                     <MetricCard label="เงินสดที่นับได้จริง" value={close.counted_cash != null ? formatMoney(close.counted_cash) : "-"} />
-                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(close.expected_cash)} />
+                                    <MetricCard label="เงินสดที่ควรนับได้" value={formatMoney(expectedDrawerCashDisplay)} />
                                     <MetricCard
                                         label="ส่วนต่าง"
                                         value={
@@ -640,7 +640,7 @@ export default function DailyClosePage() {
                                 <MetricCard label="เงินสดคงเหลือจากรายการ" value={formatMoney(report.cash.retained)} />
                                 <MetricCard
                                     label="เงินสดที่ควรมีทั้งหมด"
-                                    value={formatMoney((report.cash.retained || 0) + (report.cashMovements.cashMovementNet || 0))}
+                                    value={formatMoney(expectedDrawerCashDisplay)}
                                 />
                                 <MetricCard label="ข้อมูลเงินสดไม่ครบ" value={`${report.cash.dataMissingCount} รายการ`} />
                             </div>
@@ -936,17 +936,20 @@ export default function DailyClosePage() {
                                             ) : (
                                                 history.map((row) => {
                                                     const isSelected = date === row.business_date;
+                                                    const isToday = row.business_date === bangkokDateKey();
                                                     return (
                                                         <tr
                                                             key={row.business_date}
                                                             onClick={() => setDate(row.business_date)}
                                                             className={`border-b border-white/5 transition-colors cursor-pointer ${
-                                                                isSelected ? "bg-white/10" : "hover:bg-white/5"
+                                                                isSelected ? "bg-white/15 hover:bg-white/15" : "hover:bg-white/5"
                                                             }`}
                                                         >
                                                             <td className="px-3 py-3 whitespace-nowrap font-medium">
                                                                 {row.business_date}
-                                                                {isSelected ? " (ปัจจุบัน)" : ""}
+                                                                {isSelected && isToday ? " (ปัจจุบัน)" : null}
+                                                                {isSelected && !isToday ? " (กำลังดู)" : null}
+                                                                {!isSelected && isToday ? " (วันนี้)" : null}
                                                             </td>
                                                             <td className="px-3 py-3">
                                                                 {row.status === "draft" ? (
