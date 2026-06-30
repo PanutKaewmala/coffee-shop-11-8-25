@@ -472,7 +472,7 @@ export default function DailyClosePage() {
                     </div>
                 </div>
 
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
                     Live report — ยังไม่ใช่การปิดกะหรือการล็อกยอด รายงานอาจเปลี่ยนได้หากสถานะออเดอร์เปลี่ยนภายหลัง
                 </div>
 
@@ -633,11 +633,15 @@ export default function DailyClosePage() {
                         ) : null}
 
                         <Card title="สรุปเงินสด">
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
                                 <MetricCard label="ยอดขายเงินสด" value={formatMoney(report.cash.sales)} />
                                 <MetricCard label="รับเงิน" value={formatMoney(report.cash.tendered)} />
                                 <MetricCard label="เงินทอน" value={formatMoney(report.cash.change)} />
                                 <MetricCard label="เงินสดคงเหลือจากรายการ" value={formatMoney(report.cash.retained)} />
+                                <MetricCard
+                                    label="เงินสดที่ควรมีทั้งหมด"
+                                    value={formatMoney((report.cash.retained || 0) + (report.cashMovements.cashMovementNet || 0))}
+                                />
                                 <MetricCard label="ข้อมูลเงินสดไม่ครบ" value={`${report.cash.dataMissingCount} รายการ`} />
                             </div>
                             {report.cash.dataMissingCount > 0 ? (
@@ -668,10 +672,10 @@ export default function DailyClosePage() {
                                             <select
                                                 value={cmType}
                                                 onChange={(e) => setCmType(e.target.value as "cash_in" | "cash_out")}
-                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40"
                                             >
-                                                <option value="cash_in">เงินสดเข้า</option>
-                                                <option value="cash_out">เงินสดออก</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="cash_in">เงินสดเข้า</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="cash_out">เงินสดออก</option>
                                             </select>
                                         </div>
                                         <div>
@@ -679,13 +683,13 @@ export default function DailyClosePage() {
                                             <select
                                                 value={cmReason}
                                                 onChange={(e) => setCmReason(e.target.value)}
-                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40"
                                             >
-                                                <option value="เติมเงินทอน">เติมเงินทอน</option>
-                                                <option value="ซื้อของเข้าร้าน">ซื้อของเข้าร้าน</option>
-                                                <option value="เบิกเงินสด">เบิกเงินสด</option>
-                                                <option value="ฝากธนาคาร">ฝากธนาคาร</option>
-                                                <option value="ปรับยอดเงินสด">ปรับยอดเงินสด</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="เติมเงินทอน">เติมเงินทอน</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="ซื้อของเข้าร้าน">ซื้อของเข้าร้าน</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="เบิกเงินสด">เบิกเงินสด</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="ฝากธนาคาร">ฝากธนาคาร</option>
+                                                <option className="dark:bg-surface dark:text-text-primary" value="ปรับยอดเงินสด">ปรับยอดเงินสด</option>
                                             </select>
                                         </div>
                                         <div>
@@ -697,7 +701,7 @@ export default function DailyClosePage() {
                                                 value={cmAmount}
                                                 onChange={(e) => setCmAmount(e.target.value)}
                                                 placeholder="0.00"
-                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40 placeholder:text-text-muted"
                                                 disabled={cmLoading}
                                             />
                                         </div>
@@ -708,7 +712,7 @@ export default function DailyClosePage() {
                                                 value={cmNote}
                                                 onChange={(e) => setCmNote(e.target.value)}
                                                 placeholder="เช่น เติมจากธนาคาร"
-                                                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-text-primary outline-none focus:border-white/25"
+                                                className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40 placeholder:text-text-muted"
                                                 disabled={cmLoading}
                                             />
                                         </div>
