@@ -21,6 +21,8 @@ import { BASE_UNIT_LABEL, TYPE_LABEL, TYPE_TO_BASE, type IngredientType } from "
 
 type BaseUnit = "ml" | "g" | "piece";
 type UnitFilter = "all" | BaseUnit;
+type RiskFilter = "all" | "urgent" | "warn";
+type DailyCloseStatus = "draft" | "closed" | "approved" | null;
 
 /* ================= helpers ================= */
 
@@ -59,6 +61,18 @@ function getRowBaseUnit(row: IngredientRow): BaseUnit {
 function toNumber(v: unknown, fallback = 0) {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+
+function getBangkokToday(): string {
+    return new Date().toLocaleDateString("sv-SE", {
+        timeZone: "Asia/Bangkok",
+    });
+}
+
+function readDailyCloseStatus(data: unknown): DailyCloseStatus {
+    if (!isRecord(data) || !isRecord(data.close)) return null;
+    const status = data.close.status;
+    return status === "draft" || status === "closed" || status === "approved" ? status : null;
 }
 
 /* ===== stock status (fallback) ===== */
@@ -101,12 +115,6 @@ function isSameAnalyticsRow(a: AnalyticsRow | undefined, b: AnalyticsRow): boole
         a.abnormalToday === b.abnormalToday &&
         a.unit === b.unit
     );
-}
-
-function isLowByDaysLeft(a: AnalyticsRow | undefined): boolean {
-    if (!a) return false;
-    if (a.daysLeft === null) return false;
-    return a.daysLeft <= 7;
 }
 
 /* ===== owner summary ===== */
@@ -154,7 +162,7 @@ export default function IngredientsAdminPage() {
     // filters
     const [search, setSearch] = useState("");
     const [unitFilter, setUnitFilter] = useState<UnitFilter>("all");
-    const [onlyLow, setOnlyLow] = useState(false);
+    const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
 
     // pagination
     const [page, setPage] = useState(1);
@@ -178,10 +186,15 @@ export default function IngredientsAdminPage() {
     // analytics
     const [analyticsMap, setAnalyticsMap] = useState<Record<string, AnalyticsRow>>({});
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
+    const [dailyCloseStatus, setDailyCloseStatus] = useState<DailyCloseStatus>(null);
+    const [dailyCloseLoading, setDailyCloseLoading] = useState(true);
 
     const isAnyModalOpen = showModal || !!adjustItem;
-    const disableActions = loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading;
-    const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || permissionLoading;
+    const isBusinessDayClosed = dailyCloseStatus === "closed" || dailyCloseStatus === "approved";
+    const stockActionsDisabled =
+        loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading || isBusinessDayClosed;
+    const renameDisabled = loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading;
+    const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || permissionLoading || isBusinessDayClosed;
 
     useEffect(() => setInputPage(String(page)), [page]);
 
@@ -254,6 +267,38 @@ export default function IngredientsAdminPage() {
         };
     }, []);
 
+    useEffect(() => {
+        let alive = true;
+
+        async function loadDailyCloseStatus() {
+            try {
+                setDailyCloseLoading(true);
+                const date = getBangkokToday();
+                const res = await fetch(`/api/daily-close?date=${encodeURIComponent(date)}`, {
+                    cache: "no-store",
+                });
+                const data: unknown = await res.json().catch(() => null);
+
+                if (!alive) return;
+                if (!res.ok) {
+                    setDailyCloseStatus(null);
+                    return;
+                }
+
+                setDailyCloseStatus(readDailyCloseStatus(data));
+            } catch {
+                if (alive) setDailyCloseStatus(null);
+            } finally {
+                if (alive) setDailyCloseLoading(false);
+            }
+        }
+
+        void loadDailyCloseStatus();
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     const refreshAfterAdjust = async (ingredientId?: string) => {
         setAdjustItem(null);
         await fetchIngredients();
@@ -280,15 +325,19 @@ export default function IngredientsAdminPage() {
             const matchSearch = itemName.toLowerCase().includes(q);
             const matchUnit = unitFilter === "all" ? true : base === unitFilter;
 
-            const status = getStockStatus(item);
             const a = analyticsMap[item.id];
+            const risk = getRiskLevel(item, a);
 
-            const lowFlag = isLowByDaysLeft(a) || status !== "ok";
-            const matchLow = onlyLow ? lowFlag : true;
+            const matchRisk =
+                riskFilter === "all"
+                    ? true
+                    : riskFilter === "urgent"
+                        ? risk === "low"
+                        : risk === "warn";
 
-            return matchSearch && matchUnit && matchLow;
+            return matchSearch && matchUnit && matchRisk;
         });
-    }, [ingredients, search, unitFilter, onlyLow, analyticsMap]);
+    }, [ingredients, search, unitFilter, riskFilter, analyticsMap]);
 
     const sortedItems = useMemo(() => {
         const arr = [...filteredItems];
@@ -329,10 +378,10 @@ export default function IngredientsAdminPage() {
         return sortedItems.slice(start, start + rowsPerPage);
     }, [sortedItems, page]);
 
-    useEffect(() => setPage(1), [search, unitFilter, onlyLow]);
+    useEffect(() => setPage(1), [search, unitFilter, riskFilter]);
 
     useEffect(() => {
-        const ids = paginatedItems.map((x) => x.id).filter(Boolean);
+        const ids = ingredients.map((x) => x.id).filter(Boolean);
         if (ids.length === 0) return;
 
         const missing = ids.filter((id) => !analyticsMap[id]);
@@ -399,8 +448,7 @@ export default function IngredientsAdminPage() {
         return () => {
             cancelled = true;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [paginatedItems]);
+    }, [ingredients, analyticsMap]);
 
     const summary = useMemo(() => {
         const riskList = ingredients
@@ -431,9 +479,8 @@ export default function IngredientsAdminPage() {
             else if (x.level === "warn") warn += 1;
         }
 
-        const topRisk = riskList
-            .filter((x) => x.level === "low" || x.level === "warn")
-            .sort((a, b) => {
+        const sortRiskItems = (items: typeof riskList) =>
+            [...items].sort((a, b) => {
                 const ar = a.level === "low" ? 0 : 1;
                 const br = b.level === "low" ? 0 : 1;
                 if (ar !== br) return ar - br;
@@ -443,14 +490,26 @@ export default function IngredientsAdminPage() {
                 if (ad !== bd) return ad - bd;
 
                 return a.name.localeCompare(b.name, "th");
-            })
-            .slice(0, 3);
+            });
 
-        return { low, warn, topRisk };
+        const topUrgent = sortRiskItems(riskList.filter((x) => x.level === "low")).slice(0, 3);
+        const topWarn = sortRiskItems(riskList.filter((x) => x.level === "warn")).slice(0, 3);
+
+        return { low, warn, topUrgent, topWarn };
     }, [ingredients, analyticsMap]);
+
+    const applyRiskFilter = (next: RiskFilter) => {
+        setRiskFilter(next);
+        setSearch("");
+        setPage(1);
+    };
 
     const openAdd = () => {
         if (!canManageIngredients || permissionLoading) return;
+        if (isBusinessDayClosed) {
+            setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
+            return;
+        }
         setAdjustItem(null);
         setEditingItem(null);
         setName("");
@@ -503,7 +562,7 @@ export default function IngredientsAdminPage() {
                 );
                 setSearch(trimmed);
                 setUnitFilter("all");
-                setOnlyLow(false);
+                setRiskFilter("all");
                 setPage(1);
                 setFlashIngredientId(editedId);
                 setActionNotice(`เปลี่ยนชื่อเป็น "${trimmed}" แล้ว`);
@@ -515,6 +574,10 @@ export default function IngredientsAdminPage() {
             const n = Number(stock);
             if (stock === "" || !Number.isFinite(n) || n < 0) {
                 return alert("จำนวนสต็อกไม่ถูกต้อง");
+            }
+            if (isBusinessDayClosed) {
+                setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
+                return;
             }
 
             const base_unit = TYPE_TO_BASE[type];
@@ -548,6 +611,10 @@ export default function IngredientsAdminPage() {
     };
 
     const openAdjust = (item: IngredientRow) => {
+        if (isBusinessDayClosed) {
+            setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
+            return;
+        }
         if (adjustDisabled) return;
         setShowModal(false);
         setEditingItem(null);
@@ -557,7 +624,11 @@ export default function IngredientsAdminPage() {
     const deleteIngredient = async (id: string) => {
         if (!canManageIngredients || permissionLoading) return;
         if (deletingId) return;
-        if (!confirm("ลบวัตถุดิบนี้ใช่ไหม?")) return;
+        if (isBusinessDayClosed) {
+            setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
+            return;
+        }
+        if (!confirm("ย้ายวัตถุดิบนี้ไปคลังเก่าใช่ไหม?")) return;
 
         try {
             setDeletingId(id);
@@ -567,7 +638,7 @@ export default function IngredientsAdminPage() {
             const data: unknown = await res.json().catch(() => null);
 
             if (!res.ok) {
-                alert(getErrorMessage(data) ?? "ลบไม่สำเร็จ");
+                alert(getErrorMessage(data) ?? "ย้ายเข้าคลังเก่าไม่สำเร็จ");
                 return;
             }
 
@@ -579,7 +650,7 @@ export default function IngredientsAdminPage() {
                 return next;
             });
 
-            setActionNotice(`ลบ "${deletedName}" แล้ว (ย้ายไป Archived)`);
+            setActionNotice(`ย้าย "${deletedName}" ไปคลังเก่าแล้ว`);
         } catch (err) {
             console.error("deleteIngredient error:", err);
             alert("เกิดข้อผิดพลาดในการเชื่อมต่อ");
@@ -597,18 +668,24 @@ export default function IngredientsAdminPage() {
         { key: "piece", label: BASE_UNIT_LABEL.piece },
     ];
 
-    const showEmptyLowHint =
+    const showEmptyRiskHint =
         !loading &&
-        onlyLow &&
+        riskFilter !== "all" &&
         sortedItems.length === 0 &&
         (analyticsLoading || Object.keys(analyticsMap).length === 0);
+    const hasActiveFilters = search.trim() !== "" || unitFilter !== "all" || riskFilter !== "all";
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="Ingredients">
+            <Card title="คลังวัตถุดิบ">
+                {isBusinessDayClosed ? (
+                    <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                        วันนี้ปิดยอดแล้ว — ไม่สามารถเพิ่มหรือปรับสต็อกของวันนี้ได้
+                    </div>
+                ) : null}
                 {!permissionLoading && !canManageIngredients ? (
-                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can manage ingredients.
+                    <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่เพิ่มหรือลบวัตถุดิบได้
                     </div>
                 ) : null}
                 {/* Filters */}
@@ -631,29 +708,44 @@ export default function IngredientsAdminPage() {
                         ))}
 
                         <button
-                            onClick={() => setOnlyLow((v) => !v)}
+                            onClick={() => applyRiskFilter(riskFilter === "urgent" ? "all" : "urgent")}
                             className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border
-                ${onlyLow
+                ${riskFilter === "urgent"
                                     ? "bg-red-500/10 text-red-600 border-red-500/30"
                                     : "bg-surface text-text-secondary border-text-muted/25 hover:border-text-muted/40"
                                 }`}
-                            title="แสดงเฉพาะวัตถุดิบที่ใกล้หมด/หมดแล้ว (daysLeft<=7)"
+                            title="แสดงวัตถุดิบที่ควรจัดการวันนี้"
                         >
-                            ใกล้หมด / หมด
-                            {summary.low + summary.warn > 0 ? (
-                                <span className="ml-2 opacity-80 tabular-nums">({summary.low + summary.warn})</span>
+                            ต้องจัดการวันนี้
+                            {summary.low > 0 ? (
+                                <span className="ml-2 opacity-80 tabular-nums">({summary.low})</span>
+                            ) : null}
+                        </button>
+
+                        <button
+                            onClick={() => applyRiskFilter(riskFilter === "warn" ? "all" : "warn")}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap border
+                ${riskFilter === "warn"
+                                    ? "bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 border-yellow-500/30"
+                                    : "bg-surface text-text-secondary border-text-muted/25 hover:border-text-muted/40"
+                                }`}
+                            title="แสดงวัตถุดิบที่ใกล้หมดใน 7 วัน"
+                        >
+                            ใกล้หมดใน 7 วัน
+                            {summary.warn > 0 ? (
+                                <span className="ml-2 opacity-80 tabular-nums">({summary.warn})</span>
                             ) : null}
                         </button>
 
                         <span className="text-xs text-text-muted">
-                            {analyticsLoading ? "กำลังคำนวณการใช้..." : null}
+                            {analyticsLoading ? "กำลังคำนวณของใกล้หมด..." : dailyCloseLoading ? "กำลังตรวจสอบสถานะปิดยอด..." : null}
                         </span>
                     </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex justify-end mb-4 gap-2">
-                    <Button onClick={openAdd} disabled={disableActions}>
+                    <Button onClick={openAdd} disabled={stockActionsDisabled}>
                         + เพิ่มวัตถุดิบ
                     </Button>
                 </div>
@@ -661,73 +753,87 @@ export default function IngredientsAdminPage() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                     {/* urgent */}
-                    <div className="rounded-2xl border border-text-muted/25 bg-surface p-4">
+                    <button
+                        type="button"
+                        onClick={() => applyRiskFilter("urgent")}
+                        className={`group rounded-2xl border p-4 text-left transition hover:border-red-500/40 hover:bg-red-500/5 ${riskFilter === "urgent"
+                            ? "border-red-500/40 bg-red-500/10"
+                            : "border-text-muted/25 bg-surface"
+                            }`}
+                    >
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm text-text-secondary">ต้องสั่งด่วน</div>
+                                <div className="text-sm text-text-secondary">ควรจัดการวันนี้</div>
                                 <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.low} รายการ
                                 </div>
-                                <div className="text-xs text-text-muted mt-1">เหลือ ≤ 3 วัน / หรือหมด</div>
+                                <div className="text-xs text-text-muted mt-1">หมดแล้ว หรือคาดว่าจะหมดภายใน 3 วัน</div>
                             </div>
                             <div className="px-2 py-1 rounded-full text-xs border border-red-500/30 text-red-600 bg-red-500/10">
-                                🔴 ด่วน
+                                ด่วน
                             </div>
                         </div>
 
-                        {summary.topRisk.some((x) => x.level === "low") ? (
+                        {summary.topUrgent.length ? (
                             <div className="mt-3 space-y-1">
-                                {summary.topRisk
-                                    .filter((x) => x.level === "low")
-                                    .slice(0, 3)
-                                    .map((x) => (
-                                        <div key={x.id} className="flex items-center justify-between text-sm text-text-secondary">
-                                            <span className="truncate">{x.name}</span>
-                                            <span className="text-text-muted">{fmtDaysOwner(x.daysLeft)}</span>
-                                        </div>
-                                    ))}
+                                {summary.topUrgent.map((x) => (
+                                    <div key={x.id} className="flex items-center justify-between gap-3 text-sm text-text-secondary">
+                                        <span className="truncate font-medium text-text-primary underline-offset-2 group-hover:underline">{x.name}</span>
+                                        <span className="text-text-muted whitespace-nowrap">{fmtDaysOwner(x.daysLeft)}</span>
+                                    </div>
+                                ))}
                             </div>
                         ) : (
-                            <div className="mt-3 text-sm text-text-muted">วันนี้ยังไม่มีตัวแดง 👍</div>
+                            <div className="mt-3 text-sm text-text-muted">ยังไม่มีรายการที่ต้องจัดการทันที</div>
                         )}
-                    </div>
+                        <div className="mt-3 text-xs font-medium text-red-600 dark:text-red-300">
+                            คลิกเพื่อดูรายการด่วน
+                        </div>
+                    </button>
 
                     {/* warn */}
-                    <div className="rounded-2xl border border-text-muted/25 bg-surface p-4">
+                    <button
+                        type="button"
+                        onClick={() => applyRiskFilter("warn")}
+                        className={`group rounded-2xl border p-4 text-left transition hover:border-yellow-500/40 hover:bg-yellow-500/5 ${riskFilter === "warn"
+                            ? "border-yellow-500/40 bg-yellow-500/10"
+                            : "border-text-muted/25 bg-surface"
+                            }`}
+                    >
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm text-text-secondary">ใกล้หมด</div>
+                                <div className="text-sm text-text-secondary">ควรเตรียมสั่งเพิ่ม</div>
                                 <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.warn} รายการ
                                 </div>
-                                <div className="text-xs text-text-muted mt-1">เหลือ ≤ 7 วัน</div>
+                                <div className="text-xs text-text-muted mt-1">คาดว่าจะหมดภายใน 7 วัน</div>
                             </div>
                             <div className="px-2 py-1 rounded-full text-xs border border-yellow-500/30 text-yellow-700 bg-yellow-500/10">
-                                🟡 ระวัง
+                                เฝ้าดู
                             </div>
                         </div>
 
-                        {summary.topRisk.some((x) => x.level === "warn") ? (
+                        {summary.topWarn.length ? (
                             <div className="mt-3 space-y-1">
-                                {summary.topRisk
-                                    .filter((x) => x.level === "warn")
-                                    .slice(0, 3)
-                                    .map((x) => (
-                                        <div key={x.id} className="flex items-center justify-between text-sm text-text-secondary">
-                                            <span className="truncate">{x.name}</span>
-                                            <span className="text-text-muted">{fmtDaysOwner(x.daysLeft)}</span>
-                                        </div>
-                                    ))}
+                                {summary.topWarn.map((x) => (
+                                    <div key={x.id} className="flex items-center justify-between gap-3 text-sm text-text-secondary">
+                                        <span className="truncate font-medium text-text-primary underline-offset-2 group-hover:underline">{x.name}</span>
+                                        <span className="text-text-muted whitespace-nowrap">{fmtDaysOwner(x.daysLeft)}</span>
+                                    </div>
+                                ))}
                             </div>
                             ) : (
-                                <div className="mt-3 text-sm text-text-muted">ตัวเหลืองยังว่างๆ อยู่</div>
+                                <div className="mt-3 text-sm text-text-muted">ยังไม่มีรายการที่ใกล้หมดในช่วงนี้</div>
                             )}
-                    </div>
+                        <div className="mt-3 text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                            คลิกเพื่อดูรายการใกล้หมด
+                        </div>
+                    </button>
                 </div>
 
-                {showEmptyLowHint ? (
+                {showEmptyRiskHint ? (
                     <div className="py-8 text-center text-sm text-text-muted">
-                        กำลังคำนวณ “ของใกล้หมด” จากการใช้ 7 วันล่าสุด...
+                        กำลังคำนวณของใกล้หมดจากการใช้ 7 วันล่าสุด...
                     </div>
                 ) : null}
 
@@ -738,15 +844,30 @@ export default function IngredientsAdminPage() {
                     </div>
                 ) : null}
                 {loading ? (
-                    <p className="text-text-muted">Loading...</p>
+                    <p className="text-text-muted">กำลังโหลดคลังวัตถุดิบ...</p>
+                ) : paginatedItems.length === 0 ? (
+                    <div className="rounded-xl border border-text-muted/20 bg-surface px-4 py-8 text-center">
+                        <div className="font-medium text-text-primary">
+                            {hasActiveFilters ? "ไม่พบวัตถุดิบที่ตรงกับเงื่อนไข" : "ยังไม่มีวัตถุดิบในคลัง"}
+                        </div>
+                        <div className="mt-1 text-sm text-text-muted">
+                            {hasActiveFilters
+                                ? "ลองล้างตัวกรองหรือค้นหาด้วยชื่ออื่น"
+                                : "เพิ่มวัตถุดิบหลักของร้าน เช่น นม กาแฟ น้ำเชื่อม หรือแก้ว"}
+                        </div>
+                    </div>
                 ) : (
                     <Table
                         headers={headers}
-                        rowClassName={(rowIndex) =>
-                            paginatedItems[rowIndex]?.id === flashIngredientId
-                                ? "bg-emerald-500/10"
-                                : undefined
-                        }
+                        rowClassName={(rowIndex) => {
+                            const item = paginatedItems[rowIndex];
+                            if (!item) return undefined;
+                            if (item.id === flashIngredientId) return "bg-emerald-500/10";
+                            const risk = getRiskLevel(item, analyticsMap[item.id]);
+                            if (risk === "low") return "bg-red-500/5";
+                            if (risk === "warn") return "bg-yellow-500/5";
+                            return undefined;
+                        }}
                         data={paginatedItems.map((item) => {
                             const base = getRowBaseUnit(item);
                             const unitLabel = BASE_UNIT_LABEL[base];
@@ -807,7 +928,7 @@ export default function IngredientsAdminPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => openRename(item)}
-                                                    disabled={disableActions}
+                                                    disabled={renameDisabled}
                                                     className="w-full text-left px-3 py-2 rounded-lg hover:bg-background text-sm text-text-secondary disabled:opacity-60"
                                                 >
                                                     เปลี่ยนชื่อ
@@ -816,10 +937,10 @@ export default function IngredientsAdminPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => deleteIngredient(item.id)}
-                                                    disabled={disableActions}
+                                                    disabled={stockActionsDisabled}
                                                     className="w-full text-left px-3 py-2 rounded-lg hover:bg-red-500/10 text-red-600 text-sm disabled:opacity-60"
                                                 >
-                                                    {isDeletingThis ? "กำลังลบ..." : "ลบ"}
+                                                    {isDeletingThis ? "กำลังย้าย..." : "เก็บเข้าคลังเก่า"}
                                                 </button>
                                             </div>
                                         </details>
@@ -843,6 +964,11 @@ export default function IngredientsAdminPage() {
             {showModal && (
                 <Modal isOpen={showModal} onClose={closeModal} title={editingItem ? "เปลี่ยนชื่อวัตถุดิบ" : "เพิ่มวัตถุดิบ"}>
                     <div className="space-y-4">
+                        {!editingItem && isBusinessDayClosed ? (
+                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                                วันนี้ปิดยอดแล้ว — ไม่สามารถเพิ่มหรือปรับสต็อกของวันนี้ได้
+                            </div>
+                        ) : null}
                         <input
                             type="text"
                             placeholder="ชื่อวัตถุดิบ"
@@ -892,7 +1018,7 @@ export default function IngredientsAdminPage() {
                                 ยกเลิก
                             </Button>
 
-                            <Button onClick={saveIngredient} disabled={saving}>
+                            <Button onClick={saveIngredient} disabled={saving || (!editingItem && isBusinessDayClosed)}>
                                 {saving ? "กำลังบันทึก..." : editingItem ? "บันทึกชื่อ" : "เพิ่ม"}
                             </Button>
                         </div>

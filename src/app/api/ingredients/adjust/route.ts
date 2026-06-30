@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkDailyClose } from "@/lib/dailyCloseGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,18 @@ function pickLogType(reason: AdjustmentReason | null, amount: number): StockLogT
     return "adjust";
 }
 
+function businessDayClosedResponse(guardResult: Awaited<ReturnType<typeof checkDailyClose>>) {
+    return NextResponse.json(
+        {
+            error: "ปิดยอดของวันนี้แล้ว ไม่สามารถปรับสต็อกได้",
+            code: "BUSINESS_DAY_CLOSED",
+            business_date: guardResult.businessDate,
+            close_status: guardResult.closeStatus,
+        },
+        { status: 409 }
+    );
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
@@ -126,6 +139,11 @@ export async function POST(req: NextRequest) {
         if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
         if (!member || !["owner", "staff"].includes(String(member.role))) {
             return NextResponse.json({ error: "Owner or staff only" }, { status: 403 });
+        }
+
+        const guardResult = await checkDailyClose(currentShopId, currentBranchId);
+        if (guardResult.blocked) {
+            return businessDayClosedResponse(guardResult);
         }
 
         const { data: ing, error: ingErr } = await admin

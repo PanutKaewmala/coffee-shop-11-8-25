@@ -70,6 +70,15 @@ function pickUnitLabel(ing: AdjustStockIngredient): string {
     return "";
 }
 
+function getBackendMessage(data: unknown): { code: string | null; message: string | null } {
+    if (typeof data !== "object" || data === null) return { code: null, message: null };
+    const record = data as Record<string, unknown>;
+    return {
+        code: typeof record.code === "string" ? record.code : null,
+        message: typeof record.error === "string" ? record.error : null,
+    };
+}
+
 export default function AdjustStockForm({ ingredient, onClose, onUpdated }: Props) {
     const [reason, setReason] = useState<Reason>("in");
     const [amountText, setAmountText] = useState<string>("");
@@ -151,15 +160,13 @@ export default function AdjustStockForm({ ingredient, onClose, onUpdated }: Prop
             const data: unknown = await res.json().catch(() => null);
 
             if (!res.ok) {
-                const msg =
-                    data &&
-                        typeof data === "object" &&
-                        data !== null &&
-                        "error" in data &&
-                        typeof (data as { error?: unknown }).error === "string"
-                        ? String((data as { error: string }).error)
-                        : "ปรับสต็อกไม่สำเร็จ";
-                setErr(msg);
+                const backend = getBackendMessage(data);
+                if (backend.code === "BUSINESS_DAY_CLOSED" || backend.message?.includes("ปิดยอด")) {
+                    setErr("วันนี้ปิดยอดแล้ว — ไม่สามารถเพิ่มหรือปรับสต็อกของวันนี้ได้");
+                    return;
+                }
+
+                setErr(backend.message ?? "ปรับสต็อกไม่สำเร็จ");
                 return;
             }
 
@@ -256,7 +263,7 @@ export default function AdjustStockForm({ ingredient, onClose, onUpdated }: Prop
 
                 {/* error */}
                 {err && (
-                    <div className="text-sm rounded-lg border border-red-500/20 bg-red-500/10 text-red-300 px-3 py-2">
+                    <div className="text-sm rounded-lg border border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300 px-3 py-2">
                         {err}
                     </div>
                 )}

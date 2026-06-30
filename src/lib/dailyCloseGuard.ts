@@ -8,6 +8,8 @@ export interface DailyCloseGuardResult {
     blocked: boolean;
     businessDate: string;
     closeStatus: CloseStatus;
+    verificationFailed?: boolean;
+    errorCode?: "DAILY_CLOSE_CHECK_FAILED";
 }
 
 type DailyCloseQuery = {
@@ -51,7 +53,16 @@ export async function checkDailyClose(
 
     if (error) {
         console.error("[dailyCloseGuard] query failed:", error.message);
-        return { blocked: false, businessDate: date, closeStatus: null };
+
+        // Do not fail open for financial/stock write guards. Use a conservative
+        // blocking status so existing callers that check closeStatus still stop.
+        return {
+            blocked: true,
+            businessDate: date,
+            closeStatus: "closed",
+            verificationFailed: true,
+            errorCode: "DAILY_CLOSE_CHECK_FAILED",
+        };
     }
 
     const status = data?.status ?? null;

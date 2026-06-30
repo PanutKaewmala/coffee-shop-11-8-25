@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkDailyClose } from "@/lib/dailyCloseGuard";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -881,6 +882,18 @@ function normalizeNote(reason: PostReason | null, note: string | null): string |
     return `${prefix}${n || ""}`.trim() || null;
 }
 
+function businessDayClosedResponse(guardResult: Awaited<ReturnType<typeof checkDailyClose>>) {
+    return NextResponse.json(
+        {
+            error: "ปิดยอดของวันนี้แล้ว ไม่สามารถปรับสต็อกได้",
+            code: "BUSINESS_DAY_CLOSED",
+            business_date: guardResult.businessDate,
+            close_status: guardResult.closeStatus,
+        },
+        { status: 409 }
+    );
+}
+
 export async function POST(req: NextRequest) {
     try {
         const supabase = await getSupabaseServer();
@@ -932,6 +945,11 @@ export async function POST(req: NextRequest) {
 
         const note = typeof body.note === "string" ? body.note : null;
         const finalNote = normalizeNote(reason, note);
+
+        const guardResult = await checkDailyClose(currentShopId, currentBranchId);
+        if (guardResult.blocked) {
+            return businessDayClosedResponse(guardResult);
+        }
 
         // read ingredient current stock
         let ingQ = admin

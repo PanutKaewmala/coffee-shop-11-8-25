@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer, getCurrentContextFromCookies } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { checkDailyClose } from "@/lib/dailyCloseGuard";
 import type { IngredientUpdatePayload, UUID, BaseUnit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ type IngredientRow = {
 
     unit?: string | null;
     base_unit?: BaseUnit | null;
+    min_stock?: number | string | null;
 
     // ✅ archive system (ถ้า DB ยังไม่มี ก็จะเป็น undefined ได้ ไม่พัง)
     is_active?: boolean | null;
@@ -81,6 +83,18 @@ function mapIngredientDbError(msg: string): string {
     return msg;
 }
 
+function businessDayClosedResponse(guardResult: Awaited<ReturnType<typeof checkDailyClose>>) {
+    return NextResponse.json(
+        {
+            error: "ปิดยอดของวันนี้แล้ว ไม่สามารถแก้ไขสต็อกได้",
+            code: "BUSINESS_DAY_CLOSED",
+            business_date: guardResult.businessDate,
+            close_status: guardResult.closeStatus,
+        },
+        { status: 409 }
+    );
+}
+
 /* =========================================================
    base_unit helpers
 ========================================================= */
@@ -110,6 +124,7 @@ function normalizeIngredient(row: IngredientRow) {
 
         base_unit: base,
         unit: row.unit ?? null,
+        min_stock: toNumber(row.min_stock, 0),
 
         is_active,
         archived_at: row.archived_at ?? null,
@@ -257,6 +272,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "base_unit ไม่ถูกต้อง" }, { status: 400 });
         }
 
+        const guardResult = await checkDailyClose(currentShopId, currentBranchId);
+        if (guardResult.blocked) {
+            return businessDayClosedResponse(guardResult);
+        }
+
         // ✅ กันชื่อซ้ำ (ignore case)
         const { data: existing, error: existErr } = await admin
             .from("ingredients")
@@ -365,6 +385,7 @@ export async function PUT(req: NextRequest) {
         if (!isUuid(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
         const updateData: IngredientUpdatePayload = {};
+        const touchesStockState = "is_active" in body || "archived_at" in body;
 
         if ("name" in body) updateData.name = toStringOrNull(body.name) ?? undefined;
 
@@ -387,6 +408,13 @@ export async function PUT(req: NextRequest) {
         }
 
         updateData.updated_at = new Date().toISOString();
+
+        if (touchesStockState) {
+            const guardResult = await checkDailyClose(currentShopId, currentBranchId);
+            if (guardResult.blocked) {
+                return businessDayClosedResponse(guardResult);
+            }
+        }
 
         // กันชื่อซ้ำตอน rename
         if (updateData.name) {
@@ -486,6 +514,11 @@ export async function DELETE(req: NextRequest) {
         const wasActive = (ing as IngredientRow).is_active ?? true;
         if (!wasActive) {
             return NextResponse.json({ success: true, archived: true });
+        }
+
+        const guardResult = await checkDailyClose(currentShopId, currentBranchId);
+        if (guardResult.blocked) {
+            return businessDayClosedResponse(guardResult);
         }
 
         const before = toNumber((ing as IngredientRow).stock, 0);
