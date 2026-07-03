@@ -383,7 +383,7 @@ function ModalShell({
                             type="button"
                             onClick={onClose}
                             className="rounded-lg p-2 text-text-secondary hover:bg-white/10 hover:text-text-primary transition"
-                            aria-label="Close"
+                            aria-label="ปิด"
                         >
                             <X size={18} />
                         </button>
@@ -455,7 +455,7 @@ function CancelStockToggle({
 function paymentMethodLabel(method: string | undefined) {
     const m = (method ?? "").toLowerCase();
     if (m === "cash") return "เงินสด";
-    if (m === "promptpay") return "PromptPay";
+    if (m === "promptpay") return "พร้อมเพย์";
     return method ?? "-";
 }
 
@@ -545,7 +545,7 @@ function buildReceiptDocument({
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Receipt ${escapeReceiptHtml(receiptNumber)}</title>
+        <title>ใบเสร็จ ${escapeReceiptHtml(receiptNumber)}</title>
         <style>
             @page { size: ${pageSize}; margin: 0; }
             * { box-sizing: border-box; }
@@ -679,7 +679,7 @@ function ReceiptModal({
                             type="button"
                             onClick={closeModal}
                             className="rounded-lg p-2 text-text-secondary hover:bg-white/10 hover:text-text-primary transition"
-                            aria-label="Close"
+                            aria-label="ปิด"
                         >
                             <X size={18} />
                         </button>
@@ -862,7 +862,7 @@ export default function OrderDetailPage() {
         if (!orderId) {
             setLoading(false);
             setOrder(null);
-            setError("ไม่มี Order ID");
+            setError("ไม่มีเลขออเดอร์");
             return () => controller.abort();
         }
 
@@ -1004,7 +1004,7 @@ export default function OrderDetailPage() {
                     className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition"
                 >
                     <ArrowLeft size={18} />
-                    กลับไปหน้า Orders
+                    กลับไปหน้าออเดอร์
                 </Link>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-text-secondary">
                     {error ?? "ไม่พบข้อมูลออเดอร์"}
@@ -1022,7 +1022,7 @@ export default function OrderDetailPage() {
                     className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition"
                 >
                     <ArrowLeft size={18} />
-                    กลับไปหน้า Orders
+                    กลับไปหน้าออเดอร์
                 </Link>
 
                 <div className="flex items-center gap-2">
@@ -1030,7 +1030,7 @@ export default function OrderDetailPage() {
                         type="button"
                         onClick={() => onCopy(order.id)}
                         className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-secondary hover:bg-white/10 transition"
-                        title="คัดลอก Order ID"
+                        title="คัดลอกเลขออเดอร์"
                     >
                         {copied ? <Check size={14} /> : <Copy size={14} />}
                         <span className="font-mono">{shortId(order.id)}</span>
@@ -1046,10 +1046,10 @@ export default function OrderDetailPage() {
                                 ? "border border-red-500/25 bg-red-500/10 text-red-200 hover:bg-red-500/15"
                                 : "border border-white/10 bg-white/5 text-text-secondary opacity-60 cursor-not-allowed",
                         ].join(" ")}
-                        title={canCancel ? "ยกเลิกออเดอร์" : "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว (paid)"}
+                        title={canCancel ? "ยกเลิกออเดอร์" : "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว"}
                     >
                         <AlertTriangle size={14} />
-                        Cancel order
+                        ยกเลิกออเดอร์
                     </button>
 
                     <button
@@ -1080,7 +1080,7 @@ export default function OrderDetailPage() {
                             <StatusBadge status={order.status} />
                             <Pill>{itemsCount} รายการ</Pill>
                             <Pill>{qtyTotal} ชิ้น</Pill>
-                            {order.payment_method ? <Pill>จ่าย: {order.payment_method}</Pill> : null}
+                            {order.payment_method ? <Pill>วิธีจ่าย: {paymentMethodLabel(order.payment_method)}</Pill> : null}
                         </div>
                     </div>
 
@@ -1101,7 +1101,7 @@ export default function OrderDetailPage() {
                                 {order.payment_method === "cash"
                                     ? "เงินสด"
                                     : order.payment_method === "promptpay"
-                                        ? "PromptPay"
+                                        ? "พร้อมเพย์"
                                         : order.payment_method ?? "-"}
                             </div>
                         </div>
@@ -1199,7 +1199,7 @@ export default function OrderDetailPage() {
             <ModalShell open={cancelOpen} title="ยกเลิกออเดอร์" onClose={closeCancelModal}>
                 <div className="space-y-4">
                     <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs text-text-secondary opacity-70">Order</div>
+                        <div className="text-xs text-text-secondary opacity-70">เลขออเดอร์</div>
                         <div className="mt-1 font-mono text-sm">{shortId(order.id, 10, 10)}</div>
                     </div>
 
@@ -1275,7 +1275,7 @@ export default function OrderDetailPage() {
                                         ? "border border-red-500/35 bg-red-500/20 text-red-100 hover:bg-red-500/25"
                                         : "border border-red-500/25 bg-red-500/10 text-red-200 hover:bg-red-500/15",
                             ].join(" ")}
-                            title={!canCancel ? "ยกเลิกได้เฉพาะ status=paid" : ""}
+                            title={!canCancel ? "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว" : ""}
                         >
                             {cancelLoading
                                 ? "กำลังยกเลิก..."

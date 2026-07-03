@@ -332,7 +332,7 @@ export default function AdminOrdersPage() {
         };
     }, [filteredOrders, paidTotalToShow, paidCountToShow]);
 
-    const headers = ["#", "Order ID", "Status", "Payment", "Items", "Total", "Date"];
+    const headers = ["#", "เลขออเดอร์", "สถานะ", "การชำระเงิน", "รายการ", "ยอดรวม", "วันที่"];
 
     const rows = useMemo(() => {
         const list = (paginatedOrders as unknown as OrderRow[]) ?? [];
@@ -353,7 +353,7 @@ export default function AdminOrdersPage() {
 
             const paymentBadge = (() => {
                 const pm = (order.payment_method ?? "").toLowerCase();
-                if (pm === "promptpay") return "PromptPay";
+                if (pm === "promptpay") return "พร้อมเพย์";
                 if (pm === "cash") return "เงินสด";
                 return order.payment_method ?? "-";
             })();
@@ -424,7 +424,7 @@ export default function AdminOrdersPage() {
                                         setPage(1);
                                         setInputPage("1");
                                     }}
-                                    placeholder="ค้นหา Order ID / วันที่ / เวลา"
+                                    placeholder="ค้นหาเลขออเดอร์ / วันที่ / เวลา"
                                 />
                             </div>
 
@@ -476,8 +476,8 @@ export default function AdminOrdersPage() {
 
                             {/* SUMMARY */}
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 mb-6">
-                                <StatCard
-                                    label="ยอดขายสุทธิ (Net)"
+<StatCard
+                                    label="ยอดขายสุทธิ"
                                     value={`${formatMoneyTHB(computed.netSales)} บาท`}
                                     sub={
                                         computed.refundedValue > 0
@@ -488,14 +488,14 @@ export default function AdminOrdersPage() {
                                 />
 
                                 <StatCard
-                                    label="ยอดขายรวม (Paid)"
+                                    label="ยอดขายที่ชำระแล้ว"
                                     value={`${formatMoneyTHB(paidTotalToShow)} บาท`}
                                     sub={
                                         revToShow
                                             ? `เทียบช่วงก่อนหน้า: ${trendText(
-                                                revToShow.delta.total,
-                                                revToShow.percent.total
-                                            )}`
+                                                    revToShow.delta.total,
+                                                    revToShow.percent.total
+                                                )}`
                                             : null
                                     }
                                     subClass={revToShow ? trendClass(revToShow.delta.total) : "text-text-secondary"}
@@ -526,7 +526,7 @@ export default function AdminOrdersPage() {
                                 />
 
                                 <StatCard
-                                    label="บิลเฉลี่ย (AOV)"
+                                    label="บิลเฉลี่ย"
                                     value={`${formatMoneyTHB(computed.aov)} บาท`}
                                     sub={
                                         computed.unknownCount > 0
@@ -539,7 +539,7 @@ export default function AdminOrdersPage() {
                             {/* EMPTY */}
                             {isEmpty ? (
                                 <div className="p-6 rounded-xl bg-card border border-border/40 text-center">
-                                    <div className="text-lg font-semibold">ไม่เจอออเดอร์</div>
+                                    <div className="text-lg font-semibold">ไม่พบออเดอร์</div>
                                     <div className="text-text-secondary mt-1">
                                         ลองเปลี่ยนช่วงเวลา หรือเคลียร์คำค้นหา
                                     </div>
@@ -552,7 +552,7 @@ export default function AdminOrdersPage() {
                                     </div>
 
                                     <div className="text-xs text-text-secondary mt-2">
-                                        ทิป: คลิกที่ Order ID เพื่อดูรายละเอียด/ยกเลิกออเดอร์
+                                        คำแนะนำ: คลิกเลขออเดอร์เพื่อดูรายละเอียดหรือยกเลิก
                                     </div>
 
                                     {/* PAGINATION */}
