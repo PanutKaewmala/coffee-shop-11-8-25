@@ -446,7 +446,7 @@ export default function RecipesShell() {
 
     return (
         <div className="p-6">
-            <Card title="Recipes">
+            <Card title="สูตรเมนู">
                 {loadError ? (
                     <div className="mb-4 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-600">
                         {loadError}

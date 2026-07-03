@@ -257,13 +257,23 @@ function StatusBadge({ status }: { status: StockStatus }) {
     );
 }
 
-function TypeBadge({ type }: { type: StockLogType }) {
+function isSaleContext(row: StockLogItem): boolean {
+    const t = row.title ?? "";
+    const sub = row.subtitle ?? "";
+    const n = row.note ?? "";
+    if (t.includes("ขายผ่าน POS") || sub.includes("ขายผ่าน POS") || n.includes("ขายผ่าน POS")) return true;
+    if (row.order_id) return true;
+    if (row.order_menu_lines && row.order_menu_lines.length > 0) return true;
+    return false;
+}
+
+function TypeBadge({ row }: { row: StockLogItem }) {
     const base =
         "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium border border-white/10";
-    if (type === "add") return <span className={`${base} bg-green-500/10 text-green-700 dark:text-green-300`}>เพิ่ม</span>;
-    if (type === "restock") return <span className={`${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`}>คืนสต็อก</span>;
-    if (type === "waste") return <span className={`${base} bg-red-500/10 text-red-700 dark:text-red-300`}>ของเสีย</span>;
-    if (type === "deduct") return <span className={`${base} bg-white/10 text-[var(--text-secondary)]`}>ตัดออก</span>;
+    if (row.type === "add") return <span className={`${base} bg-green-500/10 text-green-700 dark:text-green-300`}>เพิ่ม</span>;
+    if (row.type === "restock") return <span className={`${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`}>คืนสต็อก</span>;
+    if (row.type === "waste") return <span className={`${base} bg-red-500/10 text-red-700 dark:text-red-300`}>ของเสีย</span>;
+    if (row.type === "deduct") return <span className={`${base} bg-white/10 text-[var(--text-secondary)]`}>{isSaleContext(row) ? "ขาย" : "ตัดออก"}</span>;
     return <span className={`${base} bg-blue-500/10 text-blue-700 dark:text-blue-300`}>ปรับยอด</span>;
 }
 
@@ -277,7 +287,7 @@ function fallbackMovementTitle(type: StockLogType): string {
     if (type === "add") return "เพิ่มสต็อก";
     if (type === "restock") return "คืนสต็อกจากออเดอร์ที่ยกเลิก";
     if (type === "waste") return "ของเสีย/ไม่คืนสต็อก";
-    if (type === "deduct") return "ตัดออกจากการขาย";
+    if (type === "deduct") return "ตัดออก";
     return "ปรับยอด";
 }
 
@@ -922,7 +932,7 @@ export default function IngredientDetailPage() {
                                             ? r.after_stock - r.before_stock
                                             : r.type === "deduct" || r.type === "waste"
                                                 ? -Math.abs(amt)
-                                                : Math.abs(amt);
+: Math.abs(amt);
                                     const signAmt = Math.round(rawDelta);
                                     const signAmtText = signAmt > 0 ? `+${signAmt}` : String(signAmt);
                                     const amtClass =
@@ -936,7 +946,7 @@ export default function IngredientDetailPage() {
                                         <tr key={r.id} className="border-b border-white/5">
                                             <td className="py-2 pr-3 whitespace-nowrap">{formatDT(r.created_at)}</td>
                                             <td className="py-2 pr-3 whitespace-nowrap">
-                                                <TypeBadge type={r.type} />
+                                                <TypeBadge row={r} />
                                             </td>
                                             <td className="py-2 pr-3 whitespace-nowrap">
                                                 <span className={`font-semibold tabular-nums ${amtClass}`}>

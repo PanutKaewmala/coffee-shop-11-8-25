@@ -33,30 +33,30 @@ type NavItem = {
 ================================ */
 const navSections: { title: string; items: NavItem[] }[] = [
     {
-        title: "Overview",
-        items: [{ label: "Dashboard", path: "/admin" }],
+        title: "ภาพรวม",
+        items: [{ label: "หน้าหลัก", path: "/admin" }],
     },
     {
-        title: "Product Management",
+        title: "จัดการสินค้า",
         items: [
-            { label: "Menu", path: "/admin/menu" },
+            { label: "เมนู", path: "/admin/menu" },
             {
-                label: "Ingredients",
+                label: "วัตถุดิบ",
                 path: "/admin/ingredients",
-                children: [{ label: "Archived", path: "/admin/ingredients/archived" }],
+                children: [{ label: "คลังเก่า", path: "/admin/ingredients/archived" }],
             },
-            { label: "Recipes", path: "/admin/recipes" },
-            { label: "Stock History", path: "/admin/stock" },
+            { label: "สูตรเมนู", path: "/admin/recipes" },
+            { label: "ประวัติสต็อก", path: "/admin/stock" },
         ],
     },
     {
-        title: "Business Operations",
+        title: "การดำเนินธุรกิจ",
         items: [
-            { label: "Orders", path: "/admin/orders" },
-            { label: "Daily Close", path: "/admin/daily-close" },
-            { label: "News", path: "/admin/news" },
-            { label: "Branches", path: "/admin/branch" },
-            { label: "Contact", path: "/admin/contact" },
+            { label: "ออเดอร์", path: "/admin/orders" },
+            { label: "ปิดยอดวัน", path: "/admin/daily-close" },
+            { label: "ข่าวสาร", path: "/admin/news" },
+            { label: "สาขา", path: "/admin/branch" },
+            { label: "ติดต่อ", path: "/admin/contact" },
         ],
     },
 ];

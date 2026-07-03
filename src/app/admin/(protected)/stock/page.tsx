@@ -67,8 +67,17 @@ function rowFlags(ev: StockEvent) {
     return flags.length ? flags.join(" ") : "";
 }
 
-function stockActionMeta(type: StockEvent["type"]) {
-    switch (type) {
+function isSaleContext(ev: StockEvent): boolean {
+    const t = ev.title ?? "";
+    if (t.includes("ขายผ่าน POS")) return true;
+    if (ev.order_id) return true;
+    const lines = ev.order_menu_lines as unknown as OrderHintLine[] | undefined;
+    if (lines && lines.length > 0) return true;
+    return false;
+}
+
+function stockActionMeta(ev: StockEvent) {
+    switch (ev.type) {
         case "add":
             return {
                 label: "เพิ่มสต็อก",
@@ -86,7 +95,7 @@ function stockActionMeta(type: StockEvent["type"]) {
             };
         case "deduct":
             return {
-                label: "ตัดออก",
+                label: isSaleContext(ev) ? "ขาย" : "ตัดออก",
                 className: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
             };
         case "adjust":
@@ -229,7 +238,7 @@ export default function StockHistoryPage() {
             const ref = hintForReference(ev);
             const impact = fmtSignedImpactCompact(ev);
 
-            const action = stockActionMeta(ev.type);
+            const action = stockActionMeta(ev);
 
             return [
                 <div key={`${ev.event_id}-time`} className="whitespace-nowrap">
@@ -282,7 +291,7 @@ export default function StockHistoryPage() {
         return sorted.slice(0, 3);
     }, [selectedEvent]);
 
-    const selectedAction = selectedEvent ? stockActionMeta(selectedEvent.type) : null;
+    const selectedAction = selectedEvent ? stockActionMeta(selectedEvent) : null;
 
     const criticalTop = useMemo(() => {
         const out = criticalItems.filter((x) => x.status === "out");
