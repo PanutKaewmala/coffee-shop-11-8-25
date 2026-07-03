@@ -89,7 +89,7 @@ export default function AddIngredientModal({
     const selectedIngredientUnitLabel = unitLabelOf(selectedIngredient) || (draft.ingredient_unit ?? "").trim();
 
     const qty = parsePositiveNumber(qtyInput);
-    const quantityError = qtyTouched && qty == null ? "Quantity must be greater than 0" : null;
+    const quantityError = qtyTouched && qty == null ? "ต้องมากกว่า 0" : null;
     const canSave = Boolean(draft.variant_id && draft.ingredient_id && qty != null);
 
     if (!open) return null;
@@ -97,9 +97,9 @@ export default function AddIngredientModal({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-lg rounded-2xl bg-[var(--surface)] border border-[var(--text-muted)]/20 shadow-xl p-5">
-                <div className="mb-4 text-lg font-semibold">{isAdd ? "Add Ingredient" : "Edit Ingredient"}</div>
+                <div className="mb-4 text-lg font-semibold">{isAdd ? "เพิ่มวัตถุดิบ" : "แก้ไขวัตถุดิบ"}</div>
 
-                <label className="mb-1 block text-sm text-[var(--text-muted)]">Variant</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">ตัวเลือก</label>
                 <select
                     className="mb-3 w-full rounded-lg border border-text-muted/40 bg-background p-2 disabled:cursor-not-allowed disabled:opacity-70"
                     value={draft.variant_id}
@@ -113,7 +113,7 @@ export default function AddIngredientModal({
                     ))}
                 </select>
 
-                <label className="mb-1 block text-sm text-[var(--text-muted)]">Ingredient</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">วัตถุดิบ</label>
                 {lockIngredient ? (
                     <div className="mb-3 rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm">
                         <div className="font-medium">{selectedIngredientName}</div>
@@ -130,22 +130,22 @@ export default function AddIngredientModal({
                             disabledIds={disabledIds}
                             recentIds={recentIds}
                             onPickRecent={onPickRecent}
-                            emptyHint="No ingredient found - create it in Ingredients first"
+                            emptyHint="ไม่พบวัตถุดิบ — สร้างได้ที่หน้าวัตถุดิบก่อน"
                         />
                     </div>
                 )}
 
                 {duplicateSelected ? (
                     <div className="mb-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm">
-                        This ingredient already exists in this recipe. Saving will update quantity.
+                        วัตถุดิบนี้อยู่ในสูตรแล้ว หากบันทึก ระบบจะอัปเดตจำนวนให้
                     </div>
                 ) : null}
 
-                <label className="mb-1 block text-sm text-[var(--text-muted)]">Quantity (per drink)</label>
+                <label className="mb-1 block text-sm text-[var(--text-muted)]">จำนวนต่อแก้ว</label>
                 <input
                     type="text"
                     inputMode="decimal"
-                    placeholder="e.g. 1, 0.5, 12.5"
+                    placeholder="เช่น 1, 0.5, 12.5"
                     className="mb-1 w-full rounded-lg border border-text-muted/40 bg-background p-2"
                     value={qtyInput}
                     onChange={(e) => {
@@ -162,13 +162,13 @@ export default function AddIngredientModal({
                     }}
                 />
                 {selectedIngredientUnitLabel ? (
-                    <div className="mb-1 text-xs text-[var(--text-secondary)]">Unit: {selectedIngredientUnitLabel}</div>
+                    <div className="mb-1 text-xs text-[var(--text-secondary)]">หน่วย: {selectedIngredientUnitLabel}</div>
                 ) : null}
                 {quantityError ? <div className="mb-2 text-xs text-red-400">{quantityError}</div> : null}
 
                 <div className="flex justify-end gap-2 pt-1">
                     <Button variant="outline" onClick={onClose}>
-                        Cancel
+                        ยกเลิก
                     </Button>
                     <Button
                         disabled={!canSave}
@@ -183,7 +183,7 @@ export default function AddIngredientModal({
                             });
                         }}
                     >
-                        Save
+                        บันทึก
                     </Button>
                 </div>
             </div>

@@ -29,7 +29,7 @@ export default function VariantSelector({
     }
 
     return (
-        <div className="space-y-2" role="listbox" aria-label="Recipe variants">
+        <div className="space-y-2" role="listbox" aria-label="ตัวเลือกสูตร">
             {variants.map((v) => (
                 <button
                     key={v.variant_id}
@@ -57,7 +57,7 @@ export default function VariantSelector({
                                 : "border-amber-400/40 text-amber-300",
                         ].join(" ")}
                     >
-                        {v.isReadyForPos ? "Ready" : "Missing recipe"}
+                        {v.isReadyForPos ? "พร้อมขาย" : "ยังไม่มีสูตร"}
                     </span>
                 </button>
             ))}

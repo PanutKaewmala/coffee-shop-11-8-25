@@ -51,14 +51,14 @@ export default function RecipeItemsTable({
         const actionsCell = (
             <div key={`a-${r.id}`} className="flex gap-2">
                 {readOnly ? (
-                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                    <span className="text-xs text-[var(--text-secondary)]">ดูอย่างเดียว</span>
                 ) : (
                     <>
                         <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
-                            Edit
+                            แก้ไข
                         </Button>
                         <Button variant="destructive" size="sm" onClick={() => onDelete(r.id)}>
-                            Delete
+                            ลบ
                         </Button>
                     </>
                 )}
@@ -68,5 +68,5 @@ export default function RecipeItemsTable({
         return [nameCell, qtyCell, actionsCell];
     });
 
-    return <Table headers={["Ingredient", "Qty", "Actions"]} data={data} />;
+    return <Table headers={["วัตถุดิบ", "จำนวน", "จัดการ"]} data={data} />;
 }

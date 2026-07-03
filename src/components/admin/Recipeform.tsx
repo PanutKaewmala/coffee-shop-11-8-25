@@ -97,19 +97,19 @@ export default function RecipeForm({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-surface text-text-primary p-6 rounded-2xl w-full max-w-md shadow-xl border border-text-muted/20">
                 <h2 className="text-xl font-semibold mb-4">
-                    {initialData ? "Edit Recipe" : "Add Recipe"}
+                    {initialData ? "แก้ไขสูตร" : "เพิ่มสูตร"}
                 </h2>
 
                 <div className="space-y-4">
                     {/* Menu */}
                     <div>
                         <label className="block mb-1 font-medium text-text-secondary">
-                            Menu
+                            เมนู
                         </label>
 
                         <Select value={menuId} onValueChange={setMenuId}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Select menu" />
+                                <SelectValue placeholder="เลือกเมนู" />
                             </SelectTrigger>
 
                             <SelectContent>
@@ -125,12 +125,12 @@ export default function RecipeForm({
                     {/* Ingredient */}
                     <div>
                         <label className="block mb-1 font-medium text-text-secondary">
-                            Ingredient
+                            วัตถุดิบ
                         </label>
 
                         <Select value={ingredientId} onValueChange={setIngredientId}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Select ingredient" />
+                                <SelectValue placeholder="เลือกวัตถุดิบ" />
                             </SelectTrigger>
 
                             <SelectContent>
@@ -146,7 +146,7 @@ export default function RecipeForm({
                     {/* Quantity */}
                     <div>
                         <label className="block mb-1 font-medium text-text-secondary">
-                            Quantity (per drink)
+                            จำนวนต่อ 1 เครื่อง
                         </label>
 
                         <input
@@ -179,11 +179,11 @@ export default function RecipeForm({
 
                 <div className="flex justify-end gap-2 mt-6">
                     <Button variant="outline" onClick={onClose}>
-                        Cancel
+                        ยกเลิก
                     </Button>
 
                     <Button onClick={handleSubmit}>
-                        {initialData ? "Update" : "Save"}
+                        {initialData ? "อัปเดต" : "บันทึก"}
                     </Button>
                 </div>
             </div>
