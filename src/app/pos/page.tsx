@@ -251,7 +251,7 @@ function getBangkokToday(): string {
 }
 
 function paymentMethodLabel(method: "cash" | "promptpay") {
-    return method === "cash" ? "เงินสด" : "PromptPay";
+    return method === "cash" ? "เงินสด" : "พร้อมเพย์";
 }
 
 function generateIdempotencyKey(): string {
@@ -414,7 +414,7 @@ export default function POSPage() {
                 setDailyCloseStatus(status);
             } catch (err) {
                 if (!alive) return;
-                const message = err instanceof Error ? err.message : "Failed to load daily close status";
+                const message = err instanceof Error ? err.message : "โหลดสถานะปิดยอดวันไม่สำเร็จ";
                 setDailyCloseError(message);
                 setDailyCloseStatus(null);
             } finally {
@@ -1145,7 +1145,7 @@ export default function POSPage() {
                                     : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
                             ].join(" ")}
                         >
-                            PromptPay / QR
+                            พร้อมเพย์ / QR
                         </button>
                     </div>
 
@@ -1272,14 +1272,14 @@ export default function POSPage() {
                                         <div className="break-words">{receiptBranchAddress}</div>
                                     ) : null}
                                     {receiptBranchPhone ? (
-                                        <div className="break-words">Tel / โทร: {receiptBranchPhone}</div>
+                                        <div className="break-words">โทร: {receiptBranchPhone}</div>
                                     ) : null}
                                     {receiptTaxId ? (
-                                        <div className="break-words">Tax ID / เลขผู้เสียภาษี: {receiptTaxId}</div>
+                                        <div className="break-words">เลขผู้เสียภาษี: {receiptTaxId}</div>
                                     ) : null}
                                 </div>
                                 <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
-                                    Receipt #{receiptData.orderId ? receiptData.orderId.slice(-8) : "XXXXXX"}
+                                    เลขที่ใบเสร็จ #{receiptData.orderId ? receiptData.orderId.slice(-8) : "XXXXXX"}
                                 </p>
                             </div>
                             <button
@@ -1348,12 +1348,11 @@ export default function POSPage() {
                                 <div className="whitespace-pre-wrap break-words text-center text-sm text-text-primary print:text-black print:text-xs print:leading-tight">
                                     {receiptFooter}
                                 </div>
-                            ) : (
+) : (
                                 <>
                                     <div className="text-center text-base font-medium text-text-primary print:text-black print:text-sm print:font-normal">
                                         ขอบคุณที่ใช้บริการ
                                     </div>
-                                    <div className="text-center text-xs text-text-muted print:text-gray-700 print:text-xs">Thank you</div>
                                 </>
                             )}
                         </div>
