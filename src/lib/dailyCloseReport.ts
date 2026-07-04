@@ -401,28 +401,28 @@ export async function computeDailyCloseReport(
     if (legacyPaidRows.length > 0) {
         dataQuality.push({
             code: "PAID_AT_FALLBACK",
-            message: "Some paid orders used created_at because paid_at was missing.",
+            message: "บางออเดอร์ใช้เวลาสร้างออเดอร์แทนเวลาชำระเงิน",
             count: legacyPaidRows.length,
         });
     }
     if (cashDataMissingCount > 0) {
         dataQuality.push({
             code: "CASH_DATA_MISSING",
-            message: "Some cash orders are missing paid_amount or change_amount.",
+            message: "บางออเดอร์เงินสดมีข้อมูลเงินรับหรือเงินทอนไม่ครบ",
             count: cashDataMissingCount,
         });
     }
     if (unknownOrderCount > 0) {
         dataQuality.push({
             code: "UNKNOWN_PAYMENT_METHOD",
-            message: "Some paid orders have an unknown payment method.",
+            message: "บางออเดอร์ไม่มีวิธีชำระเงิน",
             count: unknownOrderCount,
         });
     }
     if (Math.abs(paidTotal - paymentTotal) > 0.001) {
         dataQuality.push({
             code: "PAYMENT_RECONCILIATION_MISMATCH",
-            message: "Paid sales do not reconcile with the payment-method breakdown.",
+            message: "ยอดขายรวมไม่ตรงกับยอดแยกตามวิธีชำระเงิน",
         });
     }
 
