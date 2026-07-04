@@ -93,7 +93,7 @@ export default function IngredientCombobox({
     placeholder = "พิมพ์เพื่อค้นหา...",
     recentIds = [],
     onPickRecent,
-    emptyHint = "ไม่เจอวัตถุดิบ — ไปเพิ่มที่ Ingredients",
+    emptyHint = "ไม่เจอวัตถุดิบ ไปเพิ่มที่หน้าวัตถุดิบก่อน",
 }: Props) {
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -318,7 +318,7 @@ export default function IngredientCombobox({
                         }}
                         title="ล้าง"
                     >
-                        x
+                        ×
                     </button>
                 )}
             </div>

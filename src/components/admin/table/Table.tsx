@@ -98,7 +98,7 @@ const Table: React.FC<TableProps> = ({
                                     colSpan={headers.length}
                                     className="px-4 py-6 text-center text-[var(--text-muted)]"
                                 >
-                                    No data available
+                                    ยังไม่มีข้อมูล
                                 </td>
                             </tr>
                         ) : (
@@ -136,7 +136,7 @@ const Table: React.FC<TableProps> = ({
             <div className="sm:hidden space-y-4">
                 {data.length === 0 ? (
                     <div className="text-center text-[var(--text-muted)]">
-                        No data available
+                        ยังไม่มีข้อมูล
                     </div>
                 ) : (
                     data.map((row, rowIndex) => (

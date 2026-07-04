@@ -231,7 +231,7 @@ export default function MenuFormModal({
             const num = Number(v);
 
             if (!v || Number.isNaN(num) || num <= 0) {
-                next.servePricing = "มีราคา override บางอันไม่ถูกต้อง (ต้องเป็นเลขมากกว่า 0)";
+                next.servePricing = "มีราคาที่ตั้งเฉพาะบางรายการไม่ถูกต้อง (ต้องเป็นเลขมากกว่า 0)";
                 break;
             }
         }
@@ -286,7 +286,7 @@ export default function MenuFormModal({
             await onSubmit(payload);
             onClose();
         } catch (e: unknown) {
-            setSubmitError(e instanceof Error ? e.message : "Save failed");
+            setSubmitError(e instanceof Error ? e.message : "บันทึกเมนูไม่สำเร็จ");
         } finally {
             setSubmitting(false);
         }
@@ -295,14 +295,14 @@ export default function MenuFormModal({
     const footer = (
         <div className="flex items-center justify-between gap-3">
             <div className="text-xs text-[var(--text-muted)]">
-                {submitting ? "กำลังบันทึก..." : "ตรวจสอบข้อมูลก่อนกด Add/Update"}
+                {submitting ? "กำลังบันทึก..." : "ตรวจสอบข้อมูลก่อนบันทึก"}
             </div>
             <div className="flex gap-2">
                 <Button variant="outline" onClick={onClose} disabled={submitting}>
-                    Cancel
+                    ยกเลิก
                 </Button>
                 <Button onClick={handleSubmit} disabled={submitting}>
-                    {initialValues ? "Update" : "Add"}
+                    {initialValues ? "บันทึก" : "เพิ่ม"}
                 </Button>
             </div>
         </div>
@@ -312,7 +312,7 @@ export default function MenuFormModal({
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={initialValues ? "Edit Menu" : "Add Menu"}
+            title={initialValues ? "แก้ไขเมนู" : "เพิ่มเมนู"}
             footer={footer}
             maxWidthClassName="max-w-xl"
         >
@@ -325,7 +325,7 @@ export default function MenuFormModal({
                 {/* CATEGORY */}
                 <div>
                     <label className="block text-sm font-medium mb-1">
-                        Category <span className="text-red-500">*</span>
+                        หมวดเมนู <span className="text-red-500">*</span>
                     </label>
 
                     <div className="flex gap-2 items-start">
@@ -366,7 +366,7 @@ export default function MenuFormModal({
                         </div>
 
                         <Button variant="outline" onClick={onOpenCategoryModal} disabled={submitting}>
-                            + Add
+                            + เพิ่ม
                         </Button>
                     </div>
                 </div>
@@ -374,11 +374,11 @@ export default function MenuFormModal({
                 {/* NAME */}
                 <div>
                     <label className="block text-sm font-medium mb-1">
-                        Name <span className="text-red-500">*</span>
+                        ชื่อเมนู <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="text"
-                        placeholder="Menu name"
+                        placeholder="ชื่อเมนู"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         className="w-full border rounded-md p-2 bg-transparent"
@@ -390,11 +390,11 @@ export default function MenuFormModal({
                 {/* PRICE */}
                 <div>
                     <label className="block text-sm font-medium mb-1">
-                        Base Price <span className="text-red-500">*</span>
+                        ราคาพื้นฐาน <span className="text-red-500">*</span>
                     </label>
                     <input
                         type="number"
-                        placeholder="Price"
+                        placeholder="ราคา"
                         value={price}
                         onChange={(e) => setPrice(e.target.value)}
                         className="w-full border rounded-md p-2 bg-transparent"
@@ -402,7 +402,7 @@ export default function MenuFormModal({
                     />
                     {errors.price && <p className="mt-1 text-xs text-red-500">{errors.price}</p>}
                     <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        ราคานี้คือ “ฐาน” — ถ้า serve ไหนไม่ override จะใช้ราคานี้
+                        ราคานี้เป็นราคาพื้นฐาน หากรูปแบบไหนไม่ได้ตั้งราคาเฉพาะ ระบบจะใช้ราคานี้
                     </p>
                 </div>
 
@@ -410,7 +410,7 @@ export default function MenuFormModal({
                 <div>
                     <div className="flex items-end justify-between gap-3 mb-2">
                         <label className="block text-sm font-medium">
-                            Serve Types <span className="text-red-500">*</span>
+                            รูปแบบการขาย <span className="text-red-500">*</span>
                         </label>
 
                         <div className="text-xs text-[var(--text-muted)]">
@@ -426,7 +426,7 @@ export default function MenuFormModal({
                         <input
                             value={serveQuery}
                             onChange={(e) => setServeQuery(e.target.value)}
-                            placeholder="ค้นหาเสิร์ฟ..."
+                            placeholder="ค้นหารูปแบบการขาย..."
                             className="flex-1 p-2 rounded-md bg-transparent border border-[var(--text-muted)]/40"
                             disabled={submitting}
                         />
@@ -435,14 +435,14 @@ export default function MenuFormModal({
                             onClick={clearServe}
                             disabled={submitting || serveTypes.length === 0}
                         >
-                            Clear
+                            ล้าง
                         </Button>
                         <Button
                             variant="outline"
                             onClick={selectAllFilteredServe}
                             disabled={submitting || filteredServeTypes.length === 0}
                         >
-                            Select all
+                            เลือกทั้งหมด
                         </Button>
                     </div>
 
@@ -462,7 +462,7 @@ export default function MenuFormModal({
                             ))}
                             {serveTypes.length > 12 && (
                                 <span className="text-xs text-[var(--text-muted)] self-center">
-                                    +{serveTypes.length - 12} more
+                                    +อีก {serveTypes.length - 12}
                                 </span>
                             )}
                         </div>
@@ -470,7 +470,7 @@ export default function MenuFormModal({
 
                     <div className="border rounded-md p-3 bg-[var(--surface)] max-h-56 overflow-y-auto">
                         {filteredServeTypes.length === 0 ? (
-                            <div className="text-sm text-[var(--text-muted)]">ไม่พบประเภทเสิร์ฟ</div>
+                            <div className="text-sm text-[var(--text-muted)]">ไม่พบรูปแบบการขาย</div>
                         ) : (
                             <div className="grid grid-cols-2 gap-2">
                                 {filteredServeTypes.map((opt) => (
@@ -501,21 +501,21 @@ export default function MenuFormModal({
                         onClick={onOpenServeModal}
                         disabled={submitting}
                     >
-                        + Add Serve Type
+                        + เพิ่มรูปแบบการขาย
                     </Button>
 
                     {/* ✅ Serve pricing table */}
                     {serveTypes.length > 0 && (
                         <div className="mt-4">
                             <div className="text-sm font-medium mb-2">
-                                ตั้งราคาแยกตาม Serve (optional)
+                                ตั้งราคาแยกตามรูปแบบการขาย (ไม่บังคับ)
                             </div>
 
                             <div className="border rounded-md overflow-hidden">
                                 <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-[var(--surface)] text-xs text-[var(--text-muted)]">
-                                    <div className="col-span-4">Serve</div>
-                                    <div className="col-span-3">Override?</div>
-                                    <div className="col-span-5">Price override</div>
+                                    <div className="col-span-4">รูปแบบ</div>
+                                    <div className="col-span-3">ตั้งราคาเฉพาะ?</div>
+                                    <div className="col-span-5">ราคาที่ตั้งเฉพาะ</div>
                                 </div>
 
                                 <div className="divide-y divide-[var(--text-muted)]/20">
@@ -549,7 +549,7 @@ export default function MenuFormModal({
                                                             disabled={submitting}
                                                         />
                                                         <span className="text-[var(--text-muted)]">
-                                                            override
+                                                            ตั้งเอง
                                                         </span>
                                                     </label>
                                                 </div>
@@ -564,7 +564,7 @@ export default function MenuFormModal({
                                                                 [s]: e.target.value,
                                                             }))
                                                         }
-                                                        placeholder={`ถ้าไม่ override จะใช้ ${price || "base"} บาท`}
+                                                        placeholder={`ถ้าไม่ตั้งราคาเฉพาะ จะใช้ ${price || "ราคาพื้นฐาน"} บาท`}
                                                         disabled={submitting || !on}
                                                         className="w-full border rounded-md p-2 bg-transparent disabled:opacity-50"
                                                     />
@@ -580,7 +580,7 @@ export default function MenuFormModal({
                             )}
 
                             <p className="mt-2 text-xs text-[var(--text-muted)]">
-                                สูตร/สต็อกจะผูกกับ “variant ต่อ serve” — ตั้งราคาที่นี่แล้ว POS จะไม่มั่ว
+                                สูตรและสต็อกจะผูกกับตัวเลือกของแต่ละรูปแบบการขาย ตั้งราคาให้ครบเพื่อให้หน้าขายแสดงถูกต้อง
                             </p>
                         </div>
                     )}
@@ -588,7 +588,7 @@ export default function MenuFormModal({
 
                 {/* DESCRIPTION */}
                 <div>
-                    <label className="block text-sm font-medium mb-1">Description (optional)</label>
+                    <label className="block text-sm font-medium mb-1">รายละเอียด (ไม่บังคับ)</label>
                     <textarea
                         placeholder="รายละเอียดเมนู"
                         value={description}
@@ -600,7 +600,7 @@ export default function MenuFormModal({
 
                 {/* IMAGE */}
                 <div>
-                    <label className="block text-sm font-medium mb-1">Image (optional)</label>
+                    <label className="block text-sm font-medium mb-1">รูปภาพ (ไม่บังคับ)</label>
                     <input
                         type="file"
                         accept="image/*"

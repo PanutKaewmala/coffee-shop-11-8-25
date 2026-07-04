@@ -55,7 +55,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             setLoading(true);
             const res = await fetch("/api/menu/serves", { cache: "no-store" });
             if (!res.ok) {
-                const msg = await readApiError(res, "Failed to load serve types");
+                const msg = await readApiError(res, "โหลดรูปแบบการขายไม่สำเร็จ");
                 setActionError(msg);
                 setItems([]);
                 return;
@@ -66,7 +66,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
         } catch (err) {
             void err;
             setItems([]);
-            setActionError("Unexpected error while loading serve types");
+            setActionError("เกิดข้อผิดพลาดระหว่างโหลดรูปแบบการขาย");
         } finally {
             setLoading(false);
         }
@@ -75,7 +75,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
     async function handleAdd() {
         const name = input.trim();
         if (!name) {
-            setActionError("Please enter serve type name");
+            setActionError("กรุณากรอกชื่อรูปแบบการขาย");
             return;
         }
 
@@ -88,7 +88,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             });
 
             if (!res.ok) {
-                const msg = await readApiError(res, "Failed to add serve type");
+                const msg = await readApiError(res, "เพิ่มรูปแบบการขายไม่สำเร็จ");
                 setActionError(msg);
                 return;
             }
@@ -98,14 +98,14 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             onAdded?.();
         } catch (err) {
             void err;
-            setActionError("Unexpected error while adding serve type");
+            setActionError("เกิดข้อผิดพลาดระหว่างเพิ่มรูปแบบการขาย");
         }
     }
 
     async function handleSaveEdit(id: string) {
         const name = editingValue.trim();
         if (!name) {
-            setActionError("Please enter serve type name");
+            setActionError("กรุณากรอกชื่อรูปแบบการขาย");
             return;
         }
 
@@ -118,7 +118,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             });
 
             if (!res.ok) {
-                const msg = await readApiError(res, "Failed to update serve type");
+                const msg = await readApiError(res, "แก้ไขรูปแบบการขายไม่สำเร็จ");
                 setActionError(msg);
                 return;
             }
@@ -129,19 +129,19 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             onAdded?.();
         } catch (err) {
             void err;
-            setActionError("Unexpected error while updating serve type");
+            setActionError("เกิดข้อผิดพลาดระหว่างแก้ไขรูปแบบการขาย");
         }
     }
 
     async function handleDelete(id: string) {
-        if (!confirm("Delete this serve type?")) return;
+        if (!confirm("ลบรูปแบบการขายนี้?")) return;
 
         setActionError("");
         try {
             const res = await fetch(`/api/menu/serves?id=${id}`, { method: "DELETE" });
 
             if (!res.ok) {
-                const msg = await readApiError(res, "Failed to delete serve type");
+                const msg = await readApiError(res, "ลบรูปแบบการขายไม่สำเร็จ");
                 setActionError(msg);
                 return;
             }
@@ -155,7 +155,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
             onAdded?.();
         } catch (err) {
             void err;
-            setActionError("Unexpected error while deleting serve type");
+            setActionError("เกิดข้อผิดพลาดระหว่างลบรูปแบบการขาย");
         }
     }
 
@@ -176,25 +176,25 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Manage Serve Types">
+        <Modal isOpen={isOpen} onClose={onClose} title="จัดการรูปแบบการขาย">
             <div className="max-w-xl w-full">
                 <div className="flex gap-2 mb-3">
                     <input
                         className="flex-1 p-2 border rounded bg-transparent"
-                        placeholder="Add new serve type..."
+                        placeholder="เพิ่มรูปแบบการขายใหม่..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === "Enter") void handleAdd();
                         }}
                     />
-                    <Button onClick={() => void handleAdd()}>Add</Button>
+                    <Button onClick={() => void handleAdd()}>เพิ่ม</Button>
                 </div>
 
                 <div className="mb-3">
                     <input
                         className="w-full p-2 border rounded bg-transparent"
-                        placeholder="Search..."
+                        placeholder="ค้นหารูปแบบการขาย..."
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                     />
@@ -208,9 +208,9 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
 
                 <div className="border rounded p-2 max-h-[360px] overflow-auto">
                     {loading ? (
-                        <div className="p-4 text-sm text-[var(--text-secondary)]">Loading...</div>
+                        <div className="p-4 text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
                     ) : filtered.length === 0 ? (
-                        <div className="p-4 text-sm text-[var(--text-secondary)]">No serve types found</div>
+                        <div className="p-4 text-sm text-[var(--text-secondary)]">ยังไม่มีรูปแบบการขาย</div>
                     ) : (
                         filtered.map((item) => (
                             <div
@@ -244,7 +244,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                                                 className="text-sm text-blue-500 hover:underline"
                                                 onClick={() => void handleSaveEdit(item.id)}
                                             >
-                                                Save
+                                                บันทึก
                                             </button>
                                             <button
                                                 className="text-sm text-gray-400 hover:underline"
@@ -253,7 +253,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                                                     setEditingValue("");
                                                 }}
                                             >
-                                                Cancel
+                                                ยกเลิก
                                             </button>
                                         </>
                                     ) : (
@@ -266,13 +266,13 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                                                     setEditingValue(item.name);
                                                 }}
                                             >
-                                                Edit
+                                                แก้ไข
                                             </button>
                                             <button
                                                 className="text-sm text-red-500 hover:underline"
                                                 onClick={() => void handleDelete(item.id)}
                                             >
-                                                Delete
+                                                ลบ
                                             </button>
                                         </>
                                     )}
@@ -283,7 +283,7 @@ export default function AddServeTypeModal({ isOpen, onClose, onAdded }: Props) {
                 </div>
 
                 <div className="mt-3 text-xs text-[var(--text-secondary)]">
-                    Search to filter list. Use Edit for inline rename and press Enter to save.
+                    ค้นหาเพื่อกรองรายการ กดแก้ไขเพื่อเปลี่ยนชื่อ แล้วกด Enter เพื่อบันทึก
                 </div>
             </div>
         </Modal>

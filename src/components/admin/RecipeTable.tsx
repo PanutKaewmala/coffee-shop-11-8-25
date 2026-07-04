@@ -66,15 +66,15 @@ export default function RecipeTable({
     const isNew = isRecipeItemView(first);
 
     // --- Headers
-    const baseHeadersNew = ["Variant", "Ingredient", "Quantity", "Actions"];
-    const baseHeadersLegacy = ["Menu", "Ingredient", "Quantity", "Actions"];
+    const baseHeadersNew = ["ตัวเลือก", "วัตถุดิบ", "ปริมาณ", "จัดการ"];
+    const baseHeadersLegacy = ["เมนู", "วัตถุดิบ", "ปริมาณ", "จัดการ"];
 
     const headers = (() => {
         if (!isNew) return baseHeadersLegacy;
 
         // ✅ ถ้าเลือก variant แล้ว ซ่อนคอลัมน์ Variant (ลดรก)
         if (selectedVariantId) {
-            return ["Ingredient", "Quantity", "Actions"];
+            return ["วัตถุดิบ", "ปริมาณ", "จัดการ"];
         }
         return baseHeadersNew;
     })();
@@ -95,10 +95,10 @@ export default function RecipeTable({
             const actionCell = (
                 <div key={r.id} className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
-                        Edit
+                        แก้ไข
                     </Button>
                     <Button variant="destructive" size="sm" onClick={() => onDelete(r.id)}>
-                        Delete
+                        ลบ
                     </Button>
                 </div>
             );
@@ -121,10 +121,10 @@ export default function RecipeTable({
             r.quantity,
             <div key={r.id} className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
-                    Edit
+                    แก้ไข
                 </Button>
                 <Button variant="destructive" size="sm" onClick={() => onDelete(r.id)}>
-                    Delete
+                    ลบ
                 </Button>
             </div>,
         ];

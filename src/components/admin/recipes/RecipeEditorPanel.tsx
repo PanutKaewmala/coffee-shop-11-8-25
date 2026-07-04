@@ -182,7 +182,7 @@ export default function RecipeEditorPanel({
 
     const openAdd = () => {
         if (!canEdit) {
-            alert("เลือกเมนู + Variant ก่อน");
+            alert("เลือกเมนูและตัวเลือกก่อน");
             return;
         }
         setMode("add");
@@ -284,11 +284,11 @@ export default function RecipeEditorPanel({
     if (variantsForMenu.length === 0) {
         return (
             <div className="rounded-2xl border border-[var(--text-muted)]/15 bg-[var(--surface)] p-6 text-center text-[var(--text-secondary)]">
-                เมนูนี้ยังไม่มี Variant — ไปสร้าง Variant ก่อน แล้วกลับมาที่นี่
-                <div className="mt-2 text-sm text-[var(--text-secondary)]">เมนูต้องมี Variant อย่างน้อยหนึ่งรายการพร้อมสูตร เพื่อให้ขึ้นขายใน POS</div>
+                เมนูนี้ยังไม่มีตัวเลือก ไปสร้างตัวเลือกก่อน แล้วกลับมาที่นี่
+                <div className="mt-2 text-sm text-[var(--text-secondary)]">เมนูต้องมีตัวเลือกอย่างน้อยหนึ่งรายการพร้อมสูตร เพื่อให้แสดงที่หน้าขาย</div>
                 <div className="mt-4 flex items-center justify-center gap-2">
                     <Button onClick={() => router.push("/admin/menu")}>
-                        ไปสร้าง Variant
+                        ไปสร้างตัวเลือก
                     </Button>
                     <Button variant="outline" onClick={() => void onRefreshBase()}>
                         รีเฟรช
@@ -332,7 +332,7 @@ export default function RecipeEditorPanel({
             ) : filtered.length === 0 ? (
                 <div className="rounded-xl border border-[var(--text-muted)]/20 p-6 text-center text-[var(--text-secondary)]">
                     <div className="font-semibold">ตัวเลือกนี้ยังไม่มีสูตร</div>
-                    <div className="mt-2 text-sm text-[var(--text-secondary)]">ตัวเลือกนี้จะยังไม่แสดงใน POS จนกว่าจะเพิ่มวัตถุดิบในสูตร</div>
+                    <div className="mt-2 text-sm text-[var(--text-secondary)]">ตัวเลือกนี้จะยังไม่แสดงที่หน้าขายจนกว่าจะเพิ่มวัตถุดิบในสูตร</div>
                     <div className="mt-3">กด <span className="text-[var(--accent)] font-semibold">เพิ่มวัตถุดิบ</span> เพื่อเริ่มสร้างสูตร</div>
                 </div>
             ) : (

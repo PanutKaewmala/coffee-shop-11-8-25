@@ -129,7 +129,7 @@ export default function ArchivedIngredientsPage() {
     async function restoreIngredient(id: string) {
         if (!canManageIngredients || permissionLoading) return;
         if (restoringId) return;
-        if (!confirm("Restore this ingredient?")) return;
+        if (!confirm("กู้คืนวัตถุดิบนี้?")) return;
 
         try {
             setRestoringId(id);
@@ -146,7 +146,7 @@ export default function ArchivedIngredientsPage() {
 
             const j = await res.json().catch(() => ({} as { error?: string }));
             if (!res.ok) {
-                alert((j as { error?: string })?.error || "Restore failed");
+                alert((j as { error?: string })?.error || "กู้คืนวัตถุดิบไม่สำเร็จ");
                 return;
             }
 
@@ -156,16 +156,16 @@ export default function ArchivedIngredientsPage() {
         }
     }
 
-    const headers = ["Name", "Stock", "Unit", "Archived At", "Actions"];
+    const headers = ["ชื่อวัตถุดิบ", "จำนวนคงเหลือ", "หน่วย", "เก็บไว้เมื่อ", "จัดการ"];
 
     const disableActions = loading || !!restoringId || permissionLoading || !canManageIngredients;
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="Archived Ingredients">
+            <Card title="คลังวัตถุดิบเก่า">
                 {!permissionLoading && !canManageIngredients ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can restore archived ingredients.
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่กู้คืนวัตถุดิบได้
                     </div>
                 ) : null}
                 <div className="flex justify-between items-center mb-4 gap-2">
@@ -173,7 +173,7 @@ export default function ArchivedIngredientsPage() {
                         variant="outline"
                         onClick={() => (window.location.href = "/admin/ingredients")}
                     >
-                        ← Back
+                        ← กลับ
                     </Button>
                 </div>
 
@@ -181,7 +181,7 @@ export default function ArchivedIngredientsPage() {
                     <SearchBox
                         value={search}
                         setValue={setSearch}
-                        placeholder="ค้นหา archived..."
+                        placeholder="ค้นหาวัตถุดิบที่เก็บไว้..."
                     />
 
                     <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 px-2">
@@ -211,7 +211,7 @@ export default function ArchivedIngredientsPage() {
                 </div>
 
                 {loading ? (
-                    <p>Loading...</p>
+                    <p>กำลังโหลด...</p>
                 ) : (
                     <Table
                         headers={headers}
@@ -236,10 +236,10 @@ export default function ArchivedIngredientsPage() {
                                             onClick={() => restoreIngredient(item.id)}
                                             disabled={disableActions}
                                         >
-                                            {isRestoringThis ? "Restoring..." : "Restore"}
+                                            {isRestoringThis ? "กำลังกู้คืน..." : "กู้คืน"}
                                         </Button>
                                     ) : (
-                                        <span className="text-xs text-text-secondary">View only</span>
+                                        <span className="text-xs text-text-secondary">ดูอย่างเดียว</span>
                                     )}
                                 </div>,
                             ];

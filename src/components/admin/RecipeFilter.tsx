@@ -90,7 +90,7 @@ export default function RecipeFilter({
                     }}
                     className="ml-2 px-3 py-1.5 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-black"
                 >
-                    More ▾
+                    เพิ่มเติม ▾
                 </button>
 
                 {moreOpen && (

@@ -23,12 +23,12 @@ export default function IngredientForm({ initialData, onClose, onSave }: Props) 
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-surface text-text-primary p-6 rounded-2xl w-full max-w-md shadow-xl border border-text-muted/30">
                 <h2 className="text-xl font-semibold mb-4 text-text-primary">
-                    {initialData ? "Edit Ingredient" : "Add Ingredient"}
+                    {initialData ? "แก้ไขวัตถุดิบ" : "เพิ่มวัตถุดิบ"}
                 </h2>
 
                 <div className="space-y-5">
                     <div>
-                        <label className="block mb-1 font-medium text-text-secondary">Name</label>
+                        <label className="block mb-1 font-medium text-text-secondary">ชื่อวัตถุดิบ</label>
                         <input
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -37,7 +37,7 @@ export default function IngredientForm({ initialData, onClose, onSave }: Props) 
                     </div>
 
                     <div>
-                        <label className="block mb-1 font-medium text-text-secondary">Stock</label>
+                        <label className="block mb-1 font-medium text-text-secondary">จำนวนคงเหลือ</label>
                         <input
                             type="number"
                             value={stock}
@@ -47,7 +47,7 @@ export default function IngredientForm({ initialData, onClose, onSave }: Props) 
                     </div>
 
                     <div>
-                        <label className="block mb-1 font-medium text-text-secondary">Unit</label>
+                        <label className="block mb-1 font-medium text-text-secondary">หน่วย</label>
                         <input
                             value={unit}
                             onChange={(e) => setUnit(e.target.value)}
@@ -61,14 +61,14 @@ export default function IngredientForm({ initialData, onClose, onSave }: Props) 
                         onClick={onClose}
                         className="px-4 py-2 rounded-xl bg-text-muted/20 text-text-secondary hover:bg-text-muted/30 transition"
                     >
-                        Cancel
+                        ยกเลิก
                     </button>
 
                     <button
                         onClick={handleSubmit}
                         className="px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent-dark transition shadow-sm"
                     >
-                        Save
+                        บันทึก
                     </button>
                 </div>
             </div>

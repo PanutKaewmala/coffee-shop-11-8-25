@@ -84,11 +84,11 @@ export default function Sidebar({
 
     const shopLabel =
         currentShopName ??
-        (currentShopId ? `Shop: ${currentShopId.slice(0, 8)}…` : "No shop selected");
+        (currentShopId ? `ร้าน: ${currentShopId.slice(0, 8)}…` : "ยังไม่ได้เลือกร้าน");
 
     const branchLabel =
         currentBranchName ??
-        (currentBranchId ? `Branch: ${currentBranchId.slice(0, 8)}…` : "Branch: -");
+        (currentBranchId ? `สาขา: ${currentBranchId.slice(0, 8)}…` : "ยังไม่ได้เลือกสาขา");
 
     return (
         <>
@@ -114,11 +114,11 @@ export default function Sidebar({
             >
                 {/* Mobile header */}
                 <div className="flex items-center justify-between md:hidden px-4 py-3 border-b border-[var(--text-muted)]/20">
-                    <div className="text-lg font-semibold">☕ Admin</div>
+                    <div className="text-lg font-semibold">☕ จัดการร้าน</div>
                     <button
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onClose}
-                        aria-label="Close sidebar"
+                        aria-label="ปิดเมนูด้านข้าง"
                     >
                         <X size={18} />
                     </button>
@@ -128,7 +128,7 @@ export default function Sidebar({
                 <div className="px-4 mt-4">
                     <div className="rounded-xl border border-[var(--text-muted)]/20 bg-[var(--surface)] p-3">
                         <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
-                            Current Context
+                            ร้าน/สาขาที่ใช้งาน
                         </div>
                         <div className="mt-1 text-sm font-semibold truncate">{shopLabel}</div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">{branchLabel}</div>
@@ -220,7 +220,7 @@ export default function Sidebar({
 
                 {/* Footer */}
                 <div className="mt-10 text-xs text-[var(--text-muted)] border-t border-[var(--text-muted)]/20 pt-4 text-center">
-                    © {new Date().getFullYear()} Coffee Admin
+                    © {new Date().getFullYear()} ระบบจัดการร้านกาแฟ
                 </div>
             </aside>
         </>

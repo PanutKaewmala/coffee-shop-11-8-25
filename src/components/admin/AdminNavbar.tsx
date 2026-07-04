@@ -38,11 +38,11 @@ async function postJSON<T extends Record<string, unknown>>(
 
         if (!res.ok) {
             const text = await res.text().catch(() => "");
-            return { ok: false, error: text || `Request failed: ${res.status}` };
+            return { ok: false, error: text || "เชื่อมต่อระบบไม่สำเร็จ" };
         }
         return { ok: true };
     } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : "Unknown error" };
+        return { ok: false, error: e instanceof Error ? e.message : "เกิดข้อผิดพลาด" };
     }
 }
 
@@ -81,16 +81,16 @@ export default function AdminNavbar({
         if (currentShopName) return currentShopName;
         const found = currentShopId ? shops.find((s) => s.id === currentShopId) : null;
         if (found?.name) return found.name;
-        if (currentShopId) return `Shop: ${currentShopId.slice(0, 8)}…`;
-        return "No shop";
+        if (currentShopId) return `ร้าน: ${currentShopId.slice(0, 8)}…`;
+        return "ยังไม่ได้เลือกร้าน";
     }, [currentShopId, currentShopName, shops]);
 
     const branchLabel = useMemo(() => {
         if (currentBranchName) return currentBranchName;
         const found = currentBranchId ? branches.find((b) => b.id === currentBranchId) : null;
         if (found?.name) return found.name;
-        if (currentBranchId) return `Branch: ${currentBranchId.slice(0, 8)}…`;
-        return "Branch: -";
+        if (currentBranchId) return `สาขา: ${currentBranchId.slice(0, 8)}…`;
+        return "ยังไม่ได้เลือกสาขา";
     }, [currentBranchId, currentBranchName, branches]);
 
     const noBranchInCurrentShop = useMemo(() => {
@@ -108,19 +108,19 @@ export default function AdminNavbar({
                 const res = await fetch("/api/admin/navbar", { cache: "no-store" });
                 if (!res.ok) {
                     const text = await res.text().catch(() => "");
-                    throw new Error(text || `Request failed: ${res.status}`);
+                    throw new Error(text || "โหลดข้อมูลแถบเมนูไม่สำเร็จ");
                 }
 
                 const data = (await res.json()) as NavbarResponse;
                 if (!alive) return;
 
                 const email = data.me?.email ?? null;
-                setMeLabel(email ? email : "Admin");
+                setMeLabel(email ? email : "ผู้ดูแลร้าน");
                 setShops(Array.isArray(data.shops) ? data.shops : []);
                 setBranches(Array.isArray(data.branches) ? data.branches : []);
             } catch (e) {
                 if (!alive) return;
-                const msg = e instanceof Error ? e.message : "Failed to load navbar data";
+                const msg = e instanceof Error ? e.message : "โหลดข้อมูลแถบเมนูไม่สำเร็จ";
                 setErr(msg);
                 setShops([]);
                 setBranches([]);
@@ -143,7 +143,7 @@ export default function AdminNavbar({
 
         const r1 = await postJSON("/api/context/shop", { shop_id: shopId });
         if (!r1.ok) {
-            setErr(r1.error ?? "Failed to switch shop");
+            setErr(r1.error ?? "เปลี่ยนร้านไม่สำเร็จ");
             setSwitching(false);
             return;
         }
@@ -162,7 +162,7 @@ export default function AdminNavbar({
 
         const r = await postJSON("/api/context/branch", { branch_id: branchId });
         if (!r.ok) {
-            setErr(r.error ?? "Failed to switch branch");
+            setErr(r.error ?? "เปลี่ยนสาขาไม่สำเร็จ");
             setSwitching(false);
             return;
         }
@@ -179,14 +179,14 @@ export default function AdminNavbar({
                     <button
                         className="md:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onToggleSidebar}
-                        aria-label="Toggle sidebar"
+                        aria-label="เปิดเมนูด้านข้าง"
                     >
                         <Menu size={20} />
                     </button>
 
                     <div className="min-w-0">
                         <div className="font-semibold text-lg tracking-wide select-none truncate">
-                            ☕ Admin Dashboard
+                            ☕ แผงจัดการร้าน
                         </div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">
                             {shopLabel} • {branchLabel}
@@ -205,7 +205,7 @@ export default function AdminNavbar({
                             onChange={(e) => onChangeShop(e.target.value)}
                         >
                             <option value="" disabled>
-                                Select shop…
+                                เลือกร้าน…
                             </option>
                             {shops.map((s) => (
                                 <option key={s.id} value={s.id}>
@@ -224,7 +224,7 @@ export default function AdminNavbar({
                             onChange={(e) => onChangeBranch(e.target.value)}
                         >
                             <option value="" disabled>
-                                {branches.length ? "Select branch…" : "No branches"}
+                                {branches.length ? "เลือกสาขา…" : "ยังไม่มีสาขา"}
                             </option>
                             {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
@@ -238,7 +238,7 @@ export default function AdminNavbar({
                                 onClick={() => router.push("/admin/branch")}
                                 className="text-xs text-[var(--accent)] hover:underline"
                             >
-                                Add branch
+                                เพิ่มสาขา
                             </button>
                         ) : null}
                     </div>
@@ -249,7 +249,7 @@ export default function AdminNavbar({
                     <button
                         onClick={toggleTheme}
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition-colors"
-                        aria-label="Toggle theme"
+                        aria-label="สลับธีมสี"
                     >
                         <span className="inline-flex h-[18px] w-[18px] items-center justify-center">
                             <Sun size={18} className="hidden dark:block text-[var(--text-secondary)]" />
@@ -258,7 +258,7 @@ export default function AdminNavbar({
                     </button>
 
                     <span className="text-[var(--text-secondary)] text-sm hidden sm:inline truncate max-w-[220px]">
-                        Welcome, <strong>{meLabel || "Admin"}</strong>
+                        สวัสดี, <strong>{meLabel || "ผู้ดูแลร้าน"}</strong>
                     </span>
 
                     <button
@@ -266,7 +266,7 @@ export default function AdminNavbar({
                         className="flex items-center gap-2 bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:bg-[var(--accent-dark)] transition-colors shadow-sm"
                     >
                         <LogOut size={16} />
-                        <span className="text-sm font-medium">Logout</span>
+                        <span className="text-sm font-medium">ออกจากระบบ</span>
                     </button>
                 </div>
             </div>
@@ -283,7 +283,7 @@ export default function AdminNavbar({
                         onChange={(e) => onChangeShop(e.target.value)}
                     >
                         <option value="" disabled>
-                            Select shop…
+                            เลือกร้าน…
                         </option>
                         {shops.map((s) => (
                             <option key={s.id} value={s.id}>
@@ -299,7 +299,7 @@ export default function AdminNavbar({
                         onChange={(e) => onChangeBranch(e.target.value)}
                     >
                         <option value="" disabled>
-                            {branches.length ? "Select branch…" : "No branches"}
+                            {branches.length ? "เลือกสาขา…" : "ยังไม่มีสาขา"}
                         </option>
                         {branches.map((b) => (
                             <option key={b.id} value={b.id}>
@@ -315,7 +315,7 @@ export default function AdminNavbar({
                         onClick={() => router.push("/admin/branch")}
                         className="mt-2 text-xs text-[var(--accent)] hover:underline"
                     >
-                        No branches in this shop. Add branch
+                        ร้านนี้ยังไม่มีสาขา เพิ่มสาขา
                     </button>
                 ) : null}
             </div>

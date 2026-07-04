@@ -404,17 +404,17 @@ export default function MenuAdminPage() {
     /* ======================================================================
        TABLE HEADERS
     ====================================================================== */
-    const headers = ["Item", "Category", "Serve / Price", "Actions"];
+    const headers = ["เมนู", "หมวดเมนู", "รูปแบบ/ราคา", "จัดการ"];
 
     /* ======================================================================
        RENDER
     ====================================================================== */
     return (
         <div className="p-6 space-y-6">
-            <Card title="Menu Management">
+            <Card title="จัดการเมนู">
                 {!permissionLoading && !canManageMenu ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can manage menu items.
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการเมนูได้
                     </div>
                 ) : null}
                 {/* Filter bar */}
@@ -493,7 +493,7 @@ export default function MenuAdminPage() {
                                     disabled={!hasActiveFilters}
                                     className="h-10"
                                 >
-                                    Clear
+                                    ล้างตัวกรอง
                                 </Button>
 
                                 <Button
@@ -505,7 +505,7 @@ export default function MenuAdminPage() {
                                 </Button>
 
                                 <Button onClick={() => openModal()} className="h-10" disabled={!canManageMenu || permissionLoading}>
-                                    + Add Menu
+                                    + เพิ่มเมนู
                                 </Button>
                             </div>
                         </div>
@@ -516,9 +516,9 @@ export default function MenuAdminPage() {
                                     <button
                                         onClick={() => setSearch("")}
                                         className="px-3 py-1.5 rounded-full text-sm bg-[var(--surface)] text-[var(--text-secondary)] hover:opacity-90 border border-[var(--text-muted)]/20"
-                                        title="ลบ search"
+                                        title="ลบคำค้นหา"
                                     >
-                                        Search: {search.trim()} ✕
+                                        ค้นหา: {search.trim()} ✕
                                     </button>
                                 )}
 
@@ -549,18 +549,18 @@ export default function MenuAdminPage() {
                 {/* Table / Empty */}
                 <div className="pt-4">
                     {loading ? (
-                        <p>Loading...</p>
+                        <p>กำลังโหลด...</p>
                     ) : paginatedItems.length === 0 ? (
                         <div className="py-10 text-center">
                             <div className="text-lg font-semibold">ไม่พบเมนู</div>
                             <div className="text-sm text-[var(--text-secondary)] mt-1">
-                                ลอง Clear ฟิลเตอร์ หรือเพิ่มเมนูใหม่
+                                ลองล้างตัวกรอง หรือเพิ่มเมนูใหม่
                             </div>
                             <div className="mt-4 flex justify-center gap-2">
                                 <Button variant="outline" onClick={clearAll} disabled={!hasActiveFilters}>
-                                    Clear filters
+                                    ล้างตัวกรอง
                                 </Button>
-                                <Button onClick={() => openModal()} disabled={!canManageMenu || permissionLoading}>+ Add Menu</Button>
+                                <Button onClick={() => openModal()} disabled={!canManageMenu || permissionLoading}>+ เพิ่มเมนู</Button>
                             </div>
                         </div>
                     ) : (
@@ -589,7 +589,7 @@ export default function MenuAdminPage() {
                                                                 "bg-[var(--surface)] border-[var(--text-muted)]/20",
                                                                 sp.is_default ? "ring-1 ring-[var(--accent)]/40" : "",
                                                             ].join(" ")}
-                                                            title={sp.has_override ? "override price" : "base price"}
+                                                            title={sp.has_override ? "ราคาที่ตั้งเฉพาะ" : "ราคาพื้นฐาน"}
                                                         >
                                                             <span className="text-[var(--text-secondary)]">{sp.serve_type}</span>
                                                             <span className="font-semibold">{formatPriceTHB(sp.price)}</span>
@@ -602,7 +602,7 @@ export default function MenuAdminPage() {
                                                             onClick={() => setExpandedId(item.id)}
                                                             title="ดูทั้งหมด"
                                                         >
-                                                            +{hiddenCount} more
+                                                            +อีก {hiddenCount}
                                                         </button>
                                                     )}
 
@@ -612,7 +612,7 @@ export default function MenuAdminPage() {
                                                             onClick={() => setExpandedId(null)}
                                                             title="ย่อ"
                                                         >
-                                                            Hide
+                                                            ย่อ
                                                         </button>
                                                     )}
                                                 </div>
@@ -629,7 +629,7 @@ export default function MenuAdminPage() {
                                                             className="w-full h-full object-cover"
                                                         />
                                                     ) : (
-                                                        <span className="text-xs text-[var(--text-secondary)]">No img</span>
+                                                        <span className="text-xs text-[var(--text-secondary)]">ไม่มีรูป</span>
                                                     )}
                                                 </div>
                                                 <div className="min-w-0">
@@ -645,7 +645,7 @@ export default function MenuAdminPage() {
                                                     {/* Recipe readiness badge: if enabled in branch but likely hidden in POS due to missing recipe */}
                                                     {isEnabledInBranch && (item.recipe_status === "no_recipe" || item.recipe_status === "partial_recipe") && (
                                                         <div className="text-[11px] text-yellow-300 mt-1">
-                                                            Enabled for branch • Not ready for POS
+                                                            เปิดขายในสาขาแล้ว • ยังไม่พร้อมแสดงที่หน้าขาย
                                                         </div>
                                                     )}
                                                 </div>
@@ -694,7 +694,7 @@ export default function MenuAdminPage() {
                                                         </Button>
                                                     </>
                                                 ) : (
-                                                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                                    <span className="text-xs text-[var(--text-secondary)]">ดูอย่างเดียว</span>
                                                 )}
                                             </div>,
                                         ];

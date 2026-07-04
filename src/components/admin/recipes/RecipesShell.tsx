@@ -283,7 +283,7 @@ export default function RecipesShell() {
             const menuNameMap = new Map<UUID, string>(menus.map((m) => [m.id, m.name]));
             const opts: VariantOption[] = vList.map((v) => {
                 const menuName = menuNameMap.get(v.menu_id) ?? v.menu_id;
-                const serveName = v.serve_type_name ?? "Serve";
+                const serveName = v.serve_type_name ?? "รูปแบบการขาย";
                 const sizeLabel = normalizeSizeLabel(v.size);
                 return {
                     variant_id: v.id,

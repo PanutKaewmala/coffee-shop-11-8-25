@@ -23,7 +23,7 @@ export default function VariantSelector({
     if (variants.length === 0) {
         return (
             <div className="rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm text-[var(--text-secondary)]">
-                เมนูนี้ยังไม่มี Variant
+                เมนูนี้ยังไม่มีตัวเลือก
             </div>
         );
     }

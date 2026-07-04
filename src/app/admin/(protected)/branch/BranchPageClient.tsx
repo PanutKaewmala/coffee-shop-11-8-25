@@ -82,7 +82,7 @@ export default function BranchPageClient() {
                 if (!alive) return;
                 if (!res.ok || !data || !("shopId" in data)) {
                     const message = data && "error" in data ? data.error : null;
-                    throw new Error(message || "Failed to load receipt settings");
+                    throw new Error(message || "โหลดการตั้งค่าใบเสร็จไม่สำเร็จ");
                 }
 
                 setReceiptSettings(data);
@@ -91,7 +91,7 @@ export default function BranchPageClient() {
             } catch (error) {
                 if (!alive) return;
                 setReceiptError(
-                    error instanceof Error ? error.message : "Failed to load receipt settings"
+                    error instanceof Error ? error.message : "โหลดการตั้งค่าใบเสร็จไม่สำเร็จ"
                 );
             } finally {
                 if (alive) setReceiptLoading(false);
@@ -106,7 +106,7 @@ export default function BranchPageClient() {
 
     const handleReceiptSave = async () => {
         if (!receiptSettings?.canEditShopSettings) {
-            setReceiptError("Only the shop owner can edit shop-wide receipt settings.");
+            setReceiptError("เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขการตั้งค่าใบเสร็จได้");
             return;
         }
 
@@ -131,18 +131,18 @@ export default function BranchPageClient() {
             if (!res.ok || !data || !("shopId" in data)) {
                 const apiMessage = data && "error" in data ? data.error : null;
                 if (res.status === 403) {
-                    throw new Error("Only the shop owner can edit shop-wide receipt settings.");
+                    throw new Error("เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขการตั้งค่าใบเสร็จได้");
                 }
-                throw new Error(apiMessage || "Failed to save receipt settings");
+                throw new Error(apiMessage || "บันทึกการตั้งค่าใบเสร็จไม่สำเร็จ");
             }
 
             setReceiptSettings(data);
             setReceiptTaxId(data.taxId ?? "");
             setReceiptFooter(data.receiptFooter ?? "");
-            setReceiptSuccess("Receipt settings saved successfully.");
+            setReceiptSuccess("บันทึกการตั้งค่าใบเสร็จแล้ว");
         } catch (error) {
             setReceiptError(
-                error instanceof Error ? error.message : "Failed to save receipt settings"
+                error instanceof Error ? error.message : "บันทึกการตั้งค่าใบเสร็จไม่สำเร็จ"
             );
         } finally {
             setReceiptSaving(false);
@@ -181,8 +181,8 @@ export default function BranchPageClient() {
 
     const validateBranch = (): boolean => {
         const newErrors: Errors = {};
-        if (!formData.name.trim()) newErrors.name = "Branch name is required";
-        if (!formData.address.trim()) newErrors.address = "Address is required";
+        if (!formData.name.trim()) newErrors.name = "กรุณากรอกชื่อสาขา";
+        if (!formData.address.trim()) newErrors.address = "กรุณากรอกที่อยู่";
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -192,7 +192,7 @@ export default function BranchPageClient() {
             await fetch(`/api/branch/primary?id=${id}`, { method: "PUT" });
             await reloadList();
         } catch {
-            alert("Failed to set primary");
+            alert("ตั้งเป็นสาขาหลักไม่สำเร็จ");
         }
     };
 
@@ -219,7 +219,7 @@ export default function BranchPageClient() {
 
             if (!res.ok) {
                 const j = await res.json().catch(() => ({}));
-                alert(j?.error || "Save failed");
+                alert(j?.error || "บันทึกสาขาไม่สำเร็จ");
                 return;
             }
 
@@ -227,65 +227,65 @@ export default function BranchPageClient() {
             setShowModal(false);
             resetForm();
         } catch {
-            alert("Error saving branch");
+            alert("บันทึกสาขาไม่สำเร็จ");
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this branch?")) return;
+        if (!confirm("ลบสาขานี้?")) return;
 
         try {
             const res = await fetch(`/api/branch?id=${id}`, { method: "DELETE" });
 
             if (!res.ok) {
                 const j = await res.json().catch(() => ({}));
-                alert(j?.error || "Delete failed");
+                alert(j?.error || "ลบสาขาไม่สำเร็จ");
                 return;
             }
 
             await reloadList();
         } catch {
-            alert("Error deleting branch");
+            alert("ลบสาขาไม่สำเร็จ");
         }
     };
 
-    const headers = ["Branch", "Address", "Phone", "Hours", "Map", "Actions"];
+    const headers = ["สาขา", "ที่อยู่", "โทรศัพท์", "เวลาทำการ", "แผนที่", "จัดการ"];
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="Receipt Settings">
+            <Card title="ตั้งค่าใบเสร็จ">
                 <div className="max-w-2xl space-y-4">
                     <div>
                         <p className="text-sm font-medium text-[var(--text-primary)]">
-                            Shop-wide receipt settings
+                            ตั้งค่าใบเสร็จของร้าน
                         </p>
                         <p className="mt-1 text-xs text-[var(--text-muted)]">
-                            These values apply to every branch. Branch name, address, and phone remain managed in the branch editor below.
+                            ข้อมูลนี้ใช้กับทุกสาขา ส่วนชื่อสาขา ที่อยู่ และเบอร์โทร จัดการได้จากตารางสาขาด้านล่าง
                         </p>
                     </div>
 
                     {receiptLoading ? (
-                        <p className="text-sm text-[var(--text-muted)]">Loading receipt settings...</p>
+                        <p className="text-sm text-[var(--text-muted)]">กำลังโหลดการตั้งค่าใบเสร็จ...</p>
                     ) : (
                         <>
                             <div className="space-y-1.5">
                                 <label className="text-sm font-medium text-[var(--text-primary)]">
-                                    Current shop name
+                                    ชื่อร้านปัจจุบัน
                                 </label>
                                 <input
                                     type="text"
-                                    value={receiptSettings?.shopName ?? "Coffee SaaS"}
+                                    value={receiptSettings?.shopName ?? "ยังไม่ได้ตั้งชื่อร้าน"}
                                     readOnly
                                     className="w-full rounded-md border border-[var(--text-muted)]/20 bg-[var(--background)]/50 p-2 text-[var(--text-muted)]"
                                 />
                                 <p className="text-xs text-[var(--text-muted)]">
-                                    The shop name is managed separately from receipt settings.
+                                    ชื่อร้านจัดการแยกจากการตั้งค่าใบเสร็จ
                                 </p>
                             </div>
 
                             <div className="space-y-1.5">
                                 <label htmlFor="receipt-tax-id" className="text-sm font-medium text-[var(--text-primary)]">
-                                    Tax ID / เลขผู้เสียภาษี
+                                    เลขผู้เสียภาษี
                                 </label>
                                 <input
                                     id="receipt-tax-id"
@@ -298,14 +298,14 @@ export default function BranchPageClient() {
                                         setReceiptError(null);
                                         setReceiptSuccess(null);
                                     }}
-                                    placeholder="Optional"
+                                    placeholder="ไม่บังคับ"
                                     className="w-full rounded-md border border-[var(--text-muted)]/20 bg-[var(--surface)] p-2 disabled:cursor-not-allowed disabled:opacity-60"
                                 />
                             </div>
 
                             <div className="space-y-1.5">
                                 <label htmlFor="receipt-footer" className="text-sm font-medium text-[var(--text-primary)]">
-                                    Receipt footer / ข้อความท้ายใบเสร็จ
+                                    ข้อความท้ายใบเสร็จ
                                 </label>
                                 <textarea
                                     id="receipt-footer"
@@ -318,7 +318,7 @@ export default function BranchPageClient() {
                                         setReceiptError(null);
                                         setReceiptSuccess(null);
                                     }}
-                                    placeholder="Optional message shown at the bottom of receipts in a later phase"
+                                    placeholder="ข้อความท้ายใบเสร็จ (ไม่บังคับ)"
                                     className="w-full resize-y rounded-md border border-[var(--text-muted)]/20 bg-[var(--surface)] p-2 disabled:cursor-not-allowed disabled:opacity-60"
                                 />
                                 <div className="text-right text-xs text-[var(--text-muted)]">
@@ -328,7 +328,7 @@ export default function BranchPageClient() {
 
                             {receiptSettings && !receiptSettings.canEditShopSettings ? (
                                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                                    Only the shop owner can edit shop-wide receipt settings.
+                                    เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขการตั้งค่าใบเสร็จได้
                                 </div>
                             ) : null}
 
@@ -349,7 +349,7 @@ export default function BranchPageClient() {
                                     onClick={() => void handleReceiptSave()}
                                     disabled={!receiptSettings?.canEditShopSettings || receiptSaving}
                                 >
-                                    {receiptSaving ? "Saving..." : "Save Receipt Settings"}
+                                    {receiptSaving ? "กำลังบันทึก..." : "บันทึกการตั้งค่าใบเสร็จ"}
                                 </Button>
                             </div>
                         </>
@@ -357,20 +357,20 @@ export default function BranchPageClient() {
                 </div>
             </Card>
 
-            <Card title="Branch Management">
+            <Card title="จัดการสาขา">
                 <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาชื่อสาขา / ที่อยู่" />
 
                 <BranchFilter primary={primary} setPrimary={setPrimary} />
 
                 {!canManageBranches ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can manage branches.
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการสาขาได้
                     </div>
                 ) : null}
 
                 <div className="flex justify-end mb-4">
                     <Button onClick={openModalNew} disabled={!canManageBranches}>
-                        + Add Branch
+                        + เพิ่มสาขา
                     </Button>
                 </div>
 
@@ -381,7 +381,7 @@ export default function BranchPageClient() {
                 ) : null}
 
                 {loading ? (
-                    <p>Loading...</p>
+                    <p>กำลังโหลด...</p>
                 ) : (
                     <>
                         <div className="overflow-x-auto">
@@ -393,7 +393,7 @@ export default function BranchPageClient() {
 
                                         {branch.is_primary && (
                                             <span className="px-2 py-0.5 text-xs rounded bg-green-600 text-white">
-                                                Primary
+                                                สาขาหลัก
                                             </span>
                                         )}
                                     </div>,
@@ -409,7 +409,7 @@ export default function BranchPageClient() {
                                                 variant="outline"
                                                 onClick={() => window.open(branch.map_url!, "_blank")}
                                             >
-                                                View
+                                                เปิดแผนที่
                                             </Button>
                                         ) : (
                                             "-"
@@ -421,22 +421,22 @@ export default function BranchPageClient() {
                                             <>
                                                 {!branch.is_primary && (
                                                     <Button size="sm" variant="outline" onClick={() => handleSetPrimary(branch.id)}>
-                                                        Primary
+                                                        ตั้งเป็นสาขาหลัก
                                                     </Button>
                                                 )}
 
                                                 <Button size="sm" variant="outline" onClick={() => openModalEdit(branch)}>
-                                                    Edit
+                                                    แก้ไข
                                                 </Button>
 
                                                 {!branch.is_primary && (
                                                     <Button size="sm" variant="destructive" onClick={() => handleDelete(branch.id)}>
-                                                        Delete
+                                                        ลบ
                                                     </Button>
                                                 )}
                                             </>
                                         ) : (
-                                            <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                            <span className="text-xs text-[var(--text-secondary)]">ดูอย่างเดียว</span>
                                         )}
                                     </div>,
                                 ])}
@@ -461,13 +461,13 @@ export default function BranchPageClient() {
                         setShowModal(false);
                         resetForm();
                     }}
-                    title={editingBranch ? "Edit Branch" : "Add Branch"}
+                    title={editingBranch ? "แก้ไขสาขา" : "เพิ่มสาขา"}
                 >
                     <div className="space-y-4 max-w-md">
                         <div>
                             <input
                                 type="text"
-                                placeholder="Branch Name"
+                                placeholder="ชื่อสาขา"
                                 value={formData.name}
                                 onChange={(e) => {
                                     setFormData((prev) => ({ ...prev, name: e.target.value }));
@@ -481,7 +481,7 @@ export default function BranchPageClient() {
                         <div>
                             <input
                                 type="text"
-                                placeholder="Address"
+                                placeholder="ที่อยู่"
                                 value={formData.address}
                                 onChange={(e) => {
                                     setFormData((prev) => ({ ...prev, address: e.target.value }));
@@ -494,7 +494,7 @@ export default function BranchPageClient() {
 
                         <input
                             type="text"
-                            placeholder="Phone"
+                            placeholder="เบอร์โทร"
                             value={formData.phone}
                             onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
                             className="w-full border rounded-md p-2"
@@ -502,7 +502,7 @@ export default function BranchPageClient() {
 
                         <input
                             type="text"
-                            placeholder="Google Maps URL"
+                            placeholder="ลิงก์ Google Maps"
                             value={formData.map_url}
                             onChange={(e) => setFormData((prev) => ({ ...prev, map_url: e.target.value }))}
                             className="w-full border rounded-md p-2"
@@ -510,7 +510,7 @@ export default function BranchPageClient() {
 
                         <input
                             type="text"
-                            placeholder="Opening Hours"
+                            placeholder="เวลาทำการ"
                             value={formData.opening_hours}
                             onChange={(e) => setFormData((prev) => ({ ...prev, opening_hours: e.target.value }))}
                             className="w-full border rounded-md p-2"
@@ -524,10 +524,10 @@ export default function BranchPageClient() {
                                     resetForm();
                                 }}
                             >
-                                Cancel
+                                ยกเลิก
                             </Button>
 
-                            <Button onClick={handleSave}>{editingBranch ? "Save Changes" : "Add Branch"}</Button>
+                            <Button onClick={handleSave}>{editingBranch ? "บันทึกการแก้ไข" : "เพิ่มสาขา"}</Button>
                         </div>
                     </div>
                 </Modal>

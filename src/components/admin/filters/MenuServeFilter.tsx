@@ -86,7 +86,7 @@ export default function MenuServeFilter({
        ----------------------------------- */
     return (
         <div className="mb-4">
-            <p className="text-sm text-[var(--text-muted)] mb-2">รูปแบบเสิร์ฟ</p>
+            <p className="text-sm text-[var(--text-muted)] mb-2">รูปแบบการขาย</p>
 
             <div className="flex items-center justify-between gap-4">
                 {/* LEFT — visible serve buttons */}
@@ -134,7 +134,7 @@ export default function MenuServeFilter({
                         onAddServeType();
                     }}
                 >
-                    + Add
+                    + เพิ่ม
                 </Button>
 
                 {/* MORE BUTTON → show only if hidden exists */}
@@ -147,14 +147,14 @@ export default function MenuServeFilter({
                                 setMoreQuery("");
                             }}
                         >
-                            More ▾
+                            เพิ่มเติม ▾
                         </Button>
 
                         {moreOpen && (
                             <div className="absolute right-0 mt-2 w-64 bg-[var(--surface)] border rounded-lg shadow-lg z-50 p-3">
                                 <input
                                     className="w-full p-2 rounded-md mb-2 bg-background border border-text-muted/40"
-                                    placeholder="ค้นหาเสิร์ฟ..."
+                                    placeholder="ค้นหารูปแบบการขาย..."
                                     value={moreQuery}
                                     onChange={(e) => setMoreQuery(e.target.value)}
                                 />
@@ -162,7 +162,7 @@ export default function MenuServeFilter({
                                 <div className="max-h-56 overflow-auto">
                                     {filteredHidden.length === 0 ? (
                                         <div className="text-sm text-[var(--text-secondary)] p-2">
-                                            ไม่พบประเภทเสิร์ฟ
+                                            ไม่พบรูปแบบการขาย
                                         </div>
                                     ) : (
                                         filteredHidden.map((s) => (

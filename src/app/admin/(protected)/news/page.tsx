@@ -393,21 +393,21 @@ export default function NewsAdminPage() {
     };
 
     const headers = [
-        "Category",
-        "Title",
-        "Content",
-        "Image",
-        "Created At",
-        "Event Date",
-        "Actions",
+        "หมวดหมู่",
+        "หัวข้อ",
+        "เนื้อหา",
+        "รูปภาพ",
+        "สร้างเมื่อ",
+        "วันที่กิจกรรม",
+        "จัดการ",
     ];
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="News">
+            <Card title="ข่าวสาร">
                 {!permissionLoading && !canManageNews ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can manage news.
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการข่าวได้
                     </div>
                 ) : null}
 
@@ -462,7 +462,7 @@ export default function NewsAdminPage() {
                                 }}
                                 className="ml-2 px-3 py-1.5 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-black"
                             >
-                                More ▾
+                                เพิ่มเติม ▾
                             </button>
 
                             {moreOpen && (
@@ -504,13 +504,13 @@ export default function NewsAdminPage() {
                 {/* ADD BUTTON */}
                 <div className="flex justify-end mb-4">
                     <Button onClick={() => openModal()} disabled={!canManageNews || permissionLoading}>
-                        + Add News
+                        + เพิ่มข่าว
                     </Button>
                 </div>
 
                 {/* TABLE */}
                 {loading ? (
-                    <p>Loading...</p>
+                    <p>กำลังโหลด...</p>
                 ) : (
                     <Table
                         headers={headers}
@@ -524,7 +524,7 @@ export default function NewsAdminPage() {
                                 <Image
                                     key={item.id + "_img"}
                                     src={asString(item.image_url)}
-                                    alt={asString(item.title) || "news"}
+                                    alt={asString(item.title) || "ข่าว"}
                                     width={64}
                                     height={64}
                                     className="object-cover rounded"
@@ -545,18 +545,18 @@ export default function NewsAdminPage() {
                                 {canManageNews && !permissionLoading ? (
                                     <>
                                         <Button variant="outline" size="sm" onClick={() => openModal(item)}>
-                                            Edit
+                                            แก้ไข
                                         </Button>
                                         <Button
                                             variant="destructive"
                                             size="sm"
                                             onClick={() => void deleteNews(item.id)}
                                         >
-                                            Delete
+                                            ลบ
                                         </Button>
                                     </>
                                 ) : (
-                                    <span className="text-xs text-[var(--text-secondary)]">View only</span>
+                                    <span className="text-xs text-[var(--text-secondary)]">ดูอย่างเดียว</span>
                                 )}
                             </div>,
                         ])}
@@ -578,13 +578,13 @@ export default function NewsAdminPage() {
                 <Modal
                     isOpen={showModal}
                     onClose={closeModal}
-                    title={editingItem ? "Edit News" : "Add News"}
+                    title={editingItem ? "แก้ไขข่าว" : "เพิ่มข่าว"}
                 >
                     <div className="space-y-5 max-w-md">
                         {/* CATEGORY */}
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Category <span className="text-red-500">*</span>
+                                หมวดหมู่ <span className="text-red-500">*</span>
                             </label>
 
                             <div className="flex gap-2 items-center">
@@ -609,7 +609,7 @@ export default function NewsAdminPage() {
                                     onClick={() => setShowCategoryModal(true)}
                                     className="whitespace-nowrap"
                                 >
-                                    + Add
+                                    + เพิ่ม
                                 </Button>
                             </div>
 
@@ -621,7 +621,7 @@ export default function NewsAdminPage() {
                         {/* TITLE */}
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Title <span className="text-red-500">*</span>
+                                หัวข้อ <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
@@ -636,7 +636,7 @@ export default function NewsAdminPage() {
                         {/* CONTENT */}
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Content (optional)
+                                เนื้อหา (ไม่บังคับ)
                             </label>
                             <textarea
                                 placeholder="รายละเอียดข่าว"
@@ -649,7 +649,7 @@ export default function NewsAdminPage() {
                         {/* DATE */}
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Event Date <span className="text-red-500">*</span>
+                                วันที่กิจกรรม <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="date"
@@ -665,7 +665,7 @@ export default function NewsAdminPage() {
                         {/* IMAGE */}
                         <div>
                             <label className="block text-sm font-medium mb-1">
-                                Image (optional)
+                                รูปภาพ (ไม่บังคับ)
                             </label>
                             <input
                                 type="file"
@@ -677,7 +677,7 @@ export default function NewsAdminPage() {
                                 <div className="mt-2">
                                     <Image
                                         src={imagePreview}
-                                        alt="preview"
+                                        alt="ตัวอย่างรูปข่าว"
                                         width={128}
                                         height={128}
                                         className="object-cover rounded"
@@ -690,17 +690,17 @@ export default function NewsAdminPage() {
                         {/* ACTIONS */}
                         <div className="flex justify-end gap-2 pt-2">
                             <Button variant="outline" onClick={closeModal} disabled={saving}>
-                                Cancel
+                                ยกเลิก
                             </Button>
 
                             <Button onClick={() => void saveNews()} disabled={saving}>
                                 {saving
                                     ? editingItem
-                                        ? "Updating..."
-                                        : "Adding..."
+                                        ? "กำลังบันทึก..."
+                                        : "กำลังเพิ่ม..."
                                     : editingItem
-                                        ? "Update"
-                                        : "Add"}
+                                        ? "บันทึก"
+                                        : "เพิ่ม"}
                             </Button>
                         </div>
                     </div>
@@ -715,12 +715,12 @@ export default function NewsAdminPage() {
                         setShowCategoryModal(false);
                         setNewCategory("");
                     }}
-                    title="Add Category"
+                    title="เพิ่มหมวดหมู่"
                 >
                     <div className="space-y-4 max-w-md">
                         <input
                             type="text"
-                            placeholder="Category name"
+                            placeholder="ชื่อหมวดหมู่"
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value)}
                             className="w-full border rounded-md p-2 bg-transparent"
@@ -734,7 +734,7 @@ export default function NewsAdminPage() {
                                     setNewCategory("");
                                 }}
                             >
-                                Cancel
+                                ยกเลิก
                             </Button>
 
                             <Button
@@ -752,7 +752,7 @@ export default function NewsAdminPage() {
                                     setNewCategory("");
                                 }}
                             >
-                                Add
+                                เพิ่ม
                             </Button>
                         </div>
                     </div>

@@ -4,7 +4,7 @@ import BranchPageClient from "./BranchPageClient";
 
 export default function Page() {
     return (
-        <Suspense fallback={<div className="p-6 text-sm opacity-70">Loading Branch…</div>}>
+        <Suspense fallback={<div className="p-6 text-sm opacity-70">กำลังโหลดสาขา...</div>}>
             <BranchPageClient />
         </Suspense>
     );

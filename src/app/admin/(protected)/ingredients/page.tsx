@@ -1047,7 +1047,7 @@ export default function IngredientsAdminPage() {
                             type="button"
                             onClick={() => setActionNotice(null)}
                             className="text-text-muted hover:text-text-secondary"
-                            aria-label="close notice"
+                            aria-label="ปิดข้อความแจ้งเตือน"
                         >
                             x
                         </button>

@@ -35,7 +35,7 @@ function coverageText(item: MenuCard): React.ReactNode {
     if (coverageStatus === "full_recipe") {
         return (
             <div className="text-sm">
-                <div className="font-semibold text-[var(--accent)]">พร้อมขายใน POS</div>
+                <div className="font-semibold text-[var(--accent)]">พร้อมขายที่หน้าขาย</div>
                 <div className="text-xs text-[var(--text-secondary)]">
                     {recipeItemCount}/{variantCount} ตัวเลือกพร้อมขาย
                 </div>
@@ -46,12 +46,12 @@ function coverageText(item: MenuCard): React.ReactNode {
     if (coverageStatus === "no_recipe") {
         return (
             <div className="space-y-1">
-                <div className="font-semibold text-amber-400">ซ่อนจาก POS</div>
+                <div className="font-semibold text-amber-400">ซ่อนจากหน้าขาย</div>
                 <div className="text-xs text-[var(--text-secondary)]">
                     {recipeItemCount}/{variantCount} ตัวเลือกพร้อมขาย
                 </div>
                 <div className="text-xs text-[var(--text-secondary)]">
-                    ยังไม่มีตัวเลือกที่พร้อมขายใน POS
+                    ยังไม่มีตัวเลือกที่พร้อมขายที่หน้าขาย
                 </div>
                 {missing ? <div className="text-xs text-amber-300">{missing}</div> : null}
             </div>
@@ -64,7 +64,7 @@ function coverageText(item: MenuCard): React.ReactNode {
                 {recipeItemCount}/{variantCount} ตัวเลือกพร้อมขาย
             </div>
             <div className="text-xs text-[var(--text-secondary)]">
-                บางตัวเลือกยังไม่มีสูตร ระบบจะซ่อนจาก POS จนกว่าจะเพิ่มสูตรให้ครบ
+                บางตัวเลือกยังไม่มีสูตร ระบบจะซ่อนจากหน้าขายจนกว่าจะเพิ่มสูตรให้ครบ
             </div>
             {missing ? <div className="text-xs text-yellow-200">{missing}</div> : null}
         </div>

@@ -29,7 +29,7 @@ export default function BranchFilter({
                     : "bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-black"
                     }`}
             >
-                Primary Only
+                เฉพาะสาขาหลัก
             </button>
 
         </div>

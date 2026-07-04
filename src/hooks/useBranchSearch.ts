@@ -44,7 +44,7 @@ export default function useBranchSearch({
             const res = await fetch(`/api/branch?${params.toString()}`);
             if (!res.ok) {
                 const text = await res.text().catch(() => "");
-                throw new Error(text || `Request failed: ${res.status}`);
+                throw new Error(text || "โหลดสาขาไม่สำเร็จ");
             }
 
             const json = (await res.json()) as BranchListResponse;
@@ -60,7 +60,7 @@ export default function useBranchSearch({
             );
             setInputPage(String(page));
         } catch (err) {
-            const msg = err instanceof Error ? err.message : "Failed to load branches";
+            const msg = err instanceof Error ? err.message : "โหลดสาขาไม่สำเร็จ";
             console.error("useBranchSearch error ->", msg);
             setError(msg);
             setBranches([]);

@@ -56,7 +56,7 @@ export default function Pagination({
                 onClick={prevPage}
                 disabled={page === 1}
                 className="p-2 rounded-lg border border-border/40 hover:bg-border/10 disabled:opacity-30"
-                aria-label="Previous page"
+                aria-label="หน้าก่อนหน้า"
             >
                 <ChevronLeft size={18} />
             </button>
@@ -71,7 +71,7 @@ export default function Pagination({
                 onClick={nextPage}
                 disabled={page === totalPages}
                 className="p-2 rounded-lg border border-border/40 hover:bg-border/10 disabled:opacity-30"
-                aria-label="Next page"
+                aria-label="หน้าถัดไป"
             >
                 <ChevronRight size={18} />
             </button>

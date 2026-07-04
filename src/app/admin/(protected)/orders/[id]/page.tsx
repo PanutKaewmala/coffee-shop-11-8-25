@@ -486,7 +486,7 @@ function buildReceiptDocument({
     receiptSettings: ReceiptSettings | null;
 }) {
     // Admin reprints use current receipt settings for MVP; immutable snapshots are deferred.
-    const effectiveShopName = receiptSettings?.shopName ?? shopName ?? "Coffee SaaS";
+    const effectiveShopName = receiptSettings?.shopName ?? shopName ?? "ร้านกาแฟ";
     const effectiveBranchName = receiptSettings?.branchName ?? branchName;
     const shopTitle = effectiveBranchName
         ? `${effectiveShopName} - ${effectiveBranchName}`
@@ -495,14 +495,14 @@ function buildReceiptDocument({
         ? `<div class="meta">${escapeReceiptHtml(receiptSettings.branchAddress)}</div>`
         : "";
     const branchPhoneHtml = receiptSettings?.branchPhone
-        ? `<div class="meta">Tel / โทร: ${escapeReceiptHtml(receiptSettings.branchPhone)}</div>`
+        ? `<div class="meta">โทร: ${escapeReceiptHtml(receiptSettings.branchPhone)}</div>`
         : "";
     const taxIdHtml = receiptSettings?.taxId
-        ? `<div class="meta">Tax ID / เลขผู้เสียภาษี: ${escapeReceiptHtml(receiptSettings.taxId)}</div>`
+        ? `<div class="meta">เลขผู้เสียภาษี: ${escapeReceiptHtml(receiptSettings.taxId)}</div>`
         : "";
     const footerHtml = receiptSettings?.receiptFooter
         ? `<div>${escapeReceiptHtml(receiptSettings.receiptFooter)}</div>`
-        : `<div>ขอบคุณที่ใช้บริการ</div><div>Thank you</div>`;
+        : `<div>ขอบคุณที่ใช้บริการ</div>`;
     const receiptNumber = order.id.slice(-8) || "-";
     const paidDisplay = order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-";
     const changeDisplay = order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-";
@@ -1218,7 +1218,7 @@ export default function OrderDetailPage() {
 
                     <div>
                         <div className="flex items-center justify-between">
-                            <div className="text-xs text-text-secondary opacity-70 mb-1">หมายเหตุ (optional)</div>
+                            <div className="text-xs text-text-secondary opacity-70 mb-1">หมายเหตุ (ไม่บังคับ)</div>
                             <div className="text-xs text-text-secondary opacity-60">
                                 {Math.min(200, normalizeNote(cancelNote).length)}/200
                             </div>
@@ -1229,7 +1229,7 @@ export default function OrderDetailPage() {
                             disabled={cancelLoading}
                             rows={3}
                             className="w-full rounded-xl border border-white/10 bg-[#0f0d0b] px-3 py-2 text-sm outline-none focus:border-white/20"
-                            placeholder="ใส่เพิ่มได้ (เช่น ลูกค้าขอแก้ไข, staff กดผิด)"
+                            placeholder="ใส่เพิ่มได้ (เช่น ลูกค้าขอแก้ไข, พนักงานกดผิด)"
                         />
                     </div>
 

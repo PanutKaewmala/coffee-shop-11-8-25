@@ -184,7 +184,7 @@ export default function AdminDashboard() {
         if (status === "paid") return "ชำระแล้ว";
         if (status === "cancelled") return "ยกเลิก";
         if (status === "refunded") return "คืนเงิน";
-        return "VOID";
+        return "ยกเลิกก่อนชำระ";
     }
 
     function rangeLabelTH(r: RangeType) {
@@ -250,13 +250,13 @@ export default function AdminDashboard() {
                 const data: unknown = await res.json().catch(() => null);
 
                 if (!res.ok) {
-                    throw new Error(getErrorMessage(data) ?? "Failed to fetch");
+                    throw new Error(getErrorMessage(data) ?? "โหลดข้อมูลภาพรวมร้านไม่สำเร็จ");
                 }
 
                 if (!mounted) return;
                 setSummary(data as RevenueDashboardResponse);
             } catch (err) {
-                const msg = err instanceof Error ? err.message : "Unknown error";
+                const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
                 if (mounted) setError(msg);
             } finally {
                 if (mounted) setLoading(false);
@@ -555,8 +555,8 @@ export default function AdminDashboard() {
 
         list.push({
             key: "refundVoid",
-            title: "คืนเงิน/VOID",
-            value: `คืนเงิน ${rr}% • VOID ${vr}%`,
+            title: "คืนเงิน/ยกเลิกก่อนชำระ",
+            value: `คืนเงิน ${rr}% • ยกเลิกก่อนชำระ ${vr}%`,
             tone: rvTone,
             hint: rvHint,
         });
@@ -631,9 +631,9 @@ export default function AdminDashboard() {
             tone: aovTrend.tone,
             hint:
                 aovTrend.tone === "rose"
-                    ? "บิลเฉลี่ยตก—ดัน add-on/ไซส์ใหญ่/เมนูคู่"
+                    ? "บิลเฉลี่ยตก ดันเมนูเสริม/ไซส์ใหญ่/เมนูคู่"
                     : aovTrend.tone === "emerald"
-                        ? "บิลเฉลี่ยขึ้น—รักษา pattern เดิม"
+                        ? "บิลเฉลี่ยขึ้น รักษาแนวทางเดิม"
                         : aovTrend.hint,
         });
 
@@ -726,7 +726,7 @@ export default function AdminDashboard() {
         );
     }
 
-    if (error) return <p className="p-6 text-red-500">Error: {error}</p>;
+    if (error) return <p className="p-6 text-red-500">เกิดข้อผิดพลาด: {error}</p>;
     if (!summary) return null;
 
     return (
@@ -735,13 +735,13 @@ export default function AdminDashboard() {
                 {/* Header */}
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-1">
-                        <h1 className="text-2xl md:text-3xl font-bold text-text-primary">Admin Dashboard</h1>
+                        <h1 className="text-2xl md:text-3xl font-bold text-text-primary">ภาพรวมร้าน</h1>
                         <div className="text-sm text-text-muted">
                             สรุปภาพรวมช่วง:{" "}
                             <span className="text-text-secondary font-medium">{rangeLabelTH(range)}</span>
                             {counts.menu || counts.branch || counts.news || counts.contact ? (
                                 <span className="ml-2 text-xs text-text-muted">
-                                    • Menu {counts.menu} • Branch {counts.branch} • News {counts.news} • Contact{" "}
+                                    • เมนู {counts.menu} • สาขา {counts.branch} • ข่าว {counts.news} • ข้อความ{" "}
                                     {counts.contact}
                                 </span>
                             ) : null}
@@ -765,7 +765,7 @@ export default function AdminDashboard() {
                                             : "text-text-secondary hover:bg-surface/60",
                                     ].join(" ")}
                                 >
-                                    {r.toUpperCase()}
+                                    {rangeLabelTH(r)}
                                 </button>
                             );
                         })}
@@ -780,7 +780,7 @@ export default function AdminDashboard() {
                 {/* ✅ Insight Badges */}
                 <div className="rounded-xl border border-text-muted/20 bg-surface/40 p-4">
                     <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="text-sm font-semibold text-text-primary">Owner-first Signals</div>
+                        <div className="text-sm font-semibold text-text-primary">สัญญาณที่ควรดู</div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -803,11 +803,11 @@ export default function AdminDashboard() {
 
                 {/* KPI cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-                    <Card title="ยอดขายสุทธิ (Net)">
+                    <Card title="ยอดขายสุทธิ">
                         <div className="text-2xl font-bold text-text-primary">{fmtCurrency(summary.netTotal)}</div>
                     </Card>
 
-                    <Card title="ยอดขายรวม (Paid)">
+                    <Card title="ยอดขายรวมที่ชำระแล้ว">
                         <div className="text-2xl font-bold text-text-primary">{fmtCurrency(summary.paidTotal)}</div>
                         <div className="text-sm text-text-muted mt-1">
                             มีคืนเงิน <span className="text-text-secondary">{fmtCurrency(summary.refundedTotal)}</span>
@@ -818,7 +818,7 @@ export default function AdminDashboard() {
                         <div className="text-2xl font-bold text-text-primary">{summary.paidCount}</div>
                     </Card>
 
-                    <Card title="ออเดอร์ยกเลิก/ปัญหา">
+                    <Card title="ออเดอร์ที่ยกเลิก">
                         <div className="relative group">
                             <div className="flex items-baseline justify-between gap-3">
                                 <div className="text-2xl font-bold text-text-primary">{summary.cancelledCount}</div>
@@ -843,25 +843,25 @@ export default function AdminDashboard() {
                                 role="tooltip"
                                 aria-hidden="true"
                             >
-                                <div className="text-xs text-text-muted mb-2">Breakdown (ช่วงเดียวกัน)</div>
+                                <div className="text-xs text-text-muted mb-2">แยกตามสถานะ (ช่วงเดียวกัน)</div>
 
                                 <div className="space-y-2 text-sm">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-text-secondary">Cancelled</span>
+                                        <span className="text-text-secondary">ยกเลิก</span>
                                         <span className="text-text-primary font-semibold">
                                             {summary.cancelledCount} ({fmtCurrency(summary.cancelledTotal)})
                                         </span>
                                     </div>
 
                                     <div className="flex items-center justify-between">
-                                        <span className="text-text-secondary">Refunded</span>
+                                        <span className="text-text-secondary">คืนเงิน</span>
                                         <span className="text-text-primary font-semibold">
                                             {summary.refundedCount} ({fmtCurrency(summary.refundedTotal)})
                                         </span>
                                     </div>
 
                                     <div className="flex items-center justify-between">
-                                        <span className="text-text-secondary">Void</span>
+                                        <span className="text-text-secondary">ยกเลิกก่อนชำระ</span>
                                         <span className="text-text-primary font-semibold">
                                             {summary.voidCount} ({fmtCurrency(summary.voidTotal)})
                                         </span>
@@ -869,13 +869,13 @@ export default function AdminDashboard() {
                                 </div>
 
                                 <div className="mt-3 pt-2 border-t border-text-muted/20 text-xs text-text-muted">
-                                    Owner tip: ถ้า % สูง → เช็ค “ทำไมยกเลิก” (ของหมด/รอนาน/พนักงานกดผิด)
+                                    คำแนะนำ: ถ้าสัดส่วนสูง ให้ตรวจเหตุผลการยกเลิก เช่น ของหมด รอนาน หรือกดผิด
                                 </div>
                             </div>
                         </div>
                     </Card>
 
-                    <Card title="บิลเฉลี่ย (AOV)">
+                    <Card title="ยอดเฉลี่ยต่อออเดอร์">
                         <div className="text-2xl font-bold text-text-primary">{fmtCurrency(summary.aov)}</div>
                         <div className="text-sm text-text-muted mt-1">
                             {topSeller ? (
@@ -897,12 +897,12 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Chart/Calendar */}
                     <div className="lg:col-span-2">
-                        <Card title="ยอดขาย (Chart / Calendar)">
+                        <Card title="ยอดขาย">
                             <div className="flex items-center justify-between gap-3 mb-4">
                                 <div className="text-xs text-text-muted">
                                     โหมด:{" "}
                                     <span className="text-text-secondary font-medium">
-                                        {viewMode === "chart" ? "Chart" : "Calendar"}
+                                        {viewMode === "chart" ? "กราฟ" : "ปฏิทิน"}
                                     </span>
                                 </div>
 
@@ -917,7 +917,7 @@ export default function AdminDashboard() {
                                                 : "text-text-secondary hover:bg-surface/60"
                                                 }`}
                                         >
-                                            Chart
+                                            กราฟ
                                         </button>
 
                                         <button
@@ -928,7 +928,7 @@ export default function AdminDashboard() {
                                                 : "text-text-secondary hover:bg-surface/60"
                                                 }`}
                                         >
-                                            Calendar
+                                            ปฏิทิน
                                         </button>
                                     </div>
                                 ) : null}
@@ -945,7 +945,7 @@ export default function AdminDashboard() {
                     {/* Right side */}
                     <div className="space-y-4">
                         {/* Top 5 */}
-                        <Card title="เมนูขายดี Top 5">
+                        <Card title="เมนูขายดี 5 อันดับ">
                             <div className="space-y-3">
                                 {summary.topItems.length ? (
                                     summary.topItems.map((t, idx) => (
@@ -972,12 +972,12 @@ export default function AdminDashboard() {
                         </Card>
 
                         {/* Recent orders */}
-                        <Card title="Recent Orders">
+                        <Card title="ออเดอร์ล่าสุด">
                             <div className="overflow-x-auto">
                                 <table className="w-full table-auto text-sm">
                                     <thead>
                                         <tr className="text-left text-xs text-text-muted">
-                                            <th className="pb-2">Order</th>
+                                            <th className="pb-2">ออเดอร์</th>
                                             <th className="pb-2">สถานะ</th>
                                             <th className="pb-2">เวลา</th>
                                             <th className="pb-2">จำนวน</th>
@@ -1037,7 +1037,7 @@ export default function AdminDashboard() {
                             </div>
 
                             <div className="mt-3 pt-3 border-t border-text-muted/20 flex items-center justify-between text-xs text-text-muted">
-                                <span>คลิก Order เพื่อดูรายละเอียด</span>
+                                <span>คลิกเลขออเดอร์เพื่อดูรายละเอียด</span>
                             </div>
                         </Card>
                     </div>

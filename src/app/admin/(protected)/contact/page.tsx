@@ -100,30 +100,30 @@ export default function ContactAdminPage() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Delete this message?")) return;
+        if (!confirm("ลบข้อความนี้?")) return;
 
         try {
             const res = await fetch(`/api/contact?id=${id}`, { method: "DELETE" });
             if (!res.ok) {
                 const j = await res.json().catch(() => ({}));
-                alert(j?.error || "Delete failed");
+                alert(j?.error || "ลบข้อความไม่สำเร็จ");
                 return;
             }
             await reloadList();
         } catch (err) {
             console.error(err);
-            alert("Failed to delete contact");
+            alert("ลบข้อความไม่สำเร็จ");
         }
     };
 
-    const headers = ["Name", "Email", "Message", "Category", "Date", "Actions"];
+    const headers = ["ชื่อ", "อีเมล", "ข้อความ", "หมวดหมู่", "วันที่", "จัดการ"];
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="Customer Contacts">
+            <Card title="ข้อความจากลูกค้า">
                 {!permissionLoading && !canManageContacts ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        Read-only mode: only owners can delete contact messages.
+                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่ลบข้อความได้
                     </div>
                 ) : null}
 
@@ -139,9 +139,9 @@ export default function ContactAdminPage() {
 
                 {/* TABLE */}
                 {loading ? (
-                    <p>Loading...</p>
+                    <p>กำลังโหลด...</p>
                 ) : contacts.length === 0 ? (
-                    <p className="text-gray-400">No messages found.</p>
+                    <p className="text-gray-400">ยังไม่มีข้อความ</p>
                 ) : (
                     <>
                         <div className="overflow-x-auto">
@@ -169,7 +169,7 @@ export default function ContactAdminPage() {
 
                                         <div key={c.id + "-act"} className="flex flex-wrap gap-2">
                                             <Button variant="outline" size="sm" onClick={() => handleView(c)}>
-                                                View
+                                                ดู
                                             </Button>
 
                                             {canManageContacts && !permissionLoading ? (
@@ -178,11 +178,11 @@ export default function ContactAdminPage() {
                                                     size="sm"
                                                     onClick={() => handleDelete(c.id)}
                                                 >
-                                                    Delete
+                                                ลบ
                                                 </Button>
                                             ) : (
                                                 <span className="text-xs text-[var(--text-secondary)] self-center">
-                                                    View only
+                                                    ดูอย่างเดียว
                                                 </span>
                                             )}
                                         </div>,
@@ -211,21 +211,21 @@ export default function ContactAdminPage() {
                         setShowModal(false);
                         setSelectedContact(null);
                     }}
-                    title={`Message from ${selectedContact.name}`}
+                    title={`ข้อความจาก ${selectedContact.name}`}
                 >
                     <div className="space-y-4 text-[var(--text-primary)]">
                         <div>
-                            <p className="font-semibold">Name:</p>
+                            <p className="font-semibold">ชื่อ:</p>
                             <p className="opacity-80">{selectedContact.name}</p>
                         </div>
 
                         <div>
-                            <p className="font-semibold">Email:</p>
+                            <p className="font-semibold">อีเมล:</p>
                             <p className="opacity-80">{selectedContact.email ?? "-"}</p>
                         </div>
 
                         <div>
-                            <p className="font-semibold">Category:</p>
+                            <p className="font-semibold">หมวดหมู่:</p>
                             {(() => {
                                 const cat = safeCategory(selectedContact);
                                 return (
@@ -240,7 +240,7 @@ export default function ContactAdminPage() {
                         </div>
 
                         <div>
-                            <p className="font-semibold">Message:</p>
+                            <p className="font-semibold">ข้อความ:</p>
                             <p className="whitespace-pre-line opacity-80">
                                 {selectedContact.message ?? "-"}
                             </p>
@@ -248,7 +248,7 @@ export default function ContactAdminPage() {
 
                         {selectedContact.created_at && (
                             <div>
-                                <p className="font-semibold">Received:</p>
+                                <p className="font-semibold">ได้รับเมื่อ:</p>
                                 <p className="opacity-80">
                                     {new Date(selectedContact.created_at).toLocaleString()}
                                 </p>
@@ -257,7 +257,7 @@ export default function ContactAdminPage() {
 
                         <div className="flex justify-end pt-4">
                             <Button variant="outline" onClick={() => setShowModal(false)}>
-                                Close
+                                ปิด
                             </Button>
                         </div>
                     </div>

@@ -62,7 +62,7 @@ const Modal: React.FC<ModalProps> = ({
                     <button
                         onClick={onClose}
                         className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors p-1 rounded-lg"
-                        aria-label="Close modal"
+                        aria-label="ปิดหน้าต่าง"
                     >
                         <X size={18} />
                     </button>

@@ -85,7 +85,7 @@ export default function MenuCategoryFilter({
 
                 {/* ADD */}
                 <Button variant="outline" onClick={onAddCategory}>
-                    + Add
+                    + เพิ่ม
                 </Button>
 
                 {/* MORE — ONLY IF hidden > 0 */}
@@ -98,7 +98,7 @@ export default function MenuCategoryFilter({
                                 setMoreQuery("");
                             }}
                         >
-                            More ▾
+                            เพิ่มเติม ▾
                         </Button>
 
                         {moreOpen && (

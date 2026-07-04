@@ -28,6 +28,15 @@ function pad(n: number) {
     return String(n).padStart(2, "0");
 }
 
+function rangeLabelTH(range: RangeType) {
+    if (range === "today") return "วันนี้";
+    if (range === "week") return "7 วัน";
+    if (range === "month") return "30 วัน";
+    if (range === "year") return "ปีนี้";
+    if (range === "5year") return "5 ปี";
+    return "ทั้งหมด";
+}
+
 /** Format a Date object as local YYYY-MM-DD */
 function toLocalISO(d: Date) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -229,7 +238,7 @@ export default function CalendarPNL({ orders, range }: Props) {
 
                 <div className="flex items-center gap-3">
                     {range !== "week" && (
-                        <div className="text-sm text-text-muted">ช่วง: {range.toUpperCase()}</div>
+                        <div className="text-sm text-text-muted">ช่วง: {rangeLabelTH(range)}</div>
                     )}
 
                     {/* Dropdown hide when range = week/today */}
@@ -251,7 +260,7 @@ export default function CalendarPNL({ orders, range }: Props) {
 
             {/* Weekday header */}
             <div className="grid grid-cols-7 mb-3 text-xs text-text-muted">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                {["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."].map((d) => (
                     <div key={d} className="text-center font-medium">
                         {d}
                     </div>
