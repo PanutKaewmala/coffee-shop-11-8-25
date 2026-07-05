@@ -885,16 +885,16 @@ export default function POSPage() {
 
     /* -------------------- RENDER -------------------- */
     return (
-            <div className="flex flex-col h-screen lg:flex-row bg-background text-text-primary">
+            <div className="flex flex-col h-auto lg:h-screen lg:flex-row bg-background text-text-primary">
             {feedbackText ? (
-                <div className="fixed right-2 md:right-4 top-2 md:top-4 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 md:px-3 md:py-2 text-xs md:text-sm text-text-primary shadow-xl backdrop-blur pointer-events-none">
+                <div className="fixed right-2 top-2 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 text-xs text-text-primary shadow-xl backdrop-blur pointer-events-none">
                     {feedbackText}
                 </div>
             ) : null}
 
             {/* LEFT: Menu List */}
-            <div className="flex-[1.15] min-h-0 overflow-y-auto border-b lg:border-r lg:w-[58%] lg:flex-none p-3 lg:p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] md:text-xs text-text-muted">
+            <div className="flex-none lg:flex-[1.15] lg:min-h-0 lg:overflow-y-auto border-b lg:border-r lg:w-[58%] lg:flex-none p-3 lg:p-4">
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                     <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
                         Shop: {context.shopName ?? context.shopId ?? "-"}
                     </span>
@@ -903,20 +903,20 @@ export default function POSPage() {
                     </span>
                 </div>
                 <div className="flex flex-col gap-3 mb-4">
-                    <h2 className="text-xl md:text-2xl font-bold text-text-primary">เมนูทั้งหมด</h2>
+                    <h2 className="text-xl lg:text-2xl font-bold text-text-primary">เมนูทั้งหมด</h2>
 
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="ค้นหาเมนู..."
-                            className="w-full sm:w-64 px-3 py-2.5 md:py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary placeholder:text-text-muted"
+                            className="w-full sm:w-64 px-3 py-2.5 lg:py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary placeholder:text-text-muted"
                         />
 
                         <select
                             value={activeCatId}
                             onChange={(e) => setActiveCatId(e.target.value)}
-                            className="w-full sm:w-auto px-3 py-2 md:py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
+                            className="w-full sm:w-auto px-3 py-2.5 lg:py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
                         >
                             <option value="all">ทุกหมวด</option>
                             {categories.map((c) => (
@@ -929,13 +929,13 @@ export default function POSPage() {
                 </div>
 
                 {feedError ? (
-                    <div className="mb-2 md:mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-2.5 md:p-3 text-xs md:text-sm text-red-600">
+                    <div className="mb-2 lg:mb-3 rounded-xl border border-red-500/30 bg-red-500/10 p-2.5 lg:p-3 text-sm text-red-600">
                         {feedError}
                     </div>
                 ) : null}
 
                 {filteredMenu.length === 0 ? (
-                        <div className="rounded-xl border border-[var(--text-muted)]/20 bg-surface p-3 md:p-4 text-xs md:text-sm text-text-secondary">
+                        <div className="rounded-xl border border-[var(--text-muted)]/20 bg-surface p-3 lg:p-4 text-sm text-text-secondary">
                         {menu.length === 0
                             ? "ยังไม่มีเมนูที่พร้อมขายในสาขานี้ (ต้องเปิดเมนูในสาขา และมีสูตรใน variant อย่างน้อย 1 ตัว)"
                             : "ไม่พบเมนูตามตัวกรองที่เลือก"}
@@ -952,7 +952,7 @@ export default function POSPage() {
                                 key={item.id}
                                 // ✅ add ที่การ์ด (เหมือนเดิม)
                                 onClick={() => addToCart(item)}
-                                className="p-3 md:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface cursor-pointer hover:bg-accent/20 transition"
+                                className="p-3 lg:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface cursor-pointer hover:bg-accent/20 transition"
                                 title="คลิกเพื่อเพิ่ม"
                             >
                                 <div className="flex items-start justify-between gap-3">
@@ -965,16 +965,16 @@ export default function POSPage() {
                                         </div>
                                     </div>
 
-                                    <div className="shrink-0 text-[10px] md:text-xs text-text-muted">
+                                    <div className="shrink-0 text-xs text-text-muted">
                                         คลิกเพื่อเพิ่ม
                                     </div>
                                 </div>
 
                                 {/* pills: แตะเพื่อเลือก+เพิ่มทันที */}
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                    {variants.length === 0 ? (
-                                        <span className="text-xs md:text-sm text-text-muted">ไม่มี Serve</span>
-                                    ) : (
+                                {variants.length === 0 ? (
+                                    <span className="text-sm text-text-muted">ไม่มี Serve</span>
+                                ) : (
                                         variants.map((v) => {
                                             const active = (selectedVariant?.id ?? "") === v.id;
 
@@ -990,12 +990,12 @@ export default function POSPage() {
                                                         }));
                                                         addVariantToCart(item, v.id);
                                                     }}
-                                                    className={[
-                                                        "px-2.5 py-1 text-xs md:px-3 md:py-1.5 md:text-sm rounded-full border transition",
-                                                        active
-                                                            ? "bg-accent text-white border-accent"
-                                                            : "bg-[var(--text-muted)]/10 text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
-                                                    ].join(" ")}
+                                                        className={[
+                                                            "px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-sm rounded-full border transition",
+                                                            active
+                                                                ? "bg-accent text-white border-accent"
+                                                                : "bg-[var(--text-muted)]/10 text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
+                                                        ].join(" ")}
                                                     title={`${serveLabel(v)} — ${formatPrice(
                                                         toNumber(v.price, item.price)
                                                     )}`}
@@ -1007,7 +1007,7 @@ export default function POSPage() {
                                     )}
                                 </div>
 
-                                <div className="text-[10px] md:text-xs text-text-muted">
+                                <div className="text-xs text-text-muted">
                                     แตะปุ่มเสิร์ฟเพื่อเพิ่มทันที หรือแตะการ์ดเพื่อเพิ่มตัวที่เลือก
                                 </div>
                             </div>
@@ -1017,7 +1017,7 @@ export default function POSPage() {
             </div>
 
             {/* RIGHT: Cart */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 lg:p-4 flex flex-col lg:w-[42%] lg:flex-none">
+            <div className="flex-none lg:flex-1 lg:min-h-0 lg:overflow-y-auto p-3 lg:p-4 flex flex-col lg:w-[42%] lg:flex-none">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 lg:gap-3 mb-3 lg:mb-4">
                     <h2 className="text-xl lg:text-2xl font-bold text-text-primary">ตะกร้า</h2>
                     <div className="text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
@@ -1039,7 +1039,7 @@ export default function POSPage() {
                     </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto space-y-2 lg:space-y-3">
+                <div className="space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:space-y-3">
                     {groupedCart.length === 0 ? (
                         <div className="p-3 lg:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
                             ยังไม่มีรายการ
@@ -1168,25 +1168,25 @@ export default function POSPage() {
                                 if (paid >= total) {
                                     const change = paid - total;
                                     return (
-                                        <div className="text-xs md:text-sm text-green-600">
+                                        <div className="text-sm text-green-600">
                                             เงินทอน: {formatPrice(change)}
                                         </div>
                                     );
                                 }
                                 return (
-                                    <div className="text-xs md:text-sm text-red-600">
+                                    <div className="text-sm text-red-600">
                                         เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}
                                     </div>
                                 );
                             })()}
 
-                            <div className="space-y-1.5 md:space-y-2 pt-1">
-                                <div className="text-[10px] md:text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div>
-                                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                            <div className="space-y-1.5 lg:space-y-2 pt-1">
+                                <div className="text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div>
+                                <div className="flex flex-wrap gap-1.5 lg:gap-2">
                                     <button
                                         type="button"
                                         onClick={setExactCash}
-                                        className="px-2.5 py-1.5 md:px-3 md:py-2 text-xs md:text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
+                                        className="px-2.5 py-1.5 lg:px-3 lg:py-2 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
                                     >
                                         พอดี ฿{total}
                                     </button>
@@ -1195,7 +1195,7 @@ export default function POSPage() {
                                             key={amount}
                                             type="button"
                                             onClick={() => setCashPreset(amount)}
-                                            className="px-2.5 py-1.5 md:px-3 md:py-2 text-xs md:text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
+                                            className="px-2.5 py-1.5 lg:px-3 lg:py-2 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
                                         >
                                             ฿{amount}
                                         </button>
@@ -1203,15 +1203,15 @@ export default function POSPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-1.5 md:space-y-2">
-                                <div className="text-[10px] md:text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 md:gap-2">
+                            <div className="space-y-1.5 lg:space-y-2">
+                                <div className="text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 lg:gap-2">
                                     {CASH_ADD_AMOUNTS.map((amount) => (
                                         <button
                                             key={amount}
                                             type="button"
                                             onClick={() => addCashAmount(amount)}
-                                            className="py-1.5 text-xs md:text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
+                                            className="py-1.5 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
                                         >
                                             +{amount}
                                         </button>
@@ -1222,7 +1222,7 @@ export default function POSPage() {
                             <button
                                 type="button"
                                 onClick={clearPaidAmount}
-                                className="w-full py-2 md:py-2.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-xs md:text-sm text-text-secondary hover:bg-[var(--text-muted)]/30 transition"
+                                className="w-full py-2 lg:py-2.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-[var(--text-muted)]/30 transition"
                             >
                                 ล้าง
                             </button>
@@ -1254,15 +1254,15 @@ export default function POSPage() {
 
             {receiptData ? (
                 <div
-                    className="fixed inset-0 z-50 flex items-start justify-center bg-background/80 p-3 md:p-4 backdrop-blur-sm overflow-y-auto print:bg-white print:p-0 print:items-start print:justify-center"
+                    className="fixed inset-0 z-50 flex items-start justify-center bg-background/80 p-3 lg:p-4 backdrop-blur-sm overflow-y-auto print:bg-white print:p-0 print:items-start print:justify-center"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="receipt-modal-title"
                 >
-                    <div className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] md:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 md:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[90mm] print:max-w-[90mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
+                    <div className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] lg:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 lg:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[90mm] print:max-w-[90mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
                         <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
                             <div>
-                                <h2 id="receipt-modal-title" className="text-xl md:text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
+                                <h2 id="receipt-modal-title" className="text-xl lg:text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
                                 <div className="text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0 print:leading-tight">
                                     <div>
                                         {receiptShopName}
@@ -1285,7 +1285,7 @@ export default function POSPage() {
                             <button
                                 type="button"
                                 onClick={() => setReceiptData(null)}
-                                className="rounded-lg border border-[var(--text-muted)]/20 px-2.5 py-1.5 md:px-3 md:py-1.5 text-xs md:text-sm text-text-secondary hover:bg-[var(--text-muted)]/20 print:hidden"
+                                className="rounded-lg border border-[var(--text-muted)]/20 px-2.5 py-1.5 lg:px-3 lg:py-1.5 text-sm text-text-secondary hover:bg-[var(--text-muted)]/20 print:hidden"
                                 aria-label="ปิดใบเสร็จ"
                             >
                                 ปิด
@@ -1364,7 +1364,7 @@ export default function POSPage() {
                                     type="button"
                                     onClick={() => setReceiptPrintMode("thermal")}
                                 className={[
-                                    "flex-1 py-1.5 md:py-2 text-xs rounded-lg border transition",
+                                    "flex-1 py-1.5 lg:py-2 text-xs rounded-lg border transition",
                                     receiptPrintMode === "thermal"
                                         ? "bg-accent text-white border-accent"
                                         : "bg-surface border-[var(--text-muted)]/20 text-text-secondary hover:bg-accent/20",
@@ -1376,7 +1376,7 @@ export default function POSPage() {
                                     type="button"
                                     onClick={() => setReceiptPrintMode("a4")}
                                 className={[
-                                    "flex-1 py-1.5 md:py-2 text-xs rounded-lg border transition",
+                                    "flex-1 py-1.5 lg:py-2 text-xs rounded-lg border transition",
                                     receiptPrintMode === "a4"
                                         ? "bg-accent text-white border-accent"
                                         : "bg-surface border-[var(--text-muted)]/20 text-text-secondary hover:bg-accent/20",
@@ -1387,18 +1387,18 @@ export default function POSPage() {
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-2 border-t border-[var(--text-muted)]/20 p-4 md:p-5 sm:flex-row print:hidden">
+                        <div className="flex flex-col gap-2 border-t border-[var(--text-muted)]/20 p-4 lg:p-5 sm:flex-row print:hidden">
                             <button
                                 type="button"
                                 onClick={() => setReceiptData(null)}
-                                className="w-full rounded-xl border border-[var(--text-muted)]/20 bg-surface px-4 py-2.5 md:py-3 text-xs md:text-sm font-semibold text-text-primary hover:bg-[var(--text-muted)]/20"
+                                className="w-full rounded-xl border border-[var(--text-muted)]/20 bg-surface px-4 py-2.5 lg:py-3 text-sm font-semibold text-text-primary hover:bg-[var(--text-muted)]/20"
                             >
                                 เริ่มบิลใหม่
                             </button>
                             <button
                                 type="button"
                                 onClick={() => window.print()}
-                                className="w-full rounded-xl bg-accent px-4 py-2.5 md:py-3 text-xs md:text-sm font-semibold text-white hover:bg-accent-dark"
+                                className="w-full rounded-xl bg-accent px-4 py-2.5 lg:py-3 text-sm font-semibold text-white hover:bg-accent-dark"
                             >
                                 พิมพ์ใบเสร็จ
                             </button>
