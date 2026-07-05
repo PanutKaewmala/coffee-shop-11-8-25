@@ -408,7 +408,7 @@ function CancelStockToggle({
         <div>
             <div className="text-xs text-text-secondary opacity-70 mb-2">สต็อกหลังยกเลิก</div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                     type="button"
                     onClick={() => onChange(true)}
@@ -686,7 +686,7 @@ function ReceiptModal({
                     </div>
                     <div className="min-h-0 flex-1 p-5">
                         {/* print mode selector (screen only) */}
-                        <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div className="text-xs text-text-secondary opacity-70">รูปแบบพิมพ์</div>
                             <div className="flex rounded-lg border border-white/10 bg-white/5 p-1">
                                 <button
@@ -1025,7 +1025,7 @@ export default function OrderDetailPage() {
                     กลับไปหน้าออเดอร์
                 </Link>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
                         onClick={() => onCopy(order.id)}

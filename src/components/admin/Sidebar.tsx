@@ -104,7 +104,7 @@ export default function Sidebar({
             {/* Sidebar */}
             <aside
                 className={`
-          fixed top-0 left-0 bottom-0 z-40 w-64
+           fixed top-0 left-0 bottom-0 z-40 w-64 max-w-[85vw]
           bg-[var(--surface)] text-[var(--text-primary)]
           border-r border-[var(--text-muted)]/20
           transform transition-transform duration-300

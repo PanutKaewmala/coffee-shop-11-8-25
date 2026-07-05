@@ -32,7 +32,7 @@ export default function AdminShell({
                     currentBranchId={currentBranchId}
                 />
 
-                <main className="flex-1 p-6 md:p-8 overflow-auto">
+                <main className="flex-1 p-4 md:p-8 overflow-auto">
                     <div className="max-w-6xl mx-auto space-y-6">{children}</div>
                 </main>
             </div>

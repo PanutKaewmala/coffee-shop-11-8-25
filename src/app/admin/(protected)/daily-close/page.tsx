@@ -1018,7 +1018,7 @@ export default function DailyClosePage() {
                             )}
 
                             <div className="mt-4 overflow-x-auto">
-                                <table className="w-full min-w-[600px] text-sm">
+                                <table className="w-full min-w-[600px] text-xs md:text-sm">
                                     <thead className="text-left text-xs text-text-secondary">
                                         <tr className="border-b border-white/10">
                                             <th className="px-3 py-2">เวลา</th>
@@ -1083,7 +1083,7 @@ export default function DailyClosePage() {
 
                         <Card title={`ออเดอร์ที่ชำระแล้ว (${report.paidTransactions.length})`}>
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[760px] text-sm">
+                                <table className="w-full min-w-[760px] text-xs md:text-sm">
                                     <thead className="text-left text-xs text-text-secondary">
                                         <tr className="border-b border-white/10">
                                             <th className="px-3 py-2">เวลา</th>
@@ -1136,7 +1136,7 @@ export default function DailyClosePage() {
 
                         <Card title={`ออเดอร์ที่ยกเลิก (${report.cancelledTransactions.length})`}>
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[900px] text-sm">
+                                <table className="w-full min-w-[900px] text-xs md:text-sm">
                                     <thead className="text-left text-xs text-text-secondary">
                                         <tr className="border-b border-white/10">
                                             <th className="px-3 py-2">เวลายกเลิก</th>
@@ -1192,7 +1192,7 @@ export default function DailyClosePage() {
                         ) : (
                             <Card title="ประวัติการปิดยอด">
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[900px] text-sm">
+                                    <table className="w-full min-w-[900px] text-xs md:text-sm">
                                         <thead className="text-left text-xs text-text-secondary">
                                             <tr className="border-b border-white/10">
                                                 <th className="px-3 py-2">วันที่ขาย</th>

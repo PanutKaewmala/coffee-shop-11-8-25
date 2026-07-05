@@ -185,7 +185,7 @@ export default function AdminNavbar({
                     </button>
 
                     <div className="min-w-0">
-                        <div className="font-semibold text-lg tracking-wide select-none truncate">
+                        <div className="font-semibold text-base md:text-lg tracking-wide select-none truncate">
                             ☕ แผงจัดการร้าน
                         </div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">
@@ -266,7 +266,7 @@ export default function AdminNavbar({
                         className="flex items-center gap-2 bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:bg-[var(--accent-dark)] transition-colors shadow-sm"
                     >
                         <LogOut size={16} />
-                        <span className="text-sm font-medium">ออกจากระบบ</span>
+                        <span className="text-sm font-medium hidden sm:inline">ออกจากระบบ</span>
                     </button>
                 </div>
             </div>

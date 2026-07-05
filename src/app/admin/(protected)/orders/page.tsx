@@ -547,7 +547,7 @@ export default function AdminOrdersPage() {
                             ) : (
                                 <>
                                     {/* TABLE */}
-                                    <div className="rounded-xl overflow-visible">
+                                    <div className="rounded-xl overflow-x-auto">
                                         <Table headers={headers} data={rows} />
                                     </div>
 
