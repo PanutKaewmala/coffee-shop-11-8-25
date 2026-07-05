@@ -885,7 +885,7 @@ export default function POSPage() {
 
     /* -------------------- RENDER -------------------- */
     return (
-            <div className="flex flex-col h-screen md:flex-row bg-background text-text-primary">
+            <div className="flex flex-col h-screen lg:flex-row bg-background text-text-primary">
             {feedbackText ? (
                 <div className="fixed right-2 md:right-4 top-2 md:top-4 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 md:px-3 md:py-2 text-xs md:text-sm text-text-primary shadow-xl backdrop-blur pointer-events-none">
                     {feedbackText}
@@ -893,7 +893,7 @@ export default function POSPage() {
             ) : null}
 
             {/* LEFT: Menu List */}
-            <div className="flex-[1.15] min-h-0 overflow-y-auto border-b md:border-r md:w-[58%] md:flex-none p-3 md:p-4">
+            <div className="flex-[1.15] min-h-0 overflow-y-auto border-b lg:border-r lg:w-[58%] lg:flex-none p-3 lg:p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] md:text-xs text-text-muted">
                     <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
                         Shop: {context.shopName ?? context.shopId ?? "-"}
@@ -942,7 +942,7 @@ export default function POSPage() {
                     </div>
                 ) : null}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 md:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-4">
                     {filteredMenu.map((item) => {
                         const variants = Array.isArray(item.variants) ? item.variants : [];
                         const selectedVariant = getSelectedVariant(item);
@@ -1017,10 +1017,10 @@ export default function POSPage() {
             </div>
 
             {/* RIGHT: Cart */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 flex flex-col md:w-1/3 md:flex-none">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 md:gap-3 mb-3 md:mb-4">
-                    <h2 className="text-xl md:text-2xl font-bold text-text-primary">ตะกร้า</h2>
-                    <div className="text-[10px] md:text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 lg:p-4 flex flex-col lg:w-[42%] lg:flex-none">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 lg:gap-3 mb-3 lg:mb-4">
+                    <h2 className="text-xl lg:text-2xl font-bold text-text-primary">ตะกร้า</h2>
+                    <div className="text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
                 </div>
 
                 {dailyCloseLoading && (
@@ -1039,16 +1039,16 @@ export default function POSPage() {
                     </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto space-y-2 md:space-y-3">
+                <div className="flex-1 overflow-y-auto space-y-2 lg:space-y-3">
                     {groupedCart.length === 0 ? (
-                        <div className="p-3 md:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
+                        <div className="p-3 lg:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
                             ยังไม่มีรายการ
                         </div>
                     ) : (
                         groupedCart.map((g) => (
                             <div
                                 key={g.menu_id}
-                                className="p-2 md:p-3 border border-[var(--text-muted)]/20 rounded-lg bg-surface"
+                                className="p-3 border border-[var(--text-muted)]/20 rounded-lg bg-surface"
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
@@ -1063,7 +1063,7 @@ export default function POSPage() {
                                     <div className="font-bold text-text-primary">{formatPrice(g.groupTotal)}</div>
                                 </div>
 
-                                <div className="mt-2 md:mt-3 space-y-1.5 md:space-y-2">
+                                <div className="mt-2 lg:mt-3 space-y-2 lg:space-y-2">
                                     {g.lines
                                         .slice()
                                         .sort((a, b) => a.variant_label.localeCompare(b.variant_label))
@@ -1071,17 +1071,17 @@ export default function POSPage() {
                                             <div
                                                 key={it.variant_id}
                                                 className={[
-                                                    "flex items-center justify-between gap-2 md:gap-3 rounded-md px-1.5 py-1.5 md:px-2 md:py-2 transition",
+                                                    "flex items-center justify-between gap-2 lg:gap-3 rounded-md px-2 py-2 transition",
                                                     lastTouchedVariantId === it.variant_id
                                                         ? "bg-accent/15 ring-1 ring-accent/50"
                                                         : "",
                                                 ].join(" ")}
                                             >
                                                 <div className="min-w-0">
-                                                    <div className="text-xs md:text-sm text-text-secondary truncate">
+                                                    <div className="text-sm text-text-secondary truncate">
                                                         • {it.variant_label}
                                                     </div>
-                                                    <div className="text-[11px] md:text-xs text-text-muted">
+                                                    <div className="text-xs text-text-muted">
                                                         {it.qty} × {formatPrice(it.price)}
                                                     </div>
                                                 </div>
@@ -1107,7 +1107,7 @@ export default function POSPage() {
 
                                                     <button
                                                         onClick={() => removeItem(it.variant_id)}
-                                                        className="px-2.5 h-9 text-xs md:px-3 md:h-9 md:text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98]"
+                                                        className="px-3 h-9 text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98]"
                                                     >
                                                         ลบ
                                                     </button>
@@ -1120,14 +1120,14 @@ export default function POSPage() {
                     )}
                 </div>
 
-                <div className="mt-3 md:mt-4 border-t border-[var(--text-muted)]/20 pt-3 md:pt-4 space-y-2 md:space-y-3">
-                    <div className="text-[10px] md:text-xs text-text-muted">วิธีจ่ายเงิน</div>
+                <div className="mt-3 border-t border-[var(--text-muted)]/20 pt-3 lg:mt-4 lg:pt-4 space-y-2 lg:space-y-3">
+                    <div className="text-xs text-text-muted">วิธีจ่ายเงิน</div>
                     <div className="flex gap-2">
                         <button
                             type="button"
                             onClick={() => setPaymentMethod("cash")}
                             className={[
-                                "flex-1 py-2 md:py-2.5 rounded-lg text-sm border transition",
+                                "flex-1 py-2.5 rounded-lg text-sm border transition",
                                 paymentMethod === "cash"
                                     ? "bg-accent text-white border-accent"
                                     : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
@@ -1139,7 +1139,7 @@ export default function POSPage() {
                             type="button"
                             onClick={() => setPaymentMethod("promptpay")}
                             className={[
-                                "flex-1 py-2 md:py-2.5 rounded-lg text-sm border transition",
+                                "flex-1 py-2.5 rounded-lg text-sm border transition",
                                 paymentMethod === "promptpay"
                                     ? "bg-accent text-white border-accent"
                                     : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
@@ -1160,7 +1160,7 @@ export default function POSPage() {
                                 value={paidAmount}
                                 onChange={(e) => setPaidAmount(e.target.value)}
                                 placeholder="กรอกจำนวนเงินที่รับ"
-                                className="w-full px-3 py-2.5 md:py-2 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
+                                className="w-full px-3 py-2.5 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
                             />
                             {(() => {
                                 const paid = parseNumberInput(paidAmount);
@@ -1229,7 +1229,7 @@ export default function POSPage() {
                         </div>
                     )}
 
-                    <div className="flex justify-between text-base md:text-lg font-bold text-text-primary">
+                    <div className="flex justify-between text-lg font-bold text-text-primary">
                         <span>ยอดรวมทั้งหมด</span>
                         <span>{formatPrice(total)}</span>
                     </div>
@@ -1237,7 +1237,7 @@ export default function POSPage() {
                     <button
                         onClick={clearCart}
                         disabled={loading || cart.length === 0}
-                        className="mt-2 md:mt-3 w-full py-2.5 md:py-3 rounded-lg bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="mt-3 w-full py-3 rounded-lg bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         ลบสินค้าทั้งหมด
                     </button>
@@ -1245,7 +1245,7 @@ export default function POSPage() {
                     <button
                         onClick={() => void checkout()}
                         disabled={loading || cart.length === 0 || !canCashCheckout || isBusinessDayClosed}
-                        className="mt-3 md:mt-4 w-full py-3 md:py-3.5 rounded-xl text-lg md:text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="mt-4 w-full py-3.5 rounded-xl text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? "กำลังปิดบิล..." : "ปิดบิล"}
                     </button>
