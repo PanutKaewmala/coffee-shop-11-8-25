@@ -98,6 +98,26 @@ function shortId(id: string) {
     return id?.length > 10 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
+function paymentLabelTH(method: string | null | undefined) {
+    const pm = (method ?? "").toLowerCase();
+    if (pm === "promptpay") return "พร้อมเพย์";
+    if (pm === "cash") return "เงินสด";
+    return method ?? "-";
+}
+
+function compactItemsTH(items: OrderItem[]) {
+    if (!items.length) return "ไม่มีรายการสินค้า";
+
+    const first = items[0]?.name ?? "";
+    const more = items.length > 1 ? ` +${items.length - 1}` : "";
+    const qty = items.reduce((sum, item) => {
+        const q = Number(item.qty);
+        return sum + (Number.isFinite(q) ? q : 0);
+    }, 0);
+
+    return `${first}${more} · ${qty} ชิ้น`;
+}
+
 /* =========================
    Trend helpers
 ========================= */
@@ -206,10 +226,10 @@ function StatCard({
     subClass?: string;
 }) {
     return (
-        <div className="p-4 rounded-xl bg-card border border-border/40">
-            <div className="text-text-secondary">{label}</div>
-            <div className="text-3xl font-bold mt-1 tabular-nums">{value}</div>
-            {sub ? <div className={`text-sm mt-1 ${subClass ?? "text-text-secondary"}`}>{sub}</div> : null}
+        <div className="rounded-xl border border-border/40 bg-card p-3 sm:p-4 min-w-0">
+            <div className="text-sm text-text-secondary sm:text-base break-words">{label}</div>
+            <div className="mt-1 break-words text-2xl font-bold tabular-nums sm:text-3xl">{value}</div>
+            {sub ? <div className={`mt-1 text-xs sm:text-sm break-words ${subClass ?? "text-text-secondary"}`}>{sub}</div> : null}
         </div>
     );
 }
@@ -397,26 +417,57 @@ export default function AdminOrdersPage() {
         });
     }, [paginatedOrders, page]);
 
+    const mobileOrders = useMemo(() => {
+        const list = (paginatedOrders as unknown as OrderRow[]) ?? [];
+
+        return list.map((order, idx) => {
+            const items = Array.isArray(order.items) ? order.items : [];
+            const n = (page - 1) * rowsPerPage + (idx + 1);
+            const paid = Number.isFinite(order.paid_amount as number) ? (order.paid_amount as number) : null;
+            const change = Number.isFinite(order.change_amount as number) ? (order.change_amount as number) : null;
+            const paymentDisplay =
+                paid == null && change == null
+                    ? `${formatMoneyTHB(order.total)} บาท`
+                    : [
+                        paid != null ? `รับ ฿${formatMoneyTHB(paid)}` : null,
+                        change != null ? `ทอน ฿${formatMoneyTHB(change)}` : null,
+                    ]
+                        .filter(Boolean)
+                        .join(" · ");
+
+            return {
+                order,
+                n,
+                items,
+                paymentLabel: paymentLabelTH(order.payment_method),
+                paymentDisplay,
+                itemSummary: compactItemsTH(items),
+            };
+        });
+    }, [paginatedOrders, page]);
+
     const isEmpty = !loading && (filteredOrders?.length ?? 0) === 0;
     const showReset = search.trim().length > 0 || df !== "today";
 
     return (
-        <div className="p-6">
+        <div className="p-3 sm:p-6">
             <div className="max-w-6xl mx-auto space-y-6">
                 <Card title="รายการออเดอร์ทั้งหมด">
                     {/* FILTER + SEARCH */}
-                    <div className="space-y-3">
-                        <QuickDateFilter
-                            dateFilter={df}
-                            setDateFilter={(v) => {
-                                setDateFilter(v as DateFilter);
-                                setPage(1);
-                                setInputPage("1");
-                            }}
-                        />
+                    <div className="space-y-2 sm:space-y-3">
+                        <div className="[&>div]:mb-0">
+                            <QuickDateFilter
+                                dateFilter={df}
+                                setDateFilter={(v) => {
+                                    setDateFilter(v as DateFilter);
+                                    setPage(1);
+                                    setInputPage("1");
+                                }}
+                            />
+                        </div>
 
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                            <div className="flex-1">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
+                            <div className="min-w-0 flex-1 [&>div]:mb-0">
                                 <SearchBox
                                     value={search}
                                     setValue={(v) => {
@@ -431,7 +482,7 @@ export default function AdminOrdersPage() {
                             {showReset ? (
                                 <button
                                     type="button"
-                                    className="text-sm text-accent hover:underline whitespace-nowrap self-end md:self-auto"
+                                    className="self-end whitespace-nowrap text-sm text-accent hover:underline md:self-auto"
                                     onClick={() => {
                                         setSearch("");
                                         setDateFilter("today" as DateFilter);
@@ -447,7 +498,7 @@ export default function AdminOrdersPage() {
 
                     {loading ? (
                         <div className="mt-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-5">
                                 {Array.from({ length: 5 }).map((_, i) => (
                                     <div
                                         key={i}
@@ -468,15 +519,15 @@ export default function AdminOrdersPage() {
                     ) : (
                         <>
                             {revToShow && revToShow.legacy_paid_at_fallback_count > 0 && (
-                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
-                                    มีรายการเก่า {revToShow.legacy_paid_at_fallback_count} รายการที่ไม่มีวันที่ชำระเงิน
-                                    ระบบจึงใช้วันที่สร้างรายการแทนในการคำนวณช่วงเปรียบเทียบนี้
-                                </div>
+<div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                                มีรายการเก่า {revToShow.legacy_paid_at_fallback_count} รายการที่ไม่มีวันที่ชำระเงิน
+                                ระบบจึงใช้วันที่สร้างรายการแทนในการคำนวณช่วงเปรียบเทียบนี้
+                            </div>
                             )}
 
                             {/* SUMMARY */}
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 mb-6">
-<StatCard
+                            <div className="mt-4 mb-4 grid grid-cols-1 gap-3 sm:mt-6 sm:mb-6 sm:gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                                <StatCard
                                     label="ยอดขายสุทธิ"
                                     value={`${formatMoneyTHB(computed.netSales)} บาท`}
                                     sub={
@@ -547,8 +598,69 @@ export default function AdminOrdersPage() {
                             ) : (
                                 <>
                                     {/* TABLE */}
-                                    <div className="rounded-xl overflow-x-auto">
+                                    <div className="hidden rounded-xl overflow-x-auto sm:block">
                                         <Table headers={headers} data={rows} />
+                                    </div>
+
+                                    <div className="space-y-3 sm:hidden">
+                                        {mobileOrders.map(({ order, n, paymentLabel, paymentDisplay, itemSummary }) => (
+                                            <Link
+                                                key={order.id}
+                                                href={`/admin/orders/${order.id}`}
+                                                className="block min-w-0 rounded-xl border border-border/40 bg-card p-3 shadow-sm transition active:scale-[0.99]"
+                                            >
+                                                <div className="flex min-w-0 items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs text-text-secondary">#{n}</div>
+                                                        <div className="mt-1 truncate font-mono text-sm font-semibold text-accent">
+                                                            {shortId(order.id)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="shrink-0">
+                                                        <StatusPill status={order.status ?? null} />
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 space-y-2 text-sm">
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs text-text-secondary">วันที่</div>
+                                                        <div className="mt-0.5 break-words text-text-primary">
+                                                            {safeDateTH(order.created_at)}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid min-w-0 grid-cols-2 gap-3">
+                                                        <div className="min-w-0">
+                                                            <div className="text-xs text-text-secondary">ชำระ</div>
+                                                            <div className="mt-0.5 truncate text-text-primary">
+                                                                {paymentLabel}
+                                                            </div>
+                                                        </div>
+                                                        <div className="min-w-0 text-right">
+                                                            <div className="text-xs text-text-secondary">ยอดรวม</div>
+                                                            <div className="mt-0.5 truncate font-semibold tabular-nums text-text-primary">
+                                                                {formatMoneyTHB(order.total)} บาท
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs text-text-secondary">รายการ</div>
+                                                        <div className="mt-0.5 break-words text-text-primary">
+                                                            {itemSummary}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="min-w-0 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-secondary">
+                                                        {paymentDisplay}
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 rounded-lg bg-accent px-3 py-2 text-center text-sm font-semibold text-black">
+                                                    ดูรายละเอียด
+                                                </div>
+                                            </Link>
+                                        ))}
                                     </div>
 
                                     <div className="text-xs text-text-secondary mt-2">

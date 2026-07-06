@@ -671,9 +671,9 @@ function ReceiptModal({
         <div className="fixed inset-0 z-50">
             <div className="absolute inset-0 bg-black/60" />
 
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-                <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col rounded-2xl border border-white/10 bg-[#141210] shadow-2xl">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+            <div className="absolute inset-0 flex items-center justify-center p-2 sm:p-4">
+                <div className="flex max-h-[calc(100vh-1rem)] w-full max-w-full flex-col rounded-2xl border border-white/10 bg-[#141210] shadow-2xl sm:max-h-[calc(100vh-2rem)] sm:max-w-5xl">
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5 sm:py-4">
                         <div className="font-semibold">ตัวอย่างใบเสร็จ</div>
                         <button
                             type="button"
@@ -684,16 +684,16 @@ function ReceiptModal({
                             <X size={18} />
                         </button>
                     </div>
-                    <div className="min-h-0 flex-1 p-5">
+                    <div className="min-h-0 min-w-0 flex-1 p-3 sm:p-5">
                         {/* print mode selector (screen only) */}
                         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div className="text-xs text-text-secondary opacity-70">รูปแบบพิมพ์</div>
-                            <div className="flex rounded-lg border border-white/10 bg-white/5 p-1">
+                            <div className="flex w-full min-w-0 rounded-lg border border-white/10 bg-white/5 p-1 sm:w-auto">
                                 <button
                                     type="button"
                                     onClick={() => selectPrintMode("thermal")}
                                     className={[
-                                        "rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                                        "flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition sm:flex-none",
                                         mode === "thermal"
                                             ? "bg-white/10 text-text-primary"
                                             : "text-text-secondary hover:text-text-primary",
@@ -705,7 +705,7 @@ function ReceiptModal({
                                     type="button"
                                     onClick={() => selectPrintMode("a4")}
                                     className={[
-                                        "rounded-md px-3 py-1.5 text-xs font-semibold transition",
+                                        "flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition sm:flex-none",
                                         mode === "a4"
                                             ? "bg-white/10 text-text-primary"
                                             : "text-text-secondary hover:text-text-primary",
@@ -717,13 +717,13 @@ function ReceiptModal({
                         </div>
 
                         {/* The iframe document is both the preview and the print target. */}
-                        <div className="max-h-[65vh] overflow-auto rounded-xl border border-white/10 bg-white/5 p-4">
+                        <div className="max-h-[65vh] max-w-full overflow-x-auto overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-2 sm:p-4">
                             <iframe
                                 ref={iframeRef}
                                 title="ตัวอย่างใบเสร็จ"
                                 srcDoc={receiptSrcDoc}
                                 onLoad={() => setLoadedReceiptDocument(receiptSrcDoc)}
-                                className="mx-auto block border-0 bg-white"
+                                className="mx-auto block max-w-none border-0 bg-white"
                                 style={{
                                     width: mode === "a4" ? "210mm" : "90mm",
                                     height: mode === "a4" ? "297mm" : "65vh",
@@ -731,11 +731,11 @@ function ReceiptModal({
                             />
                         </div>
 
-                        <div className="mt-4 flex items-center justify-end gap-2">
+                        <div className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
                             <button
                                 type="button"
                                 onClick={closeModal}
-                                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs text-text-secondary hover:bg-white/10 transition"
+                                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs text-text-secondary transition hover:bg-white/10"
                             >
                                 ปิด
                             </button>
@@ -743,7 +743,7 @@ function ReceiptModal({
                                 type="button"
                                 onClick={printReceipt}
                                 disabled={!iframeLoaded}
-                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <Printer size={14} />
                                 {iframeLoaded ? "พิมพ์ใบเสร็จ" : "กำลังเตรียมใบเสร็จ..."}
@@ -1003,7 +1003,7 @@ export default function OrderDetailPage() {
                     href="/admin/orders"
                     className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition"
                 >
-                    <ArrowLeft size={18} />
+                    <ArrowLeft size={18} className="shrink-0" />
                     กลับไปหน้าออเดอร์
                 </Link>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-text-secondary">
@@ -1014,26 +1014,26 @@ export default function OrderDetailPage() {
     }
 
     return (
-        <div className="admin-order-detail-screen p-6 space-y-6 text-text-primary">
+        <div className="admin-order-detail-screen space-y-4 p-3 text-text-primary sm:space-y-6 sm:p-6">
             {/* Top bar */}
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Link
                     href="/admin/orders"
-                    className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition"
+                    className="inline-flex min-w-0 items-center gap-2 text-text-secondary transition hover:text-text-primary"
                 >
-                    <ArrowLeft size={18} />
+                    <ArrowLeft size={18} className="shrink-0" />
                     กลับไปหน้าออเดอร์
                 </Link>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     <button
                         type="button"
                         onClick={() => onCopy(order.id)}
-                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-secondary hover:bg-white/10 transition"
+                        className="inline-flex min-w-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-secondary transition hover:bg-white/10 sm:w-auto"
                         title="คัดลอกเลขออเดอร์"
                     >
-                        {copied ? <Check size={14} /> : <Copy size={14} />}
-                        <span className="font-mono">{shortId(order.id)}</span>
+                        {copied ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
+                        <span className="min-w-0 truncate font-mono">{shortId(order.id)}</span>
                     </button>
 
                     <button
@@ -1041,24 +1041,24 @@ export default function OrderDetailPage() {
                         onClick={openCancelModal}
                         disabled={!canCancel}
                         className={[
-                            "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition",
+                            "inline-flex min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition sm:w-auto",
                             canCancel
                                 ? "border border-red-500/25 bg-red-500/10 text-red-200 hover:bg-red-500/15"
                                 : "border border-white/10 bg-white/5 text-text-secondary opacity-60 cursor-not-allowed",
                         ].join(" ")}
                         title={canCancel ? "ยกเลิกออเดอร์" : "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว"}
                     >
-                        <AlertTriangle size={14} />
+                        <AlertTriangle size={14} className="shrink-0" />
                         ยกเลิกออเดอร์
                     </button>
 
                     <button
                         type="button"
                         onClick={openReceipt}
-                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-white/10 transition"
+                        className="inline-flex min-w-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-text-secondary transition hover:bg-white/10 sm:w-auto"
                         title="พิมพ์ใบเสร็จ"
                     >
-                        <Printer size={14} />
+                        <Printer size={14} className="shrink-0" />
                         พิมพ์ใบเสร็จ
                     </button>
                 </div>
@@ -1072,8 +1072,8 @@ export default function OrderDetailPage() {
 
             {/* Summary */}
             <Card title="สรุปออเดอร์">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                         <div className="text-xs text-text-secondary opacity-70">{fmtDateTH(order.created_at)}</div>
 
                         <div className="mt-3 flex flex-wrap gap-2 items-center">
@@ -1084,9 +1084,9 @@ export default function OrderDetailPage() {
                         </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="min-w-0 text-left sm:text-right">
                         <div className="text-xs text-text-secondary opacity-70">ยอดรวม</div>
-                        <div className="text-3xl font-extrabold tabular-nums leading-tight">
+                        <div className="break-words text-2xl font-extrabold leading-tight tabular-nums sm:text-3xl">
                             {fmtMoney(order.total)}{" "}
                             <span className="text-base font-semibold opacity-80">บาท</span>
                         </div>
@@ -1094,10 +1094,10 @@ export default function OrderDetailPage() {
                 </div>
 
                 <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
                         <div>
                             <div className="text-xs text-text-secondary opacity-70">วิธีจ่าย</div>
-                            <div className="font-semibold mt-1">
+                            <div className="mt-1 break-words font-semibold">
                                 {order.payment_method === "cash"
                                     ? "เงินสด"
                                     : order.payment_method === "promptpay"
@@ -1111,17 +1111,17 @@ export default function OrderDetailPage() {
                         </div>
                         <div>
                             <div className="text-xs text-text-secondary opacity-70">ยอดรวม</div>
-                            <div className="font-semibold tabular-nums mt-1">{fmtMoney(order.total)} บาท</div>
+                            <div className="mt-1 break-words font-semibold tabular-nums">{fmtMoney(order.total)} บาท</div>
                         </div>
                         <div>
                             <div className="text-xs text-text-secondary opacity-70">รับเงิน</div>
-                            <div className="font-semibold tabular-nums mt-1">
+                            <div className="mt-1 break-words font-semibold tabular-nums">
                                 {order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-"}
                             </div>
                         </div>
                         <div>
                             <div className="text-xs text-text-secondary opacity-70">เงินทอน</div>
-                            <div className="font-semibold tabular-nums mt-1">
+                            <div className="mt-1 break-words font-semibold tabular-nums">
                                 {order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-"}
                             </div>
                         </div>
@@ -1187,11 +1187,11 @@ export default function OrderDetailPage() {
                 )}
 
                 {/* Bottom summary bar */}
-                <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+                <div className="mt-4 flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm text-text-secondary">
                         รวม <span className="text-text-primary font-semibold">{qtyTotal}</span> ชิ้น
                     </div>
-                    <div className="text-lg font-bold tabular-nums">{fmtMoney(order.total)} บาท</div>
+                    <div className="break-words text-lg font-bold tabular-nums">{fmtMoney(order.total)} บาท</div>
                 </div>
             </Card>
 
