@@ -173,7 +173,7 @@ export default function AdminNavbar({
 
     return (
         <header className="sticky top-0 z-50 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--text-muted)]/20 text-[var(--text-primary)] shadow-sm transition-colors duration-300">
-            <div className="flex items-center justify-between px-4 py-3 md:px-6 gap-4">
+            <div className="flex min-w-0 items-center justify-between px-4 py-3 md:px-6 gap-4">
                 {/* Left */}
                 <div className="flex items-center gap-3 min-w-0">
                     <button
@@ -275,9 +275,9 @@ export default function AdminNavbar({
             <div className="lg:hidden px-4 pb-3 md:px-6">
                 {err ? <div className="mb-2 text-xs text-red-500">{err}</div> : null}
 
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex min-w-0 flex-col sm:flex-row gap-2">
                     <select
-                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full"
+                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
                         value={currentShopId ?? ""}
                         disabled={loadingSwitchers || switching || shops.length === 0}
                         onChange={(e) => onChangeShop(e.target.value)}
@@ -293,7 +293,7 @@ export default function AdminNavbar({
                     </select>
 
                     <select
-                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full"
+                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
                         value={currentBranchId ?? ""}
                         disabled={loadingSwitchers || switching || !currentShopId}
                         onChange={(e) => onChangeBranch(e.target.value)}

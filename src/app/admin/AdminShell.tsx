@@ -25,14 +25,14 @@ export default function AdminShell({
                 currentBranchId={currentBranchId}
             />
 
-            <div className="flex-1 flex flex-col relative z-10">
+            <div className="flex-1 min-w-0 flex flex-col relative z-10">
                 <AdminNavbar
                     onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
                     currentShopId={currentShopId}
                     currentBranchId={currentBranchId}
                 />
 
-                <main className="flex-1 p-4 md:p-8 overflow-auto">
+                <main className="flex-1 min-w-0 p-4 md:p-8 overflow-auto">
                     <div className="max-w-6xl mx-auto space-y-6">{children}</div>
                 </main>
             </div>

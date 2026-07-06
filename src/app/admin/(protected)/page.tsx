@@ -114,6 +114,27 @@ function toneBadge(tone: InsightTone) {
     return `${base} border-slate-400/25 bg-slate-400/10 text-slate-200`;
 }
 
+function signalToneLabel(tone: InsightTone) {
+    if (tone === "rose") return "ต้องดู";
+    if (tone === "amber") return "ระวัง";
+    if (tone === "emerald") return "ดี";
+    return "ปกติ";
+}
+
+function signalCardClass(tone: InsightTone) {
+    if (tone === "rose") return "border-rose-500/30 bg-rose-500/10";
+    if (tone === "amber") return "border-amber-500/30 bg-amber-500/10";
+    if (tone === "emerald") return "border-emerald-500/30 bg-emerald-500/10";
+    return "border-slate-400/25 bg-slate-400/10";
+}
+
+function signalLabelClass(tone: InsightTone) {
+    if (tone === "rose") return "bg-rose-500/15 text-rose-700 dark:text-rose-200";
+    if (tone === "amber") return "bg-amber-500/15 text-amber-700 dark:text-amber-200";
+    if (tone === "emerald") return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200";
+    return "bg-slate-400/15 text-slate-700 dark:text-slate-200";
+}
+
 export default function AdminDashboard() {
     type CountData = {
         menu: number;
@@ -343,6 +364,11 @@ export default function AdminDashboard() {
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
             .slice(0, 8);
     }, [summary]);
+
+    const getOrderItemCount = (order: DashboardOrder) => {
+        const totalQty = order.items.reduce((sum, it) => sum + (Number.isFinite(it.qty) ? it.qty : 0), 0);
+        return totalQty || order.items.length;
+    };
 
     const topSeller = summary?.topItems?.[0] ?? null;
 
@@ -783,7 +809,37 @@ export default function AdminDashboard() {
                         <div className="text-sm font-semibold text-text-primary">สัญญาณที่ควรดู</div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2 lg:hidden">
+                        {insights.map((it) => (
+                            <div
+                                key={it.key}
+                                className={`rounded-lg border p-3 ${signalCardClass(it.tone)}`}
+                                title={it.hint}
+                                aria-label={`${it.title} ${it.value}`}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-text-primary">
+                                            {it.title}
+                                        </div>
+                                        <div className="mt-1 text-sm font-medium text-text-secondary">
+                                            {it.value}
+                                        </div>
+                                    </div>
+                                    <span
+                                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${signalLabelClass(it.tone)}`}
+                                    >
+                                        {signalToneLabel(it.tone)}
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs leading-relaxed text-text-muted">
+                                    {it.hint}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="hidden lg:flex flex-wrap gap-2">
                         {insights.map((it) => (
                             <div
                                 key={it.key}
@@ -894,10 +950,10 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Main grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Chart/Calendar */}
-                    <div className="lg:col-span-2">
-                        <Card title="ยอดขาย">
+                    <div className="min-w-0 lg:col-span-2">
+                        <Card title="ยอดขาย" className="min-w-0 overflow-hidden">
                             <div className="flex items-center justify-between gap-3 mb-4">
                                 <div className="text-xs text-text-muted">
                                     โหมด:{" "}
@@ -943,7 +999,7 @@ export default function AdminDashboard() {
                     </div>
 
                     {/* Right side */}
-                    <div className="space-y-4">
+                    <div className="min-w-0 space-y-4">
                         {/* Top 5 */}
                         <Card title="เมนูขายดี 5 อันดับ">
                             <div className="space-y-3">
@@ -972,8 +1028,48 @@ export default function AdminDashboard() {
                         </Card>
 
                         {/* Recent orders */}
-                        <Card title="ออเดอร์ล่าสุด">
-                            <div className="overflow-x-auto">
+                        <Card title="ออเดอร์ล่าสุด" className="min-w-0 overflow-hidden">
+                            <div className="space-y-3 lg:hidden">
+                                {recentOrders.length ? (
+                                    recentOrders.map((o) => (
+                                        <Link
+                                            key={o.id}
+                                            href={`/admin/orders/${o.id}`}
+                                            className="block rounded-lg border border-text-muted/20 bg-background/40 p-3 transition hover:bg-background/70"
+                                            title="ดูรายละเอียดออเดอร์"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold text-text-primary truncate">
+                                                        #{o.id.slice(0, 8)}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        {fmtDateTime(o.created_at)}
+                                                    </div>
+                                                </div>
+                                                <span className={`${statusBadge(o.status)} shrink-0`}>
+                                                    {statusLabelTH(o.status)}
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                                                <span className="text-text-muted">
+                                                    {getOrderItemCount(o)} รายการ
+                                                </span>
+                                                <span className="font-semibold text-text-primary">
+                                                    {fmtCurrency(o.total)}
+                                                </span>
+                                            </div>
+                                        </Link>
+                                    ))
+                                ) : (
+                                    <div className="py-4 text-center text-text-muted">
+                                        ไม่มีออเดอร์
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="hidden lg:block overflow-x-auto">
                                 <table className="w-full table-auto text-sm">
                                     <thead>
                                         <tr className="text-left text-xs text-text-muted">
@@ -987,11 +1083,6 @@ export default function AdminDashboard() {
                                     <tbody>
                                         {recentOrders.length ? (
                                             recentOrders.map((o) => {
-                                                const totalQty = o.items.reduce(
-                                                    (sum, it) => sum + (Number.isFinite(it.qty) ? it.qty : 0),
-                                                    0
-                                                );
-
                                                 return (
                                                     <tr
                                                         key={o.id}
@@ -1016,7 +1107,7 @@ export default function AdminDashboard() {
                                                         <td className="py-2 text-text-secondary">{fmtDateTime(o.created_at)}</td>
 
                                                         <td className="py-2 text-text-secondary">
-                                                            {totalQty || o.items.length}
+                                                            {getOrderItemCount(o)}
                                                         </td>
 
                                                         <td className="py-2 text-right font-semibold text-text-primary">

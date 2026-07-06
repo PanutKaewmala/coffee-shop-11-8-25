@@ -183,7 +183,7 @@ export default function Chart({ orders, range }: Props) {
 
     // -------- render --------
     return (
-        <div className="w-full bg-surface p-4 rounded-xl border border-gray-700/40 shadow">
+        <div className="w-full min-w-0 overflow-hidden bg-surface p-3 sm:p-4 rounded-xl border border-gray-700/40 shadow">
             <h2 className="text-lg font-semibold text-white mb-4">
                 {range === "today" && "ยอดขายรายชั่วโมง"}
                 {range === "week" && "ยอดขายรายวัน (สัปดาห์)"}
@@ -193,8 +193,14 @@ export default function Chart({ orders, range }: Props) {
                 {range === "all" && "ยอดขายรายเดือน (ทั้งหมด)"}
             </h2>
 
-            <div className="w-full h-[280px]">
-                <ResponsiveContainer>
+            <div className="w-full min-w-0 h-[240px] min-h-[240px] sm:h-[280px] sm:min-h-[280px]">
+                <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={240}
+                    initialDimension={{ width: 240, height: 240 }}
+                >
                     <LineChart data={data} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#444" />
                         <XAxis dataKey="date" stroke="#aaa" tick={{ fontSize: 11 }} />
