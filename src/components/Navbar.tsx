@@ -14,26 +14,25 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
 
     const isTenantRoute = isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
-    const displayName = shopName?.trim() || "Coffee SaaS";
+    const displayName = isTenantRoute ? shopName?.trim() || "Coffee SaaS" : "Coffee Shop System";
+    const subtitle = isTenantRoute ? "Coffee Shop" : "ระบบร้านกาแฟ";
 
-    // Non-tenant product navigation vs tenant shop navigation
     const navItems = isTenantRoute
-        ? ["home", "menu", "news", "contact"]
-        : ["features", "demo-shops", "login"];
+        ? [
+            { label: "Home", href: tenantBase || "/" },
+            { label: "Menu", href: `${tenantBase}/menu` },
+            { label: "News", href: `${tenantBase}/news` },
+            { label: "Contact", href: `${tenantBase}/contact` },
+        ]
+        : [
+            { label: "ฟีเจอร์", href: "/#features" },
+            { label: "แพ็กเกจ", href: "/#pricing" },
+            { label: "ตัวอย่างระบบ", href: "/#demo" },
+            { label: "ติดต่อ", href: "/#contact" },
+        ];
 
-    const itemLabel = (item: string) => {
-        return item.charAt(0).toUpperCase() + item.slice(1).replace("-", " ");
-    };
-
-    const itemHref = (item: string) => {
-        if (item === "login") return "/login";
-        return isTenantRoute
-            ? `${tenantBase}${item === "home" ? "" : `/${item}`}`
-            : `#${item}`;
-    };
-
-    const ctaHref = isTenantRoute ? `${tenantBase}/menu` : "/#demo-shops";
-    const ctaLabel = isTenantRoute ? "View Menu" : "Try Demo";
+    const ctaHref = isTenantRoute ? `${tenantBase}/menu` : "/coffeespace-a";
+    const ctaLabel = isTenantRoute ? "View Menu" : "ขอดู Demo";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">
@@ -59,7 +58,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                         >
                             ☕
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div
                                 style={{ color: "var(--color-foreground)" }}
                                 className="font-bold truncate"
@@ -70,7 +69,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                                 style={{ color: "var(--color-text-secondary)" }}
                                 className="text-sm truncate"
                             >
-                                {isTenantRoute ? "Coffee Shop" : "Product"}
+                                {subtitle}
                             </div>
                         </div>
                     </div>
@@ -79,13 +78,13 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                     <nav className="hidden md:flex flex-1 justify-center">
                         <ul className="flex gap-3">
                             {navItems.map((item) => (
-                                <li key={item}>
+                                <li key={item.href}>
                                     <Link
-                                        href={itemHref(item)}
+                                        href={item.href}
                                         className="px-3 py-1.5 rounded-lg transition-colors hover:opacity-80"
                                         style={{ color: "var(--color-foreground)" }}
                                     >
-                                        {itemLabel(item)}
+                                        {item.label}
                                     </Link>
                                 </li>
                             ))}
@@ -112,7 +111,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
 
                         <Link
                             href={ctaHref}
-                            className="px-6 py-2 rounded-full font-semibold text-white
+                            className="hidden sm:inline-flex px-6 py-2 rounded-full font-semibold text-white
                         bg-gradient-to-r from-accent to-accent-dark
                         text-surface shadow-sm
                         transition-all duration-300 hover:brightness-110"
@@ -144,18 +143,29 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                         <nav className="px-4 py-3">
                             <ul className="flex flex-col gap-2">
                                 {navItems.map((item) => (
-                                    <li key={item}>
+                                    <li key={item.href}>
                                         <Link
-                                            href={itemHref(item)}
+                                            href={item.href}
                                             onClick={() => setOpen(false)}
                                             className="block px-3 py-2 rounded-lg transition-colors hover:opacity-80"
                                             style={{ color: "var(--color-foreground)" }}
                                         >
-                                            {itemLabel(item)}
+                                            {item.label}
                                         </Link>
                                     </li>
                                 ))}
                             </ul>
+                            <Link
+                                href={ctaHref}
+                                onClick={() => setOpen(false)}
+                                className="mt-3 block rounded-full px-4 py-2 text-center font-semibold text-white transition-all duration-300 hover:brightness-110"
+                                style={{
+                                    background: "linear-gradient(to right, var(--accent), var(--accent-dark))",
+                                    color: "white",
+                                }}
+                            >
+                                {ctaLabel}
+                            </Link>
                         </nav>
                     </div>
                 </div>
