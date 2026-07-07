@@ -56,6 +56,21 @@ const pricingPlans = [
   },
 ];
 
+const pilotScopeItems = [
+  "สำหรับร้านเล็ก 1 สาขา",
+  "เริ่มจาก 5-10 เมนู",
+  "ทดลองใช้งานจริงช่วงเวลาคนน้อย 2-3 วัน",
+  "เหมาะกับร้านแรกที่ต้องการเริ่มเล็กก่อน",
+];
+
+const pilotExcludedItems = [
+  "stock เต็มระบบทุกเมนู",
+  "offline mode",
+  "audit log ละเอียดทุก action",
+  "custom reports",
+  "multi-branch full setup",
+];
+
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -125,10 +140,55 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold">แพ็กเกจเริ่มต้น</h2>
               <p className="mt-2 max-w-2xl text-text-secondary">
                 เหมาะกับร้านเล็กที่อยากเริ่มจัดการข้อมูลให้เป็นระบบอย่างค่อยเป็นค่อยไป
+                โดยมีทั้งแพ็กทดลองร้านแรกและแพ็กเกจปกติตามขอบเขตงาน
               </p>
             </div>
           </div>
 
+          <div className="mt-8 rounded-2xl border border-accent/20 bg-background/80 p-6">
+            <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+              <div>
+                <div className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-medium text-accent">
+                  แพ็กทดลองร้านแรก / Pilot Scope
+                </div>
+                <h3 className="mt-4 text-2xl font-bold">เริ่มเล็กก่อน ใช้งานจริงก่อน</h3>
+                <p className="mt-3 text-text-secondary">
+                  สำหรับร้านที่อยากลองระบบกับงานขายจริงในขอบเขตเล็ก เพื่อดูว่า workflow ของร้านเหมาะกับระบบแค่ไหน
+                </p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
+                    <div className="text-sm text-text-secondary">ค่าตั้งค่าระบบ</div>
+                    <div className="mt-1 text-3xl font-bold text-accent">2,500 บาท</div>
+                  </div>
+                  <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
+                    <div className="text-sm text-text-secondary">รายเดือน</div>
+                    <div className="mt-1 text-3xl font-bold text-accent">500 บาท</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
+                  <h4 className="font-semibold">ขอบเขตแพ็กทดลอง</h4>
+                  <ul className="mt-3 space-y-2 text-sm text-text-secondary">
+                    {pilotScopeItems.map((item) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
+                  <h4 className="font-semibold">ยังไม่รวมในแพ็กนี้</h4>
+                  <ul className="mt-3 space-y-2 text-sm text-text-secondary">
+                    {pilotExcludedItems.map((item) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h3 className="mt-8 text-xl font-semibold">แพ็กเกจปกติ</h3>
           <div className="mt-8 grid gap-6 lg:grid-cols-3">
             {pricingPlans.map((plan) => (
               <div key={plan.name} className="rounded-2xl border border-accent/10 bg-background/80 p-6">
