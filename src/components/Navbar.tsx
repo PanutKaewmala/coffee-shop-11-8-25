@@ -8,7 +8,7 @@ import { Moon, Sun, Menu, X } from "lucide-react";
 import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
 export default function Navbar({ shopName }: { shopName?: string | null }) {
-    const { theme, toggleTheme } = useTheme();
+    const { toggleTheme } = useTheme();
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
@@ -104,7 +104,10 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                             onClick={toggleTheme}
                             aria-label="Toggle theme"
                         >
-                            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                            <span className="relative inline-flex h-[18px] w-[18px] items-center justify-center" aria-hidden="true">
+                                <Sun size={18} className="hidden dark:block" />
+                                <Moon size={18} className="block dark:hidden" />
+                            </span>
                         </button>
 
                         <Link
