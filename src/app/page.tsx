@@ -104,7 +104,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="features" className="px-4 py-12 md:py-16">
+      <section id="features" className="scroll-mt-28 px-4 py-12 md:py-16">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-3xl font-bold">ระบบนี้ช่วยอะไรได้บ้าง</h2>
           <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -118,7 +118,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="pricing" className="px-4 py-12 md:py-16">
+      <section id="pricing" className="scroll-mt-28 px-4 py-12 md:py-16">
         <div className="mx-auto max-w-6xl rounded-3xl border border-accent/10 bg-surface/80 p-6 shadow-sm md:p-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -149,7 +149,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="demo" className="px-4 py-12 md:py-16">
+      <section id="demo" className="scroll-mt-28 px-4 py-12 md:py-16">
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <div>
             <h2 className="text-3xl font-bold">ดูตัวอย่างระบบจากร้าน Demo</h2>
@@ -197,7 +197,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="contact" className="px-4 py-12 md:py-16">
+      <section id="contact" className="scroll-mt-28 px-4 py-12 md:py-16">
         <div className="mx-auto max-w-6xl rounded-3xl border border-accent/10 bg-gradient-to-r from-accent/10 to-accent-dark/10 p-6 shadow-sm md:p-8">
           <div className="max-w-2xl">
             <h2 className="text-3xl font-bold">ช่องทางติดต่อช่วงทดลองระบบ</h2>
@@ -211,12 +211,12 @@ export default function HomePage() {
               >
                 ขอดูตัวอย่างระบบ
               </Link>
-              <Link
-                href="#contact"
+              <a
+                href="tel:0630427563"
                 className="rounded-full border border-accent/30 bg-background/80 px-6 py-3 font-semibold text-text-secondary transition hover:bg-surface"
               >
-                ทักเพื่อคุยรายละเอียด
-              </Link>
+                โทรสอบถาม
+              </a>
             </div>
             <div className="mt-6 rounded-2xl border border-accent/10 bg-background/70 p-4 text-text-secondary">
               <p className="font-medium">LINE: gkaewmala</p>
