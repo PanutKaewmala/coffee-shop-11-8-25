@@ -5,6 +5,7 @@ import { useTheme } from "@/context/ThemeContext";
 import MenuCard from "@/components/MenuCard";
 import type { MenuWithRelations } from "@/lib/types";
 import { withPublicShopId } from "@/lib/publicShop";
+import { fetchJsonWithTimeout } from "@/lib/publicFetch";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null;
@@ -25,6 +26,7 @@ export default function PublicMenuSection({ shopId }: { shopId?: string | null }
 
     const [menuItems, setMenuItems] = useState<MenuWithRelations[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [filter, setFilter] = useState<string>("all");
 
     useEffect(() => {
@@ -33,10 +35,11 @@ export default function PublicMenuSection({ shopId }: { shopId?: string | null }
         const loadMenu = async () => {
             try {
                 setLoading(true);
+                setLoadError(null);
 
-                const res = await fetch(withPublicShopId("/api/menu", shopId), { cache: "no-store" });
-                const data: unknown = await res.json();
-
+                const data = await fetchJsonWithTimeout(withPublicShopId("/api/menu", shopId), {
+                    cache: "no-store",
+                });
                 const list = asMenuList(data);
 
                 if (!alive) return;
@@ -44,6 +47,7 @@ export default function PublicMenuSection({ shopId }: { shopId?: string | null }
             } catch (err) {
                 console.error("Failed to load menu:", err);
                 if (!alive) return;
+                setLoadError("โหลดเมนูไม่สำเร็จ กรุณาลองเปิดหน้านี้ใหม่อีกครั้ง");
                 setMenuItems([]);
             } finally {
                 if (!alive) return;
@@ -88,43 +92,47 @@ export default function PublicMenuSection({ shopId }: { shopId?: string | null }
                 Filter by category — view details and allergen info.
             </p>
 
-            <div className="flex flex-wrap gap-2 mb-6">
-                {categories.map((cat) => {
-                    const label =
-                        cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1);
+            {menuItems.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-6">
+                    {categories.map((cat) => {
+                        const label =
+                            cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1);
 
-                    const isActive = filter === cat;
+                        const isActive = filter === cat;
 
-                    return (
-                        <button
-                            key={cat}
-                            onClick={() => setFilter(cat)}
-                            className={`
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => setFilter(cat)}
+                                className={`
                                 px-3 py-1 rounded-full border text-sm font-medium transition-all
                                 ${isActive
-                                    ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
-                                    : `
+                                        ? "bg-[var(--color-accent)] text-white border-transparent shadow-sm"
+                                        : `
                                         ${theme === "dark"
-                                            ? "bg-zinc-900/60 text-text-secondary hover:bg-zinc-800"
-                                            : "bg-white/70 text-text-secondary hover:bg-zinc-100"
-                                        }
+                                                ? "bg-zinc-900/60 text-text-secondary hover:bg-zinc-800"
+                                                : "bg-white/70 text-text-secondary hover:bg-zinc-100"
+                                            }
                                             border border-[var(--color-text-muted)]
                                         `
-                                }
+                                    }
                             `}
-                        >
-                            {label}
-                        </button>
-                    );
-                })}
-            </div>
+                            >
+                                {label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             <div className="menu-grid grid md:grid-cols-3 sm:grid-cols-2 grid-cols-1 gap-4">
                 {loading ? (
-                    <p className="text-sm text-[var(--color-text-muted)]">Loading...</p>
+                    <p className="text-sm text-[var(--color-text-muted)]">กำลังโหลดเมนู...</p>
+                ) : loadError ? (
+                    <p className="text-sm text-[var(--color-text-muted)]">{loadError}</p>
                 ) : filteredItems.length === 0 ? (
                     <p className="text-sm text-[var(--color-text-muted)]">
-                        No menu items found.
+                        {menuItems.length === 0 ? "ยังไม่มีเมนูให้แสดงในตอนนี้" : "ไม่พบเมนูในหมวดนี้"}
                     </p>
                 ) : (
                     filteredItems.map((item) => <MenuCard key={item.id} item={item} />)

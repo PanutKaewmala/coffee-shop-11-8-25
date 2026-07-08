@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { withPublicShopId } from "@/lib/publicShop";
+import { fetchJsonWithTimeout } from "@/lib/publicFetch";
 
 export interface NewsItem {
     id: string;
@@ -16,27 +17,44 @@ export interface NewsItem {
 export default function PublicNewsSection({ shopId }: { shopId?: string | null }) {
     const [news, setNews] = useState<NewsItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
+        let alive = true;
+
         const fetchNews = async () => {
             try {
-                const res = await fetch(withPublicShopId("/api/news", shopId), { cache: "no-store" });
-                const data = await res.json();
+                setLoading(true);
+                setLoadError(null);
 
-                const sorted = data.sort(
+                const data = await fetchJsonWithTimeout(withPublicShopId("/api/news", shopId), {
+                    cache: "no-store",
+                });
+                const list = Array.isArray(data) ? (data as NewsItem[]) : [];
+
+                const sorted = list.sort(
                     (a: NewsItem, b: NewsItem) =>
                         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
                 );
 
+                if (!alive) return;
                 setNews(sorted);
             } catch (err) {
                 console.error("Fetch news error:", err);
+                if (!alive) return;
+                setLoadError("โหลดข่าวสารไม่สำเร็จ กรุณาลองเปิดหน้านี้ใหม่อีกครั้ง");
+                setNews([]);
             } finally {
+                if (!alive) return;
                 setLoading(false);
             }
         };
 
         fetchNews();
+
+        return () => {
+            alive = false;
+        };
     }, [shopId]);
 
     return (
@@ -53,7 +71,13 @@ export default function PublicNewsSection({ shopId }: { shopId?: string | null }
             </h2>
 
             {loading ? (
-                <p>Loading...</p>
+                <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>กำลังโหลดข่าวสาร...</p>
+            ) : loadError ? (
+                <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>{loadError}</p>
+            ) : news.length === 0 ? (
+                <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    ยังไม่มีข่าวสารให้แสดงในตอนนี้
+                </p>
             ) : (
                 <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-6xl xl:max-w-7xl">
                     {news.map((item) => (

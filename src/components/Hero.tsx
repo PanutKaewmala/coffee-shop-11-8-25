@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { HeroData } from "@/lib/types";
 import { withPublicShopId } from "@/lib/publicShop";
+import { fetchJsonWithTimeout } from "@/lib/publicFetch";
 import Image from "next/image";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null;
+}
 
 export default function Hero({ shopId }: { shopId?: string | null }) {
     const { theme } = useTheme();
@@ -25,42 +30,46 @@ export default function Hero({ shopId }: { shopId?: string | null }) {
             imageUrl: "https://images.unsplash.com/photo-1541167760496-1628856ab772?q=80&w=1200&auto=format&fit=crop",
         };
 
+        let alive = true;
+
         const fetchHero = async () => {
             try {
-                const res = await fetch(withPublicShopId("/api/hero", shopId));
-                if (!res.ok) {
-                    setData(defaultData);
-                    return;
-                }
-                const json = await res.json();
+                const json = await fetchJsonWithTimeout(withPublicShopId("/api/hero", shopId));
+                if (!alive) return;
 
                 const mapped: HeroData = {
-                    title: json.title ?? defaultData.title,
-                    subtitle: json.subtitle ?? defaultData.subtitle,
-                    ctaText: json.cta_text ?? defaultData.ctaText,
-                    ctaLink: json.cta_link ?? defaultData.ctaLink,
-                    secondaryText: json.secondary_text ?? defaultData.secondaryText,
-                    secondaryLink: json.secondary_link ?? defaultData.secondaryLink,
-                    signature: json.signature ?? defaultData.signature,
-                    seasonal: json.seasonal ?? defaultData.seasonal,
-                    imageUrl: json.image_url ?? defaultData.imageUrl,
+                    title: isRecord(json) && typeof json.title === "string" ? json.title : defaultData.title,
+                    subtitle: isRecord(json) && typeof json.subtitle === "string" ? json.subtitle : defaultData.subtitle,
+                    ctaText: isRecord(json) && typeof json.cta_text === "string" ? json.cta_text : defaultData.ctaText,
+                    ctaLink: isRecord(json) && typeof json.cta_link === "string" ? json.cta_link : defaultData.ctaLink,
+                    secondaryText: isRecord(json) && typeof json.secondary_text === "string" ? json.secondary_text : defaultData.secondaryText,
+                    secondaryLink: isRecord(json) && typeof json.secondary_link === "string" ? json.secondary_link : defaultData.secondaryLink,
+                    signature: isRecord(json) && typeof json.signature === "string" ? json.signature : defaultData.signature,
+                    seasonal: isRecord(json) && typeof json.seasonal === "string" ? json.seasonal : defaultData.seasonal,
+                    imageUrl: isRecord(json) && typeof json.image_url === "string" ? json.image_url : defaultData.imageUrl,
                 };
 
                 setData(mapped);
             } catch {
+                if (!alive) return;
                 setData(defaultData);
             } finally {
+                if (!alive) return;
                 setLoading(false);
             }
         };
 
         void fetchHero();
+
+        return () => {
+            alive = false;
+        };
     }, [shopId]);
 
     if (loading || !data) {
         return (
             <section className="py-16 text-center">
-                <p className="text-text-secondary">Loading...</p>
+                <p className="text-text-secondary">กำลังโหลดหน้าร้าน...</p>
             </section>
         );
     }

@@ -14,7 +14,7 @@ const features = [
     description: "ให้ลูกค้าสแกนดูเมนู ราคา หมวดหมู่ และข้อมูลร้านได้ง่าย",
   },
   {
-    title: "POS ขายหน้าร้าน",
+    title: "ระบบขายหน้าร้าน",
     description: "เลือกเมนู เพิ่มลงตะกร้า รับชำระเงิน และสร้างออเดอร์ได้ในหน้าเดียว",
   },
   {
@@ -37,38 +37,73 @@ const features = [
 
 const pricingPlans = [
   {
-    name: "Starter Online Menu",
-    price: "1,500-2,500 บาท",
-    billing: "ตั้งค่าเริ่มต้น / ดูแลรายเดือน 300 บาท",
-    detail: "เหมาะกับร้านที่อยากมีเมนูออนไลน์และข้อมูลร้านให้ลูกค้าสแกนดู",
+    name: "เมนูออนไลน์",
+    eyebrow: "หน้าร้านออนไลน์ / เมนู / ข่าวสาร / ติดต่อ",
+    setup: "ค่าตั้งค่า 1,500 บาท",
+    monthly: "รายเดือน 300 บาท",
+    bestFor: "เหมาะกับร้านที่อยากมีหน้าเมนูและข้อมูลร้านให้ลูกค้าดูก่อน ยังไม่ใช่ระบบขายหน้าร้าน",
+    includes: [
+      "หน้าแรก / เมนู / ข่าวสาร / ติดต่อ",
+      "ข้อมูลร้านและช่องทางติดต่อ",
+      "รายการเมนูพื้นฐานพร้อมราคา",
+    ],
+    excludes: [
+      "ระบบขายหน้าร้าน",
+      "รายการออเดอร์และใบเสร็จ",
+      "สูตรเมนู หักสต็อก และปิดยอดรายวัน",
+    ],
+    ctas: [{ label: "ดูตัวอย่างหน้าร้าน", href: "/coffeespace-a", primary: false }],
   },
   {
-    name: "POS + Stock MVP",
-    price: "4,900-7,900 บาท",
-    billing: "ตั้งค่าเริ่มต้น / ดูแลรายเดือน 700-1,500 บาท",
-    detail: "เหมาะกับร้านที่อยากขายผ่าน POS ดูออเดอร์ หักสต็อก และปิดยอดรายวัน",
+    name: "แพ็กทดลองร้านแรก",
+    eyebrow: "ระบบขายหน้าร้าน + ออเดอร์ + ใบเสร็จ + สต็อก",
+    setup: "ค่าตั้งค่า 2,500 บาท",
+    monthly: "รายเดือน 500 บาท",
+    bestFor: "เหมาะกับร้านกาแฟ/ร้านเครื่องดื่ม 1 สาขา ที่อยากลองใช้กับยอดขายจริง",
+    noteLabel: "เพิ่มจากเมนูออนไลน์",
+    note: "ใช้ขายหน้าร้านจริง ดูออเดอร์ ออกใบเสร็จ หักสต็อก และปิดยอดรายวัน",
+    recommended: true,
+    includes: [
+      "ทุกอย่างในเมนูออนไลน์",
+      "ระบบขายหน้าร้านและรายการออเดอร์",
+      "ประวัติยอดขายและใบเสร็จ",
+      "สูตรเมนู หักสต็อกตามยอดขาย และประวัติสต็อก",
+      "ปิดยอดรายวันและล็อกข้อมูลหลังปิดยอด",
+      "แชทซัพพอร์ตช่วงทดลอง",
+    ],
+    excludes: [
+      "โหมดใช้งานออฟไลน์",
+      "หลายสาขาเต็มรูปแบบ",
+      "รายงานเฉพาะร้านและเชื่อมอุปกรณ์พิเศษ",
+      "บันทึกตรวจสอบละเอียดและดูแล 24 ชั่วโมง",
+    ],
+    ctas: [
+      { label: "ดูตัวอย่างระบบหลังบ้าน", href: "/demo-system", primary: true },
+      { label: "คุย flow ร้านก่อน", href: "/#contact", primary: false },
+    ],
   },
   {
-    name: "Custom Shop System",
-    price: "เริ่มต้น 10,000 บาท",
-    billing: "รายเดือนตามขอบเขตงาน",
-    detail: "เหมาะกับร้านที่ต้องการปรับระบบตาม workflow เฉพาะของร้าน",
+    name: "งานเฉพาะร้าน",
+    eyebrow: "ปรับตาม workflow เฉพาะร้าน",
+    setup: "ค่าตั้งค่าเริ่มต้น 10,000 บาท",
+    monthly: "รายเดือนตามขอบเขต",
+    bestFor: "สำหรับร้านที่ใช้ระบบทดลองแล้ว และอยากปรับเพิ่มตาม flow จริงของร้าน",
+    noteLabel: "ต้องคุยก่อนเริ่ม",
+    note: "ไม่ใช่แพ็กสำเร็จรูป ต้องประเมินขอบเขตและตกลงงานก่อนเริ่มทุกครั้ง",
+    includes: [
+      "ทุกอย่างในแพ็กทดลองตามขอบเขต",
+      "คุย flow ร้านก่อนเริ่ม",
+      "ปรับระบบและรายงานตามที่ตกลง",
+      "เมนู สูตรเมนู และสต็อกที่ใหญ่ขึ้นตามขอบเขตที่ตกลง",
+      "วางแผนสิทธิ์พนักงาน หลายสาขา และสอนใช้งานตามขอบเขตที่ตกลง",
+    ],
+    excludes: [
+      "งานนอกขอบเขตที่ตกลง",
+      "การเชื่อมต่ออุปกรณ์ที่ยังไม่ได้ประเมิน",
+      "การดูแลระบบนอกข้อตกลง",
+    ],
+    ctas: [{ label: "คุย flow ร้านก่อน", href: "/#contact", primary: false }],
   },
-];
-
-const pilotScopeItems = [
-  "สำหรับร้านเล็ก 1 สาขา",
-  "เริ่มจาก 5-10 เมนู",
-  "ทดลองใช้งานจริงช่วงเวลาคนน้อย 2-3 วัน",
-  "เหมาะกับร้านแรกที่ต้องการเริ่มเล็กก่อน",
-];
-
-const pilotExcludedItems = [
-  "stock เต็มระบบทุกเมนู",
-  "offline mode",
-  "audit log ละเอียดทุก action",
-  "custom reports",
-  "multi-branch full setup",
 ];
 
 export default function HomePage() {
@@ -82,27 +117,27 @@ export default function HomePage() {
                 ระบบสำหรับร้านกาแฟและร้านดื่มเล็ก ๆ
               </div>
               <h1 className="max-w-3xl text-4xl font-bold leading-tight md:text-5xl">
-                ระบบจัดการร้านกาแฟเล็ก
+                เริ่มจัดระบบร้านกาแฟแบบเล็กก่อน
               </h1>
               <p className="max-w-2xl text-lg text-text-secondary">
                 ขายหน้าร้าน ดูยอดขาย หักสต็อก และปิดยอดรายวันในที่เดียว
               </p>
               <p className="max-w-2xl text-base text-text-secondary">
-                เหมาะสำหรับร้านกาแฟ ร้านน้ำ และร้านเครื่องดื่มเล็ก ๆ ที่อยากเริ่มจัดการข้อมูลให้เป็นระบบ
-                โดยไม่ต้องใช้ระบบใหญ่เกินความจำเป็น
+                แพ็กทดลองสำหรับร้านกาแฟ ร้านน้ำ และร้านเครื่องดื่ม 1 สาขา ที่อยากลองใช้ระบบขายหน้าร้าน + สต็อก + ปิดยอดรายวัน
+                กับงานขายจริง โดยยังไม่ต้องลงทุนกับระบบใหญ่เกินความจำเป็น
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
-                  href="/coffeespace-a"
-                  className="rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110"
+                  href="/demo-system"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110 sm:w-auto"
                 >
-                  ขอดูตัวอย่างระบบ
+                  ดูตัวอย่างระบบ
                 </Link>
                 <Link
                   href="#contact"
-                  className="rounded-full border border-accent/30 bg-surface/80 px-6 py-3 font-semibold text-text-secondary transition hover:bg-surface"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-accent/30 bg-surface/80 px-6 py-3 font-semibold text-text-secondary transition hover:bg-surface sm:w-auto"
                 >
-                  ทักเพื่อคุยรายละเอียด
+                  คุย flow ร้านก่อน
                 </Link>
               </div>
             </div>
@@ -119,7 +154,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="features" className="scroll-mt-28 px-4 py-12 md:py-16">
+      <section id="features" className="scroll-mt-36 px-4 py-12 md:py-16">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-3xl font-bold">ระบบนี้ช่วยอะไรได้บ้าง</h2>
           <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -133,95 +168,111 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="pricing" className="scroll-mt-28 px-4 py-12 md:py-16">
-        <div className="mx-auto max-w-6xl rounded-3xl border border-accent/10 bg-surface/80 p-6 shadow-sm md:p-8">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 className="text-3xl font-bold">แพ็กเกจเริ่มต้น</h2>
-              <p className="mt-2 max-w-2xl text-text-secondary">
-                เหมาะกับร้านเล็กที่อยากเริ่มจัดการข้อมูลให้เป็นระบบอย่างค่อยเป็นค่อยไป
-                โดยมีทั้งแพ็กทดลองร้านแรกและแพ็กเกจปกติตามขอบเขตงาน
-              </p>
+      <section id="pricing" className="scroll-mt-36 px-4 py-12 md:py-16">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-3xl">
+            <div className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-medium text-accent">
+              แพ็กเกจระบบร้านกาแฟ
             </div>
+            <h2 className="mt-4 text-3xl font-bold">เลือกเริ่มให้เหมาะกับจังหวะของร้าน</h2>
+            <p className="mt-3 text-text-secondary">
+              มีตัวเลือกตั้งแต่เมนูออนไลน์ ไปจนถึงแพ็กทดลองที่ใช้ขายจริง และงานเฉพาะร้านที่ต้องคุยขอบเขตก่อนทำ
+              โดยแพ็กทดลองคือทางเริ่มต้นที่แนะนำสำหรับร้านเล็ก 1 สาขา
+            </p>
           </div>
 
-          <div className="mt-8 rounded-2xl border border-accent/20 bg-background/80 p-6">
-            <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-              <div>
-                <div className="inline-flex rounded-full border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-medium text-accent">
-                  แพ็กทดลองร้านแรก / Pilot Scope
-                </div>
-                <h3 className="mt-4 text-2xl font-bold">เริ่มเล็กก่อน ใช้งานจริงก่อน</h3>
-                <p className="mt-3 text-text-secondary">
-                  สำหรับร้านที่อยากลองระบบกับงานขายจริงในขอบเขตเล็ก เพื่อดูว่า workflow ของร้านเหมาะกับระบบแค่ไหน
-                </p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
-                    <div className="text-sm text-text-secondary">ค่าตั้งค่าระบบ</div>
-                    <div className="mt-1 text-3xl font-bold text-accent">2,500 บาท</div>
-                  </div>
-                  <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
-                    <div className="text-sm text-text-secondary">รายเดือน</div>
-                    <div className="mt-1 text-3xl font-bold text-accent">500 บาท</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
-                  <h4 className="font-semibold">ขอบเขตแพ็กทดลอง</h4>
-                  <ul className="mt-3 space-y-2 text-sm text-text-secondary">
-                    {pilotScopeItems.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="rounded-xl border border-accent/10 bg-surface/70 p-4">
-                  <h4 className="font-semibold">ยังไม่รวมในแพ็กนี้</h4>
-                  <ul className="mt-3 space-y-2 text-sm text-text-secondary">
-                    {pilotExcludedItems.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <h3 className="mt-8 text-xl font-semibold">แพ็กเกจปกติ</h3>
-          <div className="mt-8 grid gap-6 lg:grid-cols-3">
+          <div className="mt-8 grid gap-4 lg:grid-cols-3">
             {pricingPlans.map((plan) => (
-              <div key={plan.name} className="rounded-2xl border border-accent/10 bg-background/80 p-6">
-                <h3 className="text-xl font-semibold">{plan.name}</h3>
-                <p className="mt-3 text-text-secondary">{plan.detail}</p>
-                <div className="mt-5">
-                  <div className="text-2xl font-bold text-accent">{plan.price}</div>
-                  <div className="mt-1 text-sm text-text-secondary">{plan.billing}</div>
+              <div
+                key={plan.name}
+                className={`relative flex min-w-0 flex-col rounded-2xl border p-5 shadow-sm transition ${
+                  plan.recommended
+                    ? "border-accent/50 bg-gradient-to-b from-accent/15 to-surface/90 ring-1 ring-accent/30 lg:-mt-2"
+                    : "border-accent/10 bg-surface/80"
+                }`}
+              >
+                {plan.recommended && (
+                  <div className="mb-4 inline-flex w-fit rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white">
+                    แนะนำ
+                  </div>
+                )}
+                <div className="text-sm font-medium text-accent">{plan.eyebrow}</div>
+                <h3 className="mt-2 text-2xl font-bold">{plan.name}</h3>
+                <div className="mt-4 grid gap-2 rounded-xl border border-accent/10 bg-background/70 p-4">
+                  <div>
+                    <div className="text-xl font-bold text-accent">{plan.setup}</div>
+                  </div>
+                  <div className="border-t border-accent/10 pt-2">
+                    <div className="text-xs font-medium text-text-secondary">ค่าระบบรายเดือน</div>
+                    <div className="mt-1 text-xl font-bold text-accent">{plan.monthly}</div>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-text-secondary">
+                  {plan.bestFor}
+                </p>
+                {plan.note && (
+                  <div className="mt-3 rounded-xl border border-accent/20 bg-accent/10 px-3 py-2 text-sm font-medium text-accent">
+                    {plan.noteLabel}: {plan.note}
+                  </div>
+                )}
+                <div className="mt-5 grid gap-4 text-sm text-text-secondary">
+                  <div>
+                    <div className="font-semibold text-foreground">ได้อะไร</div>
+                    <ul className="mt-2 space-y-2">
+                      {plan.includes.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">ยังไม่รวม</div>
+                    <ul className="mt-2 space-y-2">
+                      {plan.excludes.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full border border-accent/60" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-col gap-2 lg:mt-auto lg:pt-6">
+                  {plan.ctas.map((cta) => (
+                    <Link
+                      key={`${plan.name}-${cta.label}`}
+                      href={cta.href}
+                      className={
+                        cta.primary
+                          ? "inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-accent to-accent-dark px-5 py-3 text-center font-semibold text-white transition hover:brightness-110"
+                          : "inline-flex w-full items-center justify-center rounded-full border border-accent/30 bg-background/80 px-5 py-3 text-center font-semibold text-text-secondary transition hover:bg-surface"
+                      }
+                    >
+                      {cta.label}
+                    </Link>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
-
-          <div className="mt-8 rounded-2xl border border-accent/10 bg-background/70 p-4 text-text-secondary">
-            ระบบนี้เหมาะกับร้านเล็กที่ต้องการเริ่มจัดการข้อมูลให้เป็นระบบ ยังไม่ใช่ระบบ enterprise ขนาดใหญ่
-            และเหมาะกับช่วงทดลองใช้หรือ pilot เพื่อดูว่า workflow ของร้านควรจัดอย่างไร
-          </div>
         </div>
       </section>
 
-      <section id="demo" className="scroll-mt-28 px-4 py-12 md:py-16">
+      <section id="demo" className="scroll-mt-36 px-4 py-12 md:py-16">
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <div>
-            <h2 className="text-3xl font-bold">ดูตัวอย่างระบบจากร้าน Demo</h2>
+            <h2 className="text-3xl font-bold">ดูตัวอย่างระบบจากภาพหน้าจอจริง</h2>
             <p className="mt-4 text-text-secondary">
-              เปิดดูหน้า CoffeeSpace A เพื่อเห็นตัวอย่างหน้าเว็บร้านกาแฟ เมนูออนไลน์ ข่าวสาร และช่องทางติดต่อของร้าน
-              โดยไม่กระทบข้อมูลร้านจริง
+              เปิดดู flow หลักของระบบ ตั้งแต่ขายหน้าร้าน ออเดอร์ ใบเสร็จ สูตร สต็อก ไปจนถึงปิดยอดรายวัน
+              จากภาพหน้าจอที่จัดไว้ให้ดูเป็นขั้นตอน
             </p>
             <Link
-              href="/coffeespace-a"
-              className="mt-6 inline-flex rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110"
+              href="/demo-system"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110 sm:w-auto"
             >
-              ขอดูตัวอย่างระบบ
+              ดูตัวอย่างระบบ
             </Link>
           </div>
 
@@ -257,23 +308,24 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="contact" className="scroll-mt-28 px-4 py-12 md:py-16">
+      <section id="contact" className="scroll-mt-36 px-4 py-12 md:py-16">
         <div className="mx-auto max-w-6xl rounded-3xl border border-accent/10 bg-gradient-to-r from-accent/10 to-accent-dark/10 p-6 shadow-sm md:p-8">
           <div className="max-w-2xl">
             <h2 className="text-3xl font-bold">ช่องทางติดต่อช่วงทดลองระบบ</h2>
             <p className="mt-4 text-lg text-text-secondary">
-              ติดต่อสอบถามข้อมูลช่วงทดลอง รับชมตัวอย่างระบบ และพูดคุยเกี่ยวกับปัญหาที่อยากให้ระบบช่วยจัดการได้เลย
+              สนใจทดลองใช้กับร้านจริง ทักมาคุย flow ร้านก่อนได้ ผมจะช่วยดูว่าแพ็กทดลองเหมาะกับร้านคุณไหม
+              ก่อนตัดสินใจใช้งานจริง
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                href="/coffeespace-a"
-                className="rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110"
+                href="/demo-system"
+                className="inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-accent to-accent-dark px-6 py-3 font-semibold text-white transition hover:brightness-110 sm:w-auto"
               >
-                ขอดูตัวอย่างระบบ
+                ดูตัวอย่างระบบ
               </Link>
               <a
                 href="tel:0630427563"
-                className="rounded-full border border-accent/30 bg-background/80 px-6 py-3 font-semibold text-text-secondary transition hover:bg-surface"
+                className="inline-flex w-full items-center justify-center rounded-full border border-accent/30 bg-background/80 px-6 py-3 font-semibold text-text-secondary transition hover:bg-surface sm:w-auto"
               >
                 โทรสอบถาม
               </a>

@@ -12,12 +12,20 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
 
-    const isTenantRoute = isPublicTenantPath(pathname);
+    const isDemoSystemRoute = pathname === "/demo-system" || pathname.startsWith("/demo-system/");
+    const isTenantRoute = !isDemoSystemRoute && isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
     const displayName = isTenantRoute ? shopName?.trim() || "Coffee SaaS" : "Coffee Shop System";
     const subtitle = isTenantRoute ? "Coffee Shop" : "ระบบร้านกาแฟ";
 
-    const navItems = isTenantRoute
+    const navItems = isDemoSystemRoute
+        ? [
+            { label: "หน้าแรก", href: "/" },
+            { label: "แพ็กเกจ", href: "/#pricing" },
+            { label: "ตัวอย่างหน้าร้าน", href: "/coffeespace-a" },
+            { label: "ติดต่อ", href: "/#contact" },
+        ]
+        : isTenantRoute
         ? [
             { label: "Home", href: tenantBase || "/" },
             { label: "Menu", href: `${tenantBase}/menu` },
@@ -31,8 +39,8 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
             { label: "ติดต่อ", href: "/#contact" },
         ];
 
-    const ctaHref = isTenantRoute ? `${tenantBase}/menu` : "/coffeespace-a";
-    const ctaLabel = isTenantRoute ? "View Menu" : "ขอดู Demo";
+    const ctaHref = isDemoSystemRoute ? "/#contact" : isTenantRoute ? `${tenantBase}/menu` : "/coffeespace-a";
+    const ctaLabel = isDemoSystemRoute ? "คุย flow ร้านก่อน" : isTenantRoute ? "ดูเมนู" : "ดูตัวอย่างระบบ";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">

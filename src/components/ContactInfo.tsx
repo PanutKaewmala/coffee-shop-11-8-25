@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { Branch } from "@/lib/types";
 import { withPublicShopId } from "@/lib/publicShop";
+import { fetchJsonWithTimeout } from "@/lib/publicFetch";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null;
@@ -22,33 +23,52 @@ export default function ContactInfo({ shopId }: { shopId?: string | null }) {
     const [branch, setBranch] = useState<Branch | null>(null);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
+        let alive = true;
+
         const loadBranches = async () => {
             try {
-                // โหลด primary branch
-                const res = await fetch(withPublicShopId("/api/branch/primary", shopId));
-                const primaryRaw = await res.json();
+                setLoading(true);
+                setLoadError(null);
 
-                // โหลดสาขาทั้งหมด
-                const allRes = await fetch(withPublicShopId("/api/branch?all=true", shopId));
-                const all = await allRes.json();
+                const [primaryRaw, allRaw] = await Promise.all([
+                    fetchJsonWithTimeout(withPublicShopId("/api/branch/primary", shopId), {
+                        cache: "no-store",
+                    }),
+                    fetchJsonWithTimeout(withPublicShopId("/api/branch?all=true", shopId), {
+                        cache: "no-store",
+                    }),
+                ]);
 
+                if (!alive) return;
+                const all = Array.isArray(allRaw) ? (allRaw as Branch[]) : [];
                 setBranches(all);
                 const primary = pickBranchFromResponse(primaryRaw);
                 setBranch(primary?.id ? primary : all[0] || null);
             } catch (err) {
                 console.error("Failed to load branches →", err);
+                if (!alive) return;
+                setLoadError("โหลดข้อมูลสาขาไม่สำเร็จ กรุณาลองเปิดหน้านี้ใหม่อีกครั้ง");
+                setBranches([]);
+                setBranch(null);
             } finally {
+                if (!alive) return;
                 setLoading(false);
             }
         };
 
         loadBranches();
+
+        return () => {
+            alive = false;
+        };
     }, [shopId]);
 
-    if (loading) return <p className="text-text-muted p-6">Loading branch info...</p>;
-    if (!branch) return <p className="text-text-muted p-6">No branch information available.</p>;
+    if (loading) return <p className="text-text-muted p-6">กำลังโหลดข้อมูลสาขา...</p>;
+    if (loadError) return <p className="text-text-muted p-6">{loadError}</p>;
+    if (!branch) return <p className="text-text-muted p-6">ยังไม่มีข้อมูลสาขาให้แสดงในตอนนี้</p>;
 
     return (
         <div className="space-y-10">
@@ -66,7 +86,7 @@ export default function ContactInfo({ shopId }: { shopId?: string | null }) {
                     <MapPin className="w-5 h-5 mt-1" style={{ color: "var(--color-accent)" }} />
                     <div>
                         <h3 className="font-semibold text-lg">{branch.name}</h3>
-                        <p className="text-sm text-text-secondary">{branch.address}</p>
+                        <p className="text-sm text-text-secondary">{branch.address || "ยังไม่มีข้อมูลที่อยู่"}</p>
                     </div>
                 </div>
 
