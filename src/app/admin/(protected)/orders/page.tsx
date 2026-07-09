@@ -2,12 +2,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
 import Pagination from "@/components/admin/Pagination";
-import OrderItemsTooltip from "@/components/admin/OrderItemsTooltip";
 import SearchBox from "@/components/admin/search/SearchBox";
 import QuickDateFilter from "@/components/admin/QuickDateFilter";
 import useOrdersSearch from "@/hooks/useOrdersSearch";
@@ -38,6 +37,14 @@ type OrderRow = {
     change_amount?: number | null;
     items?: OrderItem[];
 };
+
+type HoverPreview = {
+    order: OrderRow;
+    top: number;
+    left: number;
+};
+
+const HOVER_PREVIEW_ITEM_LIMIT = 3;
 
 /* =========================
    Safe readers
@@ -116,6 +123,139 @@ function compactItemsTH(items: OrderItem[]) {
     }, 0);
 
     return `${first}${more} · ${qty} ชิ้น`;
+}
+
+function itemSubLabel(it: OrderItem): string | null {
+    if (it.variant_label && it.variant_label.trim()) return it.variant_label.trim();
+    if (it.size && it.size.trim()) return it.size.trim();
+    return null;
+}
+
+function clamp(n: number, min: number, max: number) {
+    return Math.min(Math.max(n, min), max);
+}
+
+function getFloatingPreviewPosition(clientX: number, clientY: number) {
+    const margin = 16;
+    const gap = 18;
+    const width = 340;
+    const estimatedHeight = 420;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    const canShowRight = clientX + gap + width <= viewportWidth - margin;
+    const left = canShowRight ? clientX + gap : clientX - gap - width;
+
+    const canShowBelow = clientY + gap + estimatedHeight <= viewportHeight - margin;
+    const top = canShowBelow ? clientY + gap : clientY - gap - estimatedHeight;
+
+    return {
+        left: clamp(left, margin, Math.max(margin, viewportWidth - width - margin)),
+        top: clamp(top, margin, Math.max(margin, viewportHeight - estimatedHeight - margin)),
+    };
+}
+
+function OrderHoverPreview({ preview }: { preview: HoverPreview | null }) {
+    if (!preview) return null;
+
+    const { order, top, left } = preview;
+    const items = Array.isArray(order.items) ? order.items : [];
+    const visibleItems = items.slice(0, HOVER_PREVIEW_ITEM_LIMIT);
+    const hiddenItemCount = Math.max(0, items.length - visibleItems.length);
+    const qty = items.reduce((sum, item) => {
+        const q = Number(item.qty);
+        return sum + (Number.isFinite(q) ? q : 0);
+    }, 0);
+
+    const paid = Number.isFinite(order.paid_amount as number) ? (order.paid_amount as number) : null;
+    const change = Number.isFinite(order.change_amount as number) ? (order.change_amount as number) : null;
+
+    return (
+        <div
+            className="pointer-events-none fixed z-[9999] hidden w-[340px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--surface)] p-4 text-sm text-[var(--text-secondary)] shadow-2xl shadow-black/40 ring-1 ring-black/30 lg:block"
+            style={{ top, left }}
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="text-xs text-[var(--text-muted)]">รายละเอียดออเดอร์</div>
+                    <div className="mt-1 truncate font-mono text-base font-semibold text-[var(--accent)]">
+                        {shortId(order.id)}
+                    </div>
+                </div>
+                <StatusPill status={order.status ?? null} />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                    <div className="text-xs text-[var(--text-muted)]">ยอดรวม</div>
+                    <div className="mt-0.5 font-semibold tabular-nums text-[var(--text-primary)]">
+                        {formatMoneyTHB(order.total)} บาท
+                    </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+                    <div className="text-xs text-[var(--text-muted)]">ชำระ</div>
+                    <div className="mt-0.5 font-semibold text-[var(--text-primary)]">
+                        {paymentLabelTH(order.payment_method)}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-2">
+                <div className="flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+                    <span>รายการสินค้า</span>
+                    <span>{qty} ชิ้น</span>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                    {visibleItems.length > 0 ? (
+                        visibleItems.map((item, idx) => {
+                            const sub = itemSubLabel(item);
+
+                            return (
+                                <div key={`${order.id}-${idx}`} className="flex justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="truncate text-[var(--text-primary)]">{item.name}</div>
+                                        {sub ? <div className="truncate text-xs text-[var(--text-muted)]">{sub}</div> : null}
+                                    </div>
+                                    <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-[var(--text-primary)]">
+                                        ×{item.qty ?? 1} · {formatMoneyTHB(Number(item.price) || 0)} บาท
+                                    </div>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <div className="text-[var(--text-muted)]">ไม่มีรายการสินค้า</div>
+                    )}
+                    {hiddenItemCount > 0 ? (
+                        <div className="rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-2 py-1.5 text-xs font-medium text-[var(--accent)]">
+                            + อีก {hiddenItemCount} รายการสินค้า
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[var(--text-muted)]">รับเงิน</div>
+                    <div className="mt-0.5 tabular-nums text-[var(--text-primary)]">
+                        {paid == null ? "-" : `${formatMoneyTHB(paid)} บาท`}
+                    </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                    <div className="text-[var(--text-muted)]">เงินทอน</div>
+                    <div className="mt-0.5 tabular-nums text-[var(--text-primary)]">
+                        {change == null ? "-" : `${formatMoneyTHB(change)} บาท`}
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-3 border-t border-white/10 pt-3 text-xs text-[var(--text-muted)]">
+                <div>{safeDateTH(order.created_at)}</div>
+                <div className="mt-1 font-medium text-[var(--accent)]">
+                    คลิกเลขออเดอร์เพื่อดูรายละเอียดทั้งหมด
+                </div>
+            </div>
+        </div>
+    );
 }
 
 /* =========================
@@ -264,6 +404,7 @@ export default function AdminOrdersPage() {
     const preset = useMemo(() => presetFromDateFilter(df), [df]);
 
     const [rev, setRev] = useState<RevenueSummary | null>(null);
+    const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
 
     // ✅ block compare when search active (dataset mismatch)
     const hasSearch = search.trim().length > 0;
@@ -289,6 +430,18 @@ export default function AdminOrdersPage() {
 
         return () => ac.abort();
     }, [preset, hasSearch]);
+
+    useEffect(() => {
+        const clearPreview = () => setHoverPreview(null);
+
+        window.addEventListener("resize", clearPreview);
+        window.addEventListener("scroll", clearPreview, true);
+
+        return () => {
+            window.removeEventListener("resize", clearPreview);
+            window.removeEventListener("scroll", clearPreview, true);
+        };
+    }, []);
 
     /**
      * ✅ KPI source of truth:
@@ -402,8 +555,11 @@ export default function AdminOrdersPage() {
                     </span>
                 </span>,
 
-                <span key={`items-${order.id}`} className="text-text-secondary">
-                    <OrderItemsTooltip items={items} />
+                <span
+                    key={`items-${order.id}`}
+                    className="block max-w-[220px] truncate text-text-secondary"
+                >
+                    {compactItemsTH(items)}
                 </span>,
 
                 <span key={`paid-${order.id}`} className="tabular-nums text-text-secondary">
@@ -448,6 +604,22 @@ export default function AdminOrdersPage() {
 
     const isEmpty = !loading && (filteredOrders?.length ?? 0) === 0;
     const showReset = search.trim().length > 0 || df !== "today";
+
+    function updateHoverPreview(rowIndex: number, event: ReactMouseEvent<HTMLTableRowElement>) {
+        if (typeof window === "undefined" || !window.matchMedia("(min-width: 1024px)").matches) {
+            setHoverPreview(null);
+            return;
+        }
+
+        const order = ((paginatedOrders as unknown as OrderRow[]) ?? [])[rowIndex];
+        if (!order) {
+            setHoverPreview(null);
+            return;
+        }
+
+        const position = getFloatingPreviewPosition(event.clientX, event.clientY);
+        setHoverPreview({ order, ...position });
+    }
 
     return (
         <div className="p-3 sm:p-6">
@@ -599,8 +771,15 @@ export default function AdminOrdersPage() {
                                 <>
                                     {/* TABLE */}
                                     <div className="hidden rounded-xl overflow-x-auto sm:block">
-                                        <Table headers={headers} data={rows} />
+                                        <Table
+                                            headers={headers}
+                                            data={rows}
+                                            onRowMouseEnter={updateHoverPreview}
+                                            onRowMouseMove={updateHoverPreview}
+                                            onRowMouseLeave={() => setHoverPreview(null)}
+                                        />
                                     </div>
+                                    <OrderHoverPreview preview={hoverPreview} />
 
                                     <div className="space-y-3 sm:hidden">
                                         {mobileOrders.map(({ order, n, paymentLabel, paymentDisplay, itemSummary }) => (

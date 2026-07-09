@@ -8,6 +8,9 @@ interface TableProps {
     rowClassName?: (rowIndex: number) => string | undefined;
     cellClassName?: (rowIndex: number, colIndex: number) => string | undefined;
     onRowClick?: (rowIndex: number) => void;
+    onRowMouseEnter?: (rowIndex: number, event: React.MouseEvent<HTMLTableRowElement>) => void;
+    onRowMouseMove?: (rowIndex: number, event: React.MouseEvent<HTMLTableRowElement>) => void;
+    onRowMouseLeave?: (rowIndex: number, event: React.MouseEvent<HTMLTableRowElement>) => void;
 }
 
 function isReactElement(x: unknown): x is React.ReactElement {
@@ -64,6 +67,9 @@ const Table: React.FC<TableProps> = ({
     rowClassName,
     cellClassName,
     onRowClick,
+    onRowMouseEnter,
+    onRowMouseMove,
+    onRowMouseLeave,
 }) => {
     return (
         <div className="w-full">
@@ -106,6 +112,9 @@ const Table: React.FC<TableProps> = ({
                                 <tr
                                     key={rowIndex}
                                     onClick={() => onRowClick?.(rowIndex)}
+                                    onMouseEnter={(event) => onRowMouseEnter?.(rowIndex, event)}
+                                    onMouseMove={(event) => onRowMouseMove?.(rowIndex, event)}
+                                    onMouseLeave={(event) => onRowMouseLeave?.(rowIndex, event)}
                                     className={`
                     group relative
                     hover:bg-[var(--accent)]/10 transition-colors
