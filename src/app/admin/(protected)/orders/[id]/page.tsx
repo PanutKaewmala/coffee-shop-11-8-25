@@ -507,9 +507,9 @@ function buildReceiptDocument({
     const paidDisplay = order.paid_amount != null ? `${fmtMoney(order.paid_amount)} บาท` : "-";
     const changeDisplay = order.change_amount != null ? `${fmtMoney(order.change_amount)} บาท` : "-";
     const isA4 = mode === "a4";
-    const pageSize = isA4 ? "A4 portrait" : "90mm auto";
+    const pageSize = isA4 ? "A4 portrait" : "80mm auto";
     const bodyWidth = "100%";
-    const receiptWidth = isA4 ? "160mm" : "90mm";
+    const receiptWidth = isA4 ? "160mm" : "80mm";
     const receiptMargin = isA4 ? "16mm auto 0 auto" : "0 auto";
     const receiptPadding = isA4 ? "12mm" : "4mm";
     const baseFontSize = isA4 ? "14px" : "12px";
@@ -699,7 +699,7 @@ function ReceiptModal({
                                             : "text-text-secondary hover:text-text-primary",
                                     ].join(" ")}
                                 >
-                                    ใบเสร็จ 90mm
+                                    ใบเสร็จ 80mm
                                 </button>
                                 <button
                                     type="button"
@@ -725,7 +725,7 @@ function ReceiptModal({
                                 onLoad={() => setLoadedReceiptDocument(receiptSrcDoc)}
                                 className="mx-auto block max-w-none border-0 bg-white"
                                 style={{
-                                    width: mode === "a4" ? "210mm" : "90mm",
+                                    width: mode === "a4" ? "210mm" : "80mm",
                                     height: mode === "a4" ? "297mm" : "65vh",
                                 }}
                             />

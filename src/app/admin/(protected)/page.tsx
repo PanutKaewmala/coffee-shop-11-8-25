@@ -11,6 +11,8 @@ import type { Order as ChartOrder } from "@/lib/types";
 
 const RANGES = ["today", "week", "month", "year", "5year", "all"] as const;
 type RangeType = (typeof RANGES)[number];
+const MIN_SIGNAL_PAID_ORDERS = 10;
+const MIN_HOURLY_SIGNAL_BUCKETS = 3;
 
 type OrderStatus = "paid" | "cancelled" | "void" | "refunded";
 
@@ -507,6 +509,9 @@ export default function AdminDashboard() {
         return (summary?.orders ?? []).filter((o) => o.status === "paid");
     }, [summary]);
 
+    const paidOrderCount = summary?.paidCount ?? paidOnlyOrders.length;
+    const hasEnoughSignalData = paidOrderCount >= MIN_SIGNAL_PAID_ORDERS;
+
     // ✅ cast through unknown to the type Chart expects (no any)
     const chartOrders = useMemo(() => {
         return paidOnlyOrders as unknown as ChartOrder[];
@@ -571,6 +576,23 @@ export default function AdminDashboard() {
         return isHourlyChart(summary?.chart ?? []);
     }, [summary]);
 
+    const hourlySampleBuckets = useMemo(() => {
+        if (!hourlyOk) return 0;
+
+        const hours = new Set<number>();
+        for (const order of paidOnlyOrders) {
+            const dateValue = order.paid_at ?? order.created_at;
+            const date = new Date(dateValue);
+            if (Number.isFinite(date.getTime())) hours.add(date.getHours());
+        }
+        return hours.size;
+    }, [hourlyOk, paidOnlyOrders]);
+
+    const hasEnoughHourlySignalData =
+        hourlyOk &&
+        hasEnoughSignalData &&
+        hourlySampleBuckets >= MIN_HOURLY_SIGNAL_BUCKETS;
+
     const peakHour = useMemo(() => {
         const chart = summary?.chart ?? [];
         if (!chart.length || !hourlyOk) return null;
@@ -622,7 +644,9 @@ export default function AdminDashboard() {
     const aovTrend = useMemo(() => {
         // no extra API: compare early vs late inside selected range
         const list = paidOrdersSorted;
-        if (list.length < 4) return { deltaPct: 0, tone: "slate" as InsightTone, hint: "ข้อมูลยังน้อย" };
+        if (!hasEnoughSignalData || list.length < MIN_SIGNAL_PAID_ORDERS) {
+            return { deltaPct: 0, tone: "slate" as InsightTone, hint: "ข้อมูลยังน้อย" };
+        }
 
         const cut = Math.floor(list.length / 2);
         const first = list.slice(0, cut);
@@ -641,26 +665,15 @@ export default function AdminDashboard() {
         if (pct >= 8) return { deltaPct: pct, tone: "emerald" as InsightTone, hint: "บิลเฉลี่ยกำลังขึ้น" };
         if (pct <= -8) return { deltaPct: pct, tone: "rose" as InsightTone, hint: "บิลเฉลี่ยกำลังตก" };
         return { deltaPct: pct, tone: "amber" as InsightTone, hint: "แกว่งเล็กน้อย" };
-    }, [paidOrdersSorted]);
+    }, [paidOrdersSorted, hasEnoughSignalData]);
 
-    const repeatProxy = useMemo(() => {
-        // proxy: count orders that happen within 2 hours of a previous paid order
-        const list = paidOrdersSorted;
-        if (list.length < 3) return { count: 0, tone: "slate" as InsightTone, hint: "ข้อมูลยังน้อย" };
-
-        const twoHours = 2 * 60 * 60 * 1000;
-        let count = 0;
-
-        for (let i = 1; i < list.length; i++) {
-            const tPrev = new Date(list[i - 1].created_at).getTime();
-            const tNow = new Date(list[i].created_at).getTime();
-            if (tNow - tPrev <= twoHours) count++;
-        }
-
-        if (count >= 6) return { count, tone: "emerald" as InsightTone, hint: "ลูกค้าถี่/มีซ้ำในช่วงสั้น" };
-        if (count >= 3) return { count, tone: "amber" as InsightTone, hint: "มีสัญญาณกลับมาซื้อซ้ำ" };
-        return { count, tone: "slate" as InsightTone, hint: "ทราฟฟิคยังบาง" };
-    }, [paidOrdersSorted]);
+    const repeatSignal = useMemo(() => {
+        return {
+            value: "ยังไม่มีข้อมูลลูกค้า",
+            tone: "slate" as InsightTone,
+            hint: "ใช้ได้เมื่อมีรหัสลูกค้า",
+        };
+    }, []);
 
     const outlierBill = useMemo(() => {
         const list = paidOrdersSorted;
@@ -720,24 +733,40 @@ export default function AdminDashboard() {
 
         // 3) Menu concentration risk
         const mc = Math.round(clamp(menuConcentration * 100, 0, 100));
-        const mcTone: InsightTone = mc >= 55 ? "rose" : mc >= 40 ? "amber" : "emerald";
+        const mcTone: InsightTone = !hasEnoughSignalData ? "slate" : mc >= 60 ? "rose" : "emerald";
         const mcHint =
-            mc >= 55
-                ? "ยอดกระจุกตัวสูง—เมนูฮิตมีปัญหาคือรายได้ร่วง"
-                : mc >= 40
-                    ? "เริ่มกระจุก—เตรียมสต็อกเมนูฮิต"
+            !hasEnoughSignalData
+                ? "ยังต้องเก็บข้อมูลเพิ่ม"
+                : mc >= 60
+                    ? "ยอดกระจุกตัวสูง เมนูฮิตมีปัญหาคือรายได้ร่วง"
                     : "ยอดกระจายดี";
 
         list.push({
             key: "concentration",
             title: "ยอดกระจุกตัว",
-            value: `${mc}% ที่เมนูอันดับ 1`,
+            value: hasEnoughSignalData ? `${mc}% ที่เมนูอันดับ 1` : "ข้อมูลยังน้อย",
             tone: mcTone,
             hint: mcHint,
         });
 
         // 4) Peak hour (hourly only)
-        if (peakHour) {
+        if (!hasEnoughSignalData) {
+            list.push({
+                key: "peakHour",
+                title: "ช่วงพีค",
+                value: "ข้อมูลยังน้อย",
+                tone: "slate",
+                hint: "ใช้ได้เมื่อมีออเดอร์มากขึ้น",
+            });
+        } else if (!hasEnoughHourlySignalData) {
+            list.push({
+                key: "peakHour",
+                title: "ช่วงพีค",
+                value: "-",
+                tone: "slate",
+                hint: hourlyOk ? "ยังต้องเก็บข้อมูลเพิ่ม" : "ใช้ได้เฉพาะโหมดวันนี้",
+            });
+        } else if (peakHour) {
             const peakTone: InsightTone = peakHour.value >= 50 ? "emerald" : "amber";
             list.push({
                 key: "peakHour",
@@ -757,7 +786,23 @@ export default function AdminDashboard() {
         }
 
         // 5) Slow period (hourly only)
-        if (slowWindow) {
+        if (!hasEnoughSignalData) {
+            list.push({
+                key: "slowWindow",
+                title: "ช่วงเงียบ",
+                value: "ข้อมูลยังน้อย",
+                tone: "slate",
+                hint: "ใช้ได้เมื่อมีออเดอร์มากขึ้น",
+            });
+        } else if (!hasEnoughHourlySignalData) {
+            list.push({
+                key: "slowWindow",
+                title: "ช่วงเงียบ",
+                value: "-",
+                tone: "slate",
+                hint: hourlyOk ? "ยังต้องเก็บข้อมูลเพิ่ม" : "ใช้ได้เฉพาะโหมดวันนี้",
+            });
+        } else if (slowWindow) {
             list.push({
                 key: "slowWindow",
                 title: "ช่วงเงียบ",
@@ -777,7 +822,9 @@ export default function AdminDashboard() {
 
         // 6) AOV trend
         const aovPct = Math.round(aovTrend.deltaPct);
-        const aovVal = Number.isFinite(aovPct)
+        const aovVal = aovTrend.tone === "slate" && aovTrend.hint === "ข้อมูลยังน้อย"
+            ? "ข้อมูลยังน้อย"
+            : Number.isFinite(aovPct)
             ? `${aovPct > 0 ? "↑" : aovPct < 0 ? "↓" : "•"} ${Math.abs(aovPct)}%`
             : "-";
 
@@ -797,10 +844,10 @@ export default function AdminDashboard() {
         // 7) Repeat proxy
         list.push({
             key: "repeatProxy",
-            title: "ซื้อซ้ำ (สัญญาณ)",
-            value: `${repeatProxy.count} บิลใน 2 ชม.`,
-            tone: repeatProxy.tone,
-            hint: repeatProxy.hint,
+            title: "ซื้อซ้ำ",
+            value: repeatSignal.value,
+            tone: repeatSignal.tone,
+            hint: repeatSignal.hint,
         });
 
         // 8) Outlier bill
@@ -856,12 +903,14 @@ export default function AdminDashboard() {
         peakHour,
         slowWindow,
         aovTrend,
-        repeatProxy,
+        repeatSignal,
         outlierBill,
         stockRiskText,
         stockRiskTone,
         fmtCurrency,
         hourlyOk,
+        hasEnoughSignalData,
+        hasEnoughHourlySignalData,
     ]);
 
     if (!summary && loading) {

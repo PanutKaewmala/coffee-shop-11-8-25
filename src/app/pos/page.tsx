@@ -256,6 +256,153 @@ function paymentMethodLabel(method: "cash" | "promptpay") {
     return method === "cash" ? "เงินสด" : "พร้อมเพย์";
 }
 
+function escapeReceiptHtml(value: string) {
+    return value.replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;",
+        };
+        return entities[character];
+    });
+}
+
+function buildPosReceiptDocument({
+    receipt,
+    mode,
+    shopName,
+    branchName,
+    branchAddress,
+    branchPhone,
+    taxId,
+    footer,
+}: {
+    receipt: ReceiptData;
+    mode: "thermal" | "a4";
+    shopName: string;
+    branchName: string | null;
+    branchAddress: string | null;
+    branchPhone: string | null;
+    taxId: string | null;
+    footer: string | null;
+}) {
+    const isA4 = mode === "a4";
+    const receiptNumber = receipt.orderId ? receipt.orderId.slice(-8) : "XXXXXX";
+    const shopTitle = branchName ? `${shopName} - ${branchName}` : shopName;
+    const branchAddressHtml = branchAddress
+        ? `<div class="meta">${escapeReceiptHtml(branchAddress)}</div>`
+        : "";
+    const branchPhoneHtml = branchPhone
+        ? `<div class="meta">โทร: ${escapeReceiptHtml(branchPhone)}</div>`
+        : "";
+    const taxIdHtml = taxId
+        ? `<div class="meta">เลขผู้เสียภาษี: ${escapeReceiptHtml(taxId)}</div>`
+        : "";
+    const footerHtml = footer
+        ? `<div>${escapeReceiptHtml(footer)}</div>`
+        : "<div>ขอบคุณที่ใช้บริการ</div>";
+    const pageSize = isA4 ? "A4 portrait" : "80mm auto";
+    const receiptWidth = isA4 ? "160mm" : "80mm";
+    const receiptMargin = isA4 ? "16mm auto 0 auto" : "0 auto";
+    const receiptPadding = isA4 ? "12mm" : "3mm";
+    const baseFontSize = isA4 ? "14px" : "12px";
+    const shopFontSize = isA4 ? "20px" : "14px";
+    const headingFontSize = isA4 ? "16px" : "12px";
+    const smallFontSize = isA4 ? "12px" : "10px";
+    const dividerMargin = isA4 ? "12px 0" : "8px 0";
+    const itemSpacing = isA4 ? "8px" : "5px";
+    const summarySpacing = isA4 ? "6px" : "3px";
+    const itemRows = receipt.items
+        .map((item) => {
+            const qty = Number.isFinite(item.qty) ? item.qty : 0;
+            const unitPrice = Number.isFinite(item.unitPrice) ? item.unitPrice : 0;
+            const lineTotal = Number.isFinite(item.lineTotal) ? item.lineTotal : unitPrice * qty;
+
+            return `
+                <div class="item-row">
+                    <div class="item-name">
+                        <div>${escapeReceiptHtml(item.name)}</div>
+                        <div class="variant">${escapeReceiptHtml(item.variantLabel)} • ${qty} × ${escapeReceiptHtml(formatPrice(unitPrice))}</div>
+                    </div>
+                    <div class="item-price">${escapeReceiptHtml(formatPrice(lineTotal))}</div>
+                </div>
+            `;
+        })
+        .join("");
+
+    return `<!doctype html>
+<html lang="th">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>ใบเสร็จ ${escapeReceiptHtml(receiptNumber)}</title>
+        <style>
+            @page { size: ${pageSize}; margin: 0; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+            body {
+                width: 100%;
+                margin: 0;
+                font-family: Arial, "Noto Sans Thai", Tahoma, sans-serif;
+                font-size: ${baseFontSize};
+                line-height: 1.35;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .receipt {
+                width: ${receiptWidth};
+                max-width: ${receiptWidth};
+                margin: ${receiptMargin};
+                padding: ${receiptPadding};
+                background: #fff;
+            }
+            .center { text-align: center; }
+            .shop { font-size: ${shopFontSize}; font-weight: 700; overflow-wrap: anywhere; }
+            .heading { margin-top: 3px; font-size: ${headingFontSize}; font-weight: 700; }
+            .meta { margin-top: 2px; font-size: ${smallFontSize}; color: #444; overflow-wrap: anywhere; }
+            .divider { margin: ${dividerMargin}; border-top: 1px dashed #777; }
+            .item-row, .summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+            .item-row { break-inside: avoid; page-break-inside: avoid; }
+            .item-row + .item-row { margin-top: ${itemSpacing}; }
+            .item-name { min-width: 0; overflow-wrap: anywhere; }
+            .item-price { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
+            .variant, .muted { color: #555; }
+            .summary { display: grid; gap: ${summarySpacing}; }
+            .summary-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+            .total { font-weight: 700; }
+            .thanks { margin-top: 10px; padding-top: 7px; border-top: 1px dashed #777; font-size: ${smallFontSize}; white-space: pre-wrap; overflow-wrap: anywhere; }
+        </style>
+    </head>
+    <body>
+        <main class="receipt">
+            <header class="center">
+                <div class="shop">${escapeReceiptHtml(shopTitle)}</div>
+                ${branchAddressHtml}
+                ${branchPhoneHtml}
+                ${taxIdHtml}
+                <div class="heading">ใบเสร็จรับเงิน</div>
+                <div class="meta">เลขที่ ${escapeReceiptHtml(receiptNumber)}</div>
+                <div class="meta">${escapeReceiptHtml(formatDateTime(receipt.createdAt))}</div>
+            </header>
+            <div class="divider"></div>
+            <section>${itemRows}</section>
+            <div class="divider"></div>
+            <section class="summary">
+                <div class="summary-row total"><span>ยอดรวม</span><span>${escapeReceiptHtml(formatPrice(receipt.total))}</span></div>
+                <div class="summary-row"><span>วิธีจ่าย</span><span>${escapeReceiptHtml(paymentMethodLabel(receipt.paymentMethod))}</span></div>
+                <div class="summary-row"><span>รับเงิน</span><span>${escapeReceiptHtml(formatPrice(receipt.paidAmount))}</span></div>
+                <div class="summary-row"><span>เงินทอน</span><span>${escapeReceiptHtml(formatPrice(receipt.changeAmount))}</span></div>
+            </section>
+            <footer class="thanks center">
+                ${footerHtml}
+            </footer>
+        </main>
+    </body>
+</html>`;
+}
+
 function generateIdempotencyKey(): string {
     const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
     if (c && typeof c.randomUUID === "function") {
@@ -425,6 +572,7 @@ export default function POSPage() {
     const [feedError, setFeedError] = useState<string | null>(null);
     const [feedbackText, setFeedbackText] = useState<string | null>(null);
     const [lastTouchedVariantId, setLastTouchedVariantId] = useState<string | null>(null);
+    const receiptPrintIframeRef = useRef<HTMLIFrameElement | null>(null);
     const feedbackTimerRef = useRef<number | null>(null);
     const lineFlashTimerRef = useRef<number | null>(null);
     const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">("cash");
@@ -432,6 +580,7 @@ export default function POSPage() {
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
     const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
     const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
+    const [loadedReceiptDocument, setLoadedReceiptDocument] = useState<string | null>(null);
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -1010,30 +1159,75 @@ export default function POSPage() {
         }
     }
 
-    /* -------------------- PRINT STYLES FOR RECEIPT -------------------- */
-    useEffect(() => {
-        if (!receiptData) return;
-
-        let styleEl: HTMLStyleElement | null = null;
-        if (typeof document !== "undefined") {
-            styleEl = document.createElement("style");
-            const pageWidth = receiptPrintMode === "a4" ? "150mm" : "90mm";
-            const pageMargin = receiptPrintMode === "a4" ? "5mm" : "2mm";
-            styleEl.innerHTML = `@media print { @page { size: ${pageWidth} auto; margin: ${pageMargin}; } }`;
-            document.head.appendChild(styleEl);
-        }
-
-        return () => {
-            styleEl?.remove();
-        };
-    }, [receiptData, receiptPrintMode]);
-
     const receiptShopName = receiptSettings?.shopName ?? context.shopName ?? "Coffee SaaS";
     const receiptBranchName = receiptSettings?.branchName ?? context.branchName;
     const receiptBranchAddress = receiptSettings?.branchAddress ?? null;
     const receiptBranchPhone = receiptSettings?.branchPhone ?? null;
     const receiptTaxId = receiptSettings?.taxId ?? null;
     const receiptFooter = receiptSettings?.receiptFooter ?? null;
+
+    const receiptPrintDocument = useMemo(() => {
+        if (!receiptData) return "";
+
+        return buildPosReceiptDocument({
+            receipt: receiptData,
+            mode: receiptPrintMode,
+            shopName: receiptShopName,
+            branchName: receiptBranchName ?? null,
+            branchAddress: receiptBranchAddress,
+            branchPhone: receiptBranchPhone,
+            taxId: receiptTaxId,
+            footer: receiptFooter,
+        });
+    }, [
+        receiptData,
+        receiptPrintMode,
+        receiptShopName,
+        receiptBranchName,
+        receiptBranchAddress,
+        receiptBranchPhone,
+        receiptTaxId,
+        receiptFooter,
+    ]);
+    const receiptPrintIframeLoaded =
+        receiptData !== null &&
+        receiptPrintDocument.trim().length > 0 &&
+        loadedReceiptDocument === receiptPrintDocument;
+
+    const printReceipt = useCallback(() => {
+        if (!receiptPrintDocument.trim()) {
+            console.warn("[POS receipt] Receipt print document is empty.");
+            return;
+        }
+
+        if (!receiptPrintIframeLoaded) {
+            console.warn("[POS receipt] Receipt print document is not ready yet.");
+            return;
+        }
+
+        const iframe = receiptPrintIframeRef.current;
+        if (!iframe?.contentWindow) {
+            console.warn("[POS receipt] Receipt print iframe is unavailable.");
+            return;
+        }
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    }, [receiptPrintDocument, receiptPrintIframeLoaded]);
+
+    const closeReceipt = useCallback(() => {
+        setLoadedReceiptDocument(null);
+        setReceiptData(null);
+    }, []);
+
+    const selectReceiptPrintMode = useCallback(
+        (nextMode: "thermal" | "a4") => {
+            if (nextMode === receiptPrintMode) return;
+            setLoadedReceiptDocument(null);
+            setReceiptPrintMode(nextMode);
+        },
+        [receiptPrintMode]
+    );
 
     /* -------------------- RENDER -------------------- */
     return (
@@ -1444,7 +1638,7 @@ export default function POSPage() {
                     aria-modal="true"
                     aria-labelledby="receipt-modal-title"
                 >
-                    <div className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] lg:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 lg:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[90mm] print:max-w-[90mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
+                    <div className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] lg:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 lg:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[80mm] print:max-w-[80mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
                         <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
                             <div>
                                 <h2 id="receipt-modal-title" className="text-xl lg:text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
@@ -1469,7 +1663,7 @@ export default function POSPage() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setReceiptData(null)}
+                                onClick={closeReceipt}
                                 className="rounded-lg border border-[var(--text-muted)]/20 px-2.5 py-1.5 lg:px-3 lg:py-1.5 text-sm text-text-secondary hover:bg-[var(--text-muted)]/20 print:hidden"
                                 aria-label="ปิดใบเสร็จ"
                             >
@@ -1547,7 +1741,7 @@ export default function POSPage() {
                             <div className="flex gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setReceiptPrintMode("thermal")}
+                                    onClick={() => selectReceiptPrintMode("thermal")}
                                 className={[
                                     "flex-1 py-1.5 lg:py-2 text-xs rounded-lg border transition",
                                     receiptPrintMode === "thermal"
@@ -1559,7 +1753,7 @@ export default function POSPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setReceiptPrintMode("a4")}
+                                    onClick={() => selectReceiptPrintMode("a4")}
                                 className={[
                                     "flex-1 py-1.5 lg:py-2 text-xs rounded-lg border transition",
                                     receiptPrintMode === "a4"
@@ -1575,20 +1769,38 @@ export default function POSPage() {
                         <div className="flex flex-col gap-2 border-t border-[var(--text-muted)]/20 p-4 lg:p-5 sm:flex-row print:hidden">
                             <button
                                 type="button"
-                                onClick={() => setReceiptData(null)}
+                                onClick={closeReceipt}
                                 className="w-full rounded-xl border border-[var(--text-muted)]/20 bg-surface px-4 py-2.5 lg:py-3 text-sm font-semibold text-text-primary hover:bg-[var(--text-muted)]/20"
                             >
                                 เริ่มบิลใหม่
                             </button>
                             <button
                                 type="button"
-                                onClick={() => window.print()}
-                                className="w-full rounded-xl bg-accent px-4 py-2.5 lg:py-3 text-sm font-semibold text-white hover:bg-accent-dark"
+                                onClick={printReceipt}
+                                disabled={!receiptPrintIframeLoaded}
+                                className="w-full rounded-xl bg-accent px-4 py-2.5 lg:py-3 text-sm font-semibold text-white hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 พิมพ์ใบเสร็จ
                             </button>
                         </div>
                     </div>
+                    <iframe
+                        ref={receiptPrintIframeRef}
+                        title="ตัวอย่างใบเสร็จสำหรับพิมพ์"
+                        srcDoc={receiptPrintDocument}
+                        onLoad={() => {
+                            if (receiptPrintDocument.trim()) {
+                                setLoadedReceiptDocument(receiptPrintDocument);
+                            }
+                        }}
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        className="pointer-events-none fixed left-[-10000px] top-0 max-w-none border-0 bg-white opacity-0"
+                        style={{
+                            width: receiptPrintMode === "a4" ? "210mm" : "80mm",
+                            height: receiptPrintMode === "a4" ? "297mm" : "65vh",
+                        }}
+                    />
                 </div>
             ) : null}
         </div>
