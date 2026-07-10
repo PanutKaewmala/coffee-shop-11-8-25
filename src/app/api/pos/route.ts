@@ -74,6 +74,8 @@ type FallbackDeductRow = {
 type IncomingItem = {
     variant_id?: unknown;
     qty?: unknown;
+    sweetness?: unknown;
+    sweetness_label?: unknown;
 };
 
 type IncomingBody = {
@@ -86,6 +88,7 @@ type IncomingBody = {
 type RpcItem = {
     variant_id: string;
     qty: number; // int >= 1
+    sweetness: SweetnessLevel;
 };
 
 type CheckoutVariantRow = {
@@ -126,6 +129,17 @@ export type Json =
     | { [key: string]: Json | undefined }
     | Json[];
 
+const SWEETNESS_OPTIONS = ["0%", "25%", "50%", "75%", "100%", "125%"] as const;
+type SweetnessLevel = (typeof SWEETNESS_OPTIONS)[number];
+const DEFAULT_SWEETNESS: SweetnessLevel = "100%";
+const LEGACY_SWEETNESS_MAP: Record<string, SweetnessLevel> = {
+    "ไม่หวาน": "0%",
+    "หวานน้อย": "75%",
+    "หวานครึ่ง": "50%",
+    "หวานปกติ": "100%",
+    "หวานมาก": "125%",
+};
+
 /* =========================================================
    Helpers
 ========================================================= */
@@ -158,6 +172,57 @@ function buildVariantLabel(opts: { serveTypeName?: string | null; size?: string 
     const b = cleanLabel(opts.size);
     const merged = compactSpaces([a, b].filter(Boolean).join(" / "));
     return merged || null;
+}
+
+function normalizeSweetness(v: unknown): SweetnessLevel {
+    const raw = toStringOrNull(v);
+    if (!raw) return DEFAULT_SWEETNESS;
+
+    const found = SWEETNESS_OPTIONS.find((option) => option === raw);
+    if (found) return found;
+
+    const pct = raw.match(/(125|100|75|50|25|0)%/);
+    if (pct) return pct[0] as SweetnessLevel;
+
+    const withoutPrefix = raw.replace(/^หวาน\s*/, "").trim();
+    const afterPrefix = SWEETNESS_OPTIONS.find((option) => option === withoutPrefix);
+    if (afterPrefix) return afterPrefix;
+
+    const exactLegacy = LEGACY_SWEETNESS_MAP[raw] ?? LEGACY_SWEETNESS_MAP[withoutPrefix];
+    if (exactLegacy) return exactLegacy;
+
+    for (const [legacy, next] of Object.entries(LEGACY_SWEETNESS_MAP)) {
+        if (raw.includes(legacy)) return next;
+    }
+
+    return DEFAULT_SWEETNESS;
+}
+
+function isSweetnessLabelPart(value: string): boolean {
+    const raw = value.trim();
+    if (!raw) return false;
+    if (SWEETNESS_OPTIONS.some((option) => raw === option || raw.includes(option))) return true;
+    if (raw.startsWith("หวาน")) return true;
+    return Object.keys(LEGACY_SWEETNESS_MAP).some((legacy) => raw.includes(legacy));
+}
+
+function stripSweetnessFromVariantLabel(variantLabel: string | null): string | null {
+    const cleaned = cleanLabel(variantLabel);
+    if (!cleaned) return null;
+
+    const serveParts = cleaned
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part && !isSweetnessLabelPart(part));
+
+    const merged = compactSpaces(serveParts.join(" / "));
+    return merged || null;
+}
+
+function buildOrderItemVariantLabel(variantLabel: string | null, sweetness: SweetnessLevel): string {
+    const sweetnessLabel = `หวาน ${sweetness}`;
+    const merged = compactSpaces([stripSweetnessFromVariantLabel(variantLabel), sweetnessLabel].filter(Boolean).join(" / "));
+    return merged || sweetnessLabel;
 }
 
 function mapCheckoutErrorCode(message: string): string {
@@ -631,7 +696,8 @@ export async function POST(req: NextRequest) {
                 const variant_id = toStringOrNull(i.variant_id);
                 const qtyRaw = toNumber(i.qty, 0);
                 const qty = Math.floor(qtyRaw);
-                return variant_id ? { variant_id, qty } : null;
+                const sweetness = normalizeSweetness(i.sweetness ?? i.sweetness_label);
+                return variant_id ? { variant_id, qty, sweetness } : null;
             })
             .filter((i): i is RpcItem => !!i && i.qty >= 1);
 
@@ -778,11 +844,12 @@ export async function POST(req: NextRequest) {
                 serveTypeName: v.serve_type_id ? serveTypeMap.get(v.serve_type_id) ?? null : null,
                 size: v.size ?? null,
             });
+            const orderVariantLabel = buildOrderItemVariantLabel(variantLabel, it.sweetness);
 
             return {
                 menu_id: m.id,
                 variant_id: v.id,
-                variant_label: variantLabel,
+                variant_label: orderVariantLabel,
                 name: m.name,
                 price: finalPrice,
                 qty: it.qty,

@@ -54,6 +54,35 @@ type RevenueDashboardResponse = {
     orders: DashboardOrder[];
 };
 
+type ExpiryAlertLot = {
+    id: string | null;
+    ingredient_id: string | null;
+    ingredient_name: string | null;
+    lot_code: string | null;
+    qty_remaining: number;
+    unit: string | null;
+    expires_at: string | null;
+    best_before_at: string | null;
+    effective_expiry_at: string | null;
+    days_to_expiry: number | null;
+    status_label: string;
+    alert_tone: "danger" | "warning" | "normal" | "unknown";
+};
+
+type ExpiryAlertsResponse = {
+    hasLotData: boolean;
+    hasExpiryData: boolean;
+    summary: {
+        total_lots: number;
+        lots_with_expiry: number;
+        expired_count: number;
+        danger_count: number;
+        warning_count: number;
+        normal_count: number;
+    };
+    alerts: ExpiryAlertLot[];
+};
+
 /* =========================
    Type guards (no any)
 ========================= */
@@ -71,6 +100,52 @@ function clamp(n: number, min: number, max: number) {
 function safeNum(v: unknown, fallback = 0) {
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
+}
+function readString(v: unknown): string | null {
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+function readTone(v: unknown): ExpiryAlertLot["alert_tone"] {
+    if (v === "danger" || v === "warning" || v === "normal" || v === "unknown") return v;
+    return "unknown";
+}
+function parseExpiryAlerts(data: unknown): ExpiryAlertsResponse | null {
+    if (!isRecord(data)) return null;
+
+    const summaryRaw: Record<string, unknown> = isRecord(data.summary) ? data.summary : {};
+    const alertsRaw = Array.isArray(data.alerts) ? data.alerts : [];
+    const alerts: ExpiryAlertLot[] = alertsRaw
+        .map((row): ExpiryAlertLot | null => {
+            if (!isRecord(row)) return null;
+            return {
+                id: readString(row.id),
+                ingredient_id: readString(row.ingredient_id),
+                ingredient_name: readString(row.ingredient_name),
+                lot_code: readString(row.lot_code),
+                qty_remaining: safeNum(row.qty_remaining, 0),
+                unit: readString(row.unit),
+                expires_at: readString(row.expires_at),
+                best_before_at: readString(row.best_before_at),
+                effective_expiry_at: readString(row.effective_expiry_at),
+                days_to_expiry: row.days_to_expiry == null ? null : safeNum(row.days_to_expiry, 0),
+                status_label: readString(row.status_label) ?? "ยังไม่มีข้อมูลวันหมดอายุ",
+                alert_tone: readTone(row.alert_tone),
+            };
+        })
+        .filter((row): row is ExpiryAlertLot => row !== null);
+
+    return {
+        hasLotData: data.hasLotData === true,
+        hasExpiryData: data.hasExpiryData === true,
+        summary: {
+            total_lots: safeNum(summaryRaw.total_lots, 0),
+            lots_with_expiry: safeNum(summaryRaw.lots_with_expiry, 0),
+            expired_count: safeNum(summaryRaw.expired_count, 0),
+            danger_count: safeNum(summaryRaw.danger_count, 0),
+            warning_count: safeNum(summaryRaw.warning_count, 0),
+            normal_count: safeNum(summaryRaw.normal_count, 0),
+        },
+        alerts,
+    };
 }
 function parseHourLabel(label: string): number | null {
     // supports "17:00" or "17"
@@ -135,6 +210,30 @@ function signalLabelClass(tone: InsightTone) {
     return "bg-slate-400/15 text-slate-700 dark:text-slate-200";
 }
 
+function expiryAlertClass(tone: ExpiryAlertLot["alert_tone"]) {
+    if (tone === "danger") return "border-red-500/30 bg-red-500/10 text-red-200";
+    if (tone === "warning") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+    return "border-slate-400/25 bg-slate-400/10 text-slate-200";
+}
+
+function expiryDaysText(days: number | null) {
+    if (days == null) return "ไม่มีวันหมดอายุ";
+    if (days < 0) return `เลยมา ${Math.abs(days)} วัน`;
+    if (days === 0) return "วันนี้";
+    if (days === 1) return "พรุ่งนี้";
+    return `อีก ${days} วัน`;
+}
+
+function formatDateShort(value: string | null) {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (!Number.isFinite(d.getTime())) return "-";
+    return d.toLocaleDateString("th-TH", {
+        day: "2-digit",
+        month: "short",
+    });
+}
+
 export default function AdminDashboard() {
     type CountData = {
         menu: number;
@@ -163,6 +262,8 @@ export default function AdminDashboard() {
     // optional stock risk (if API exists)
     const [stockRiskText, setStockRiskText] = useState<string | null>(null);
     const [stockRiskTone, setStockRiskTone] = useState<InsightTone>("slate");
+    const [expiryAlerts, setExpiryAlerts] = useState<ExpiryAlertsResponse | null>(null);
+    const [expiryAlertsLoading, setExpiryAlertsLoading] = useState(false);
 
     function extractCountFromUnknown(data: unknown, keys: string[]): number {
         if (Array.isArray(data)) return data.length;
@@ -357,6 +458,36 @@ export default function AdminDashboard() {
             mounted = false;
         };
     }, [range]);
+
+    useEffect(() => {
+        let mounted = true;
+
+        async function loadExpiryAlerts() {
+            try {
+                setExpiryAlertsLoading(true);
+
+                const res = await fetch("/api/ingredients/expiry-alerts", { cache: "no-store" });
+                const data: unknown = await res.json().catch(() => null);
+                if (!mounted) return;
+
+                if (!res.ok) {
+                    setExpiryAlerts(null);
+                    return;
+                }
+
+                setExpiryAlerts(parseExpiryAlerts(data));
+            } catch {
+                if (mounted) setExpiryAlerts(null);
+            } finally {
+                if (mounted) setExpiryAlertsLoading(false);
+            }
+        }
+
+        void loadExpiryAlerts();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     const recentOrders: DashboardOrder[] = useMemo(() => {
         if (!summary?.orders) return [];
@@ -856,6 +987,73 @@ export default function AdminDashboard() {
                         ))}
                     </div>
                 </div>
+
+                <Card title="วัตถุดิบใกล้หมดอายุ">
+                    {expiryAlertsLoading ? (
+                        <div className="text-sm text-text-muted">กำลังโหลด...</div>
+                    ) : !expiryAlerts || !expiryAlerts.hasLotData || !expiryAlerts.hasExpiryData ? (
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-text-muted">
+                            ยังไม่มีข้อมูลวันหมดอายุ
+                        </div>
+                    ) : expiryAlerts.alerts.length === 0 ? (
+                        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                            ไม่มีล็อตที่ใกล้หมดอายุใน 3 วัน
+                            <span className="ml-2 text-text-muted">
+                                ตรวจแล้ว {expiryAlerts.summary.lots_with_expiry} ล็อต
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-red-200">
+                                    อันตราย {expiryAlerts.summary.danger_count}
+                                </span>
+                                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-200">
+                                    ระวัง {expiryAlerts.summary.warning_count}
+                                </span>
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-text-muted">
+                                    มีวันหมดอายุ {expiryAlerts.summary.lots_with_expiry} ล็อต
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                {expiryAlerts.alerts.map((lot, index) => {
+                                    const href = lot.ingredient_id
+                                        ? `/admin/ingredients/${encodeURIComponent(lot.ingredient_id)}`
+                                        : "/admin/ingredients";
+
+                                    return (
+                                        <Link
+                                            key={lot.id ?? `${lot.ingredient_id ?? "ingredient"}-${index}`}
+                                            href={href}
+                                            className={`block rounded-lg border p-3 transition hover:bg-white/10 ${expiryAlertClass(lot.alert_tone)}`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-sm font-semibold text-text-primary">
+                                                        {lot.ingredient_name ?? "วัตถุดิบ"}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-text-muted">
+                                                        ล็อต {lot.lot_code ?? "-"} · {lot.qty_remaining.toLocaleString("th-TH")} {lot.unit ?? ""}
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0 text-right text-xs font-semibold">
+                                                    {lot.status_label}
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 text-xs text-text-muted">
+                                                หมดอายุ {formatDateShort(lot.expires_at ?? lot.effective_expiry_at)}
+                                                {" · "}
+                                                {expiryDaysText(lot.days_to_expiry)}
+                                                {lot.best_before_at ? ` · ควรใช้ก่อน ${formatDateShort(lot.best_before_at)}` : ""}
+                                            </div>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </Card>
 
                 {/* KPI cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">

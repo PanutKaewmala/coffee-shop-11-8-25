@@ -29,7 +29,7 @@ type PosMenuItem = {
    Checkout types
 ========================= */
 type PosCheckoutPayload = {
-    items: { variant_id: string; qty: number }[];
+    items: { variant_id: string; qty: number; sweetness: SweetnessLevel }[];
     payment_method: "cash" | "promptpay";
     paid_amount?: number;
 };
@@ -61,11 +61,13 @@ type PosContextView = {
    Local cart type
 ========================= */
 type CartItem = {
-    id: string; // variant_id
+    id: string; // variant_id + sweetness
     variant_id: string;
     menu_id: string;
     menu_name: string;
     variant_label: string;
+    serve_label?: string | null;
+    sweetness?: SweetnessLevel | string;
     price: number;
     qty: number;
 };
@@ -268,12 +270,131 @@ function generateIdempotencyKey(): string {
 
 const CASH_ADD_AMOUNTS = [5, 10, 20, 50, 100, 500, 1000] as const;
 const CASH_PRESET_AMOUNTS = [50, 100, 500, 1000] as const;
+const SWEETNESS_OPTIONS = ["0%", "25%", "50%", "75%", "100%", "125%"] as const;
+type SweetnessLevel = (typeof SWEETNESS_OPTIONS)[number];
+const DEFAULT_SWEETNESS: SweetnessLevel = "100%";
+const LEGACY_SWEETNESS_MAP: Record<string, SweetnessLevel> = {
+    "ไม่หวาน": "0%",
+    "หวานน้อย": "75%",
+    "หวานครึ่ง": "50%",
+    "หวานปกติ": "100%",
+    "หวานมาก": "125%",
+};
 
 /* =========================
    UI helpers
 ========================= */
 function serveLabel(v: PosVariant) {
     return v.serve_type?.name?.trim() ? v.serve_type!.name : "Default";
+}
+
+function normalizeSweetness(value: unknown): SweetnessLevel {
+    if (typeof value !== "string") return DEFAULT_SWEETNESS;
+
+    const raw = value.trim();
+    const direct = SWEETNESS_OPTIONS.find((option) => option === raw);
+    if (direct) return direct;
+
+    const pct = raw.match(/(125|100|75|50|25|0)%/);
+    if (pct) return pct[0] as SweetnessLevel;
+
+    const withoutPrefix = raw.replace(/^หวาน\s*/, "").trim();
+    const afterPrefix = SWEETNESS_OPTIONS.find((option) => option === withoutPrefix);
+    if (afterPrefix) return afterPrefix;
+
+    const exactLegacy = LEGACY_SWEETNESS_MAP[raw] ?? LEGACY_SWEETNESS_MAP[withoutPrefix];
+    if (exactLegacy) return exactLegacy;
+
+    for (const [legacy, next] of Object.entries(LEGACY_SWEETNESS_MAP)) {
+        if (raw.includes(legacy)) return next;
+    }
+
+    return DEFAULT_SWEETNESS;
+}
+
+function isSweetnessLabelPart(value: string): boolean {
+    const raw = value.trim();
+    if (!raw) return false;
+    if (SWEETNESS_OPTIONS.some((option) => raw === option || raw.includes(option))) return true;
+    if (raw.startsWith("หวาน")) return true;
+    return Object.keys(LEGACY_SWEETNESS_MAP).some((legacy) => raw.includes(legacy));
+}
+
+function normalizeServeLabel(serve: string | null | undefined) {
+    const parts = String(serve ?? "")
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part && !isSweetnessLabelPart(part));
+
+    const merged = parts.join(" / ").replace(/\bdefault\b/gi, "").trim();
+    return merged || "Default";
+}
+
+function sweetnessLabel(sweetness: unknown) {
+    return `หวาน ${normalizeSweetness(sweetness)}`;
+}
+
+function buildVariantLabel(serve: string, sweetness: unknown) {
+    return `${normalizeServeLabel(serve)} / ${sweetnessLabel(sweetness)}`;
+}
+
+function cartLineId(variantId: string, serve: string, sweetness: unknown) {
+    return `${variantId}::${normalizeServeLabel(serve)}::${normalizeSweetness(sweetness)}`;
+}
+
+function getCartServeLabel(item: CartItem) {
+    return normalizeServeLabel(item.serve_label ?? item.variant_label);
+}
+
+function getCartVariantLabel(item: CartItem) {
+    return buildVariantLabel(getCartServeLabel(item), item.sweetness ?? item.variant_label);
+}
+
+function normalizeCartItem(item: CartItem): CartItem {
+    const serve = getCartServeLabel(item);
+    const sweetness = normalizeSweetness(item.sweetness ?? item.variant_label);
+    return {
+        ...item,
+        id: cartLineId(item.variant_id, serve, sweetness),
+        serve_label: serve,
+        sweetness,
+        variant_label: buildVariantLabel(serve, sweetness),
+    };
+}
+
+function sameCartItems(a: CartItem[], b: CartItem[]) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => {
+        const other = b[index];
+        return (
+            other &&
+            item.id === other.id &&
+            item.variant_id === other.variant_id &&
+            item.serve_label === other.serve_label &&
+            item.sweetness === other.sweetness &&
+            item.variant_label === other.variant_label &&
+            item.qty === other.qty
+        );
+    });
+}
+
+function normalizeCartItems(items: CartItem[]) {
+    const merged = new Map<string, CartItem>();
+
+    for (const item of items) {
+        const normalized = normalizeCartItem(item);
+        const existing = merged.get(normalized.id);
+        if (existing) {
+            merged.set(normalized.id, {
+                ...existing,
+                qty: existing.qty + normalized.qty,
+            });
+        } else {
+            merged.set(normalized.id, normalized);
+        }
+    }
+
+    return Array.from(merged.values());
 }
 
 function getMinVariantPrice(item: PosMenuItem): number {
@@ -314,6 +435,8 @@ export default function POSPage() {
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
+    // key: menu_id -> sweetness label
+    const [sweetnessPick, setSweetnessPick] = useState<Record<string, SweetnessLevel>>({});
 
     // filters
     const [query, setQuery] = useState("");
@@ -527,6 +650,19 @@ export default function POSPage() {
         [variantPick]
     );
 
+    const getSelectedSweetness = useCallback(
+        (menuId: string): SweetnessLevel => normalizeSweetness(sweetnessPick[menuId]),
+        [sweetnessPick]
+    );
+
+    useEffect(() => {
+        setCart((prev) => {
+            if (prev.length === 0) return prev;
+            const next = normalizeCartItems(prev);
+            return sameCartItems(prev, next) ? prev : next;
+        });
+    }, []);
+
     const pushFeedback = useCallback((text: string, variantId?: string) => {
         setFeedbackText(text);
         if (feedbackTimerRef.current !== null) {
@@ -562,38 +698,53 @@ export default function POSPage() {
 
     /* -------------------- CART OPS -------------------- */
     const addVariantToCart = useCallback(
-        (item: PosMenuItem, variantId: string) => {
+        (item: PosMenuItem, variantId: string, sweetness = getSelectedSweetness(item.id)) => {
             const variants = Array.isArray(item.variants) ? item.variants : [];
             const v = variants.find((x) => x.id === variantId) ?? null;
             if (!v) return;
 
             const base = toNumber(item.price, 0);
             const price = toNumber(v.price, base);
+            const serve = normalizeServeLabel(serveLabel(v));
+            const normalizedSweetness = normalizeSweetness(sweetness);
+            const variantLabel = buildVariantLabel(serve, normalizedSweetness);
+            const lineId = cartLineId(variantId, serve, normalizedSweetness);
 
             setCart((prev) => {
-                const exists = prev.find((c) => c.variant_id === variantId);
+                const normalizedPrev = normalizeCartItems(prev);
+                const exists = normalizedPrev.find((c) => c.id === lineId);
                 if (exists) {
-                    return prev.map((c) =>
-                        c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c
+                    return normalizedPrev.map((c) =>
+                        c.id === lineId
+                            ? {
+                                ...c,
+                                qty: c.qty + 1,
+                                serve_label: serve,
+                                sweetness: normalizedSweetness,
+                                variant_label: variantLabel,
+                            }
+                            : c
                     );
                 }
 
                 const next: CartItem = {
-                    id: variantId,
+                    id: lineId,
                     variant_id: variantId,
                     menu_id: item.id,
                     menu_name: item.name,
-                    variant_label: serveLabel(v),
+                    variant_label: variantLabel,
+                    serve_label: serve,
+                    sweetness: normalizedSweetness,
                     price,
                     qty: 1,
                 };
 
-                return [...prev, next];
+                return [...normalizedPrev, next];
             });
 
-            pushFeedback(`เพิ่ม ${item.name} (${serveLabel(v)})`, variantId);
+            pushFeedback(`เพิ่ม ${item.name} (${variantLabel})`, lineId);
         },
-        [pushFeedback]
+        [getSelectedSweetness, pushFeedback]
     );
 
     const addToCart = useCallback(
@@ -615,22 +766,22 @@ export default function POSPage() {
         [addVariantToCart, getSelectedVariant]
     );
 
-    const increaseQty = useCallback((variantId: string) => {
+    const increaseQty = useCallback((lineId: string) => {
         setCart((prev) =>
-            prev.map((c) => (c.variant_id === variantId ? { ...c, qty: c.qty + 1 } : c))
+            prev.map((c) => (c.id === lineId ? { ...c, qty: c.qty + 1 } : c))
         );
     }, []);
 
-    const decreaseQty = useCallback((variantId: string) => {
+    const decreaseQty = useCallback((lineId: string) => {
         setCart((prev) =>
             prev
-                .map((c) => (c.variant_id === variantId ? { ...c, qty: c.qty - 1 } : c))
+                .map((c) => (c.id === lineId ? { ...c, qty: c.qty - 1 } : c))
                 .filter((c) => c.qty > 0)
         );
     }, []);
 
-    const removeItem = useCallback((variantId: string) => {
-        setCart((prev) => prev.filter((c) => c.variant_id !== variantId));
+    const removeItem = useCallback((lineId: string) => {
+        setCart((prev) => prev.filter((c) => c.id !== lineId));
     }, []);
 
     const clearCart = useCallback(() => setCart([]), []);
@@ -754,6 +905,7 @@ export default function POSPage() {
                 items: cart.map((c) => ({
                     variant_id: c.variant_id,
                     qty: clamp(c.qty, 1, 999),
+                    sweetness: normalizeSweetness(c.sweetness ?? c.variant_label),
                 })),
                 payment_method: paymentMethod,
             };
@@ -836,7 +988,7 @@ export default function POSPage() {
                 createdAt: new Date().toISOString(),
                 items: cart.map((c) => ({
                     name: c.menu_name,
-                    variantLabel: c.variant_label,
+                    variantLabel: getCartVariantLabel(c),
                     qty: c.qty,
                     unitPrice: c.price,
                     lineTotal: c.price * c.qty,
@@ -946,6 +1098,7 @@ export default function POSPage() {
                     {filteredMenu.map((item) => {
                         const variants = Array.isArray(item.variants) ? item.variants : [];
                         const selectedVariant = getSelectedVariant(item);
+                        const selectedSweetness = getSelectedSweetness(item.id);
 
                         return (
                             <div
@@ -1007,6 +1160,38 @@ export default function POSPage() {
                                     )}
                                 </div>
 
+                                <div className="mt-3">
+                                    <div className="mb-1.5 text-xs text-text-muted">ระดับความหวาน</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {SWEETNESS_OPTIONS.map((option) => {
+                                            const active = selectedSweetness === option;
+
+                                            return (
+                                                <button
+                                                    key={option}
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSweetnessPick((prev) => ({
+                                                            ...prev,
+                                                            [item.id]: option,
+                                                        }));
+                                                    }}
+                                                    className={[
+                                                        "min-h-8 rounded-full border px-2.5 py-1 text-xs transition",
+                                                        active
+                                                            ? "border-accent bg-accent text-white"
+                                                            : "border-[var(--text-muted)]/20 bg-[var(--text-muted)]/10 text-text-secondary hover:bg-accent/20",
+                                                    ].join(" ")}
+                                                    aria-pressed={active}
+                                                >
+                                                    {option}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 <div className="text-xs text-text-muted">
                                     แตะปุ่มเสิร์ฟเพื่อเพิ่มทันที หรือแตะการ์ดเพื่อเพิ่มตัวที่เลือก
                                 </div>
@@ -1066,20 +1251,20 @@ export default function POSPage() {
                                 <div className="mt-2 lg:mt-3 space-y-2 lg:space-y-2">
                                     {g.lines
                                         .slice()
-                                        .sort((a, b) => a.variant_label.localeCompare(b.variant_label))
+                                        .sort((a, b) => getCartVariantLabel(a).localeCompare(getCartVariantLabel(b)))
                                         .map((it) => (
                                             <div
-                                                key={it.variant_id}
+                                                key={it.id}
                                                 className={[
                                                     "flex items-center justify-between gap-2 lg:gap-3 rounded-md px-2 py-2 transition",
-                                                    lastTouchedVariantId === it.variant_id
+                                                    lastTouchedVariantId === it.id
                                                         ? "bg-accent/15 ring-1 ring-accent/50"
                                                         : "",
                                                 ].join(" ")}
                                             >
                                                 <div className="min-w-0">
-                                                    <div className="text-sm text-text-secondary truncate">
-                                                        • {it.variant_label}
+                                                    <div className="text-sm text-text-secondary break-words">
+                                                        • {it.menu_name} / {getCartVariantLabel(it)}
                                                     </div>
                                                     <div className="text-xs text-text-muted">
                                                         {it.qty} × {formatPrice(it.price)}
@@ -1088,7 +1273,7 @@ export default function POSPage() {
 
                                                 <div className="flex items-center gap-2">
                                                     <button
-                                                        onClick={() => decreaseQty(it.variant_id)}
+                                                        onClick={() => decreaseQty(it.id)}
                                                         className="h-9 w-9 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
                                                     >
                                                         -
@@ -1099,14 +1284,14 @@ export default function POSPage() {
                                                     </span>
 
                                                     <button
-                                                        onClick={() => increaseQty(it.variant_id)}
+                                                        onClick={() => increaseQty(it.id)}
                                                         className="h-9 w-9 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
                                                     >
                                                         +
                                                     </button>
 
                                                     <button
-                                                        onClick={() => removeItem(it.variant_id)}
+                                                        onClick={() => removeItem(it.id)}
                                                         className="px-3 h-9 text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98]"
                                                     >
                                                         ลบ

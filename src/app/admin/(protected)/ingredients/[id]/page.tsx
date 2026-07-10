@@ -89,6 +89,35 @@ type AnalyticsResponse = {
 
 type IngredientDetailResponse = {
     ingredient?: unknown;
+    lots?: unknown;
+    expiry?: unknown;
+};
+
+type ExpiryLot = {
+    id: string | null;
+    lot_code: string | null;
+    qty_remaining: number;
+    unit: string | null;
+    received_at: string | null;
+    opened_at: string | null;
+    expires_at: string | null;
+    best_before_at: string | null;
+    effective_expiry_at: string | null;
+    days_to_expiry: number | null;
+    status_label: string;
+    alert_tone: "danger" | "warning" | "normal" | "unknown";
+};
+
+type ExpiryMeta = {
+    hasLotData: boolean;
+    hasExpiryData: boolean;
+    error: string | null;
+};
+
+type IngredientFetchResult = {
+    ingredient: IngredientLite;
+    lots: ExpiryLot[];
+    expiry: ExpiryMeta;
 };
 
 type StockEventItemFromApi = {
@@ -145,6 +174,17 @@ function formatDT(v: unknown): string {
     const d = new Date(s);
     if (!Number.isFinite(d.getTime())) return "-";
     return d.toLocaleString("th-TH");
+}
+function formatDate(v: unknown): string {
+    const s = toStringOrNull(v);
+    if (!s) return "-";
+    const d = new Date(s);
+    if (!Number.isFinite(d.getTime())) return "-";
+    return d.toLocaleDateString("th-TH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
 }
 function shortId(id: string, n = 10) {
     const s = (id ?? "").trim();
@@ -255,6 +295,49 @@ function StatusBadge({ status }: { status: StockStatus }) {
             ปกติ
         </span>
     );
+}
+
+function ExpiryStatusBadge({ lot }: { lot: ExpiryLot }) {
+    const base =
+        "inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium whitespace-nowrap";
+
+    if (lot.alert_tone === "danger") {
+        return (
+            <span className={`${base} border-red-500/25 bg-red-500/15 text-red-700 dark:text-red-200`}>
+                {lot.status_label}
+            </span>
+        );
+    }
+
+    if (lot.alert_tone === "warning") {
+        return (
+            <span className={`${base} border-amber-500/25 bg-amber-500/15 text-amber-800 dark:text-amber-200`}>
+                {lot.status_label}
+            </span>
+        );
+    }
+
+    if (lot.alert_tone === "normal") {
+        return (
+            <span className={`${base} border-green-500/25 bg-green-500/15 text-green-700 dark:text-green-200`}>
+                {lot.status_label}
+            </span>
+        );
+    }
+
+    return (
+        <span className={`${base} border-white/10 bg-white/5 text-[var(--text-secondary)]`}>
+            ยังไม่มีข้อมูลวันหมดอายุ
+        </span>
+    );
+}
+
+function expiryDaysText(days: number | null): string {
+    if (days == null) return "ไม่มีวันหมดอายุ";
+    if (days < 0) return `เลยมา ${Math.abs(days)} วัน`;
+    if (days === 0) return "วันนี้";
+    if (days === 1) return "พรุ่งนี้";
+    return `อีก ${days} วัน`;
 }
 
 function isSaleContext(row: StockLogItem): boolean {
@@ -393,6 +476,43 @@ function parseIngredient(data: unknown): IngredientLite | null {
     };
 }
 
+function parseExpiryLot(data: unknown): ExpiryLot | null {
+    if (!isRecord(data)) return null;
+
+    const rawTone = toStringOrNull(data.alert_tone);
+    const alert_tone =
+        rawTone === "danger" || rawTone === "warning" || rawTone === "normal" || rawTone === "unknown"
+            ? rawTone
+            : "unknown";
+
+    return {
+        id: toStringOrNull(data.id),
+        lot_code: toStringOrNull(data.lot_code),
+        qty_remaining: toNumber(data.qty_remaining, 0),
+        unit: toStringOrNull(data.unit),
+        received_at: toStringOrNull(data.received_at),
+        opened_at: toStringOrNull(data.opened_at),
+        expires_at: toStringOrNull(data.expires_at),
+        best_before_at: toStringOrNull(data.best_before_at),
+        effective_expiry_at: toStringOrNull(data.effective_expiry_at),
+        days_to_expiry: typeof data.days_to_expiry === "number" ? data.days_to_expiry : null,
+        status_label: toStringOrNull(data.status_label) ?? "ยังไม่มีข้อมูลวันหมดอายุ",
+        alert_tone,
+    };
+}
+
+function parseExpiryMeta(data: unknown): ExpiryMeta {
+    if (!isRecord(data)) {
+        return { hasLotData: false, hasExpiryData: false, error: null };
+    }
+
+    return {
+        hasLotData: data.hasLotData === true,
+        hasExpiryData: data.hasExpiryData === true,
+        error: toStringOrNull(data.error),
+    };
+}
+
 function parseAnalytics(data: unknown): Omit<AnalyticsResponse, "ingredient"> {
     if (!isRecord(data)) return {};
 
@@ -429,6 +549,12 @@ export default function IngredientDetailPage() {
     const [ingredient, setIngredient] = useState<IngredientLite | null>(null);
     const [ingredientNotFound, setIngredientNotFound] = useState(false);
     const [ingredientLoadError, setIngredientLoadError] = useState<string | null>(null);
+    const [expiryLots, setExpiryLots] = useState<ExpiryLot[]>([]);
+    const [expiryMeta, setExpiryMeta] = useState<ExpiryMeta>({
+        hasLotData: false,
+        hasExpiryData: false,
+        error: null,
+    });
     const [logs, setLogs] = useState<StockLogItem[]>([]);
     const [dailyCloseStatus, setDailyCloseStatus] = useState<DailyCloseStatus>(null);
 
@@ -469,7 +595,7 @@ export default function IngredientDetailPage() {
     async function fetchIngredient(
         targetId: string,
         signal?: AbortSignal
-    ): Promise<IngredientLite | null> {
+    ): Promise<IngredientFetchResult | null> {
         const res = await fetch(`/api/ingredients/${encodeURIComponent(targetId)}`, {
             cache: "no-store",
             signal,
@@ -485,12 +611,18 @@ export default function IngredientDetailPage() {
             throw new Error("Invalid ingredient response");
         }
 
-        const parsed = parseIngredient((data as IngredientDetailResponse).ingredient);
+        const detail = data as IngredientDetailResponse;
+        const parsed = parseIngredient(detail.ingredient);
         if (!parsed) {
             throw new Error("Invalid ingredient data");
         }
 
-        return parsed;
+        const lots = Array.isArray(detail.lots)
+            ? detail.lots.map(parseExpiryLot).filter((lot): lot is ExpiryLot => lot !== null)
+            : [];
+        const expiry = parseExpiryMeta(detail.expiry);
+
+        return { ingredient: parsed, lots, expiry };
     }
 
     async function fetchAnalytics(targetId: string, signal?: AbortSignal) {
@@ -568,6 +700,8 @@ export default function IngredientDetailPage() {
         setIngredient(null);
         setIngredientNotFound(false);
         setIngredientLoadError(null);
+        setExpiryLots([]);
+        setExpiryMeta({ hasLotData: false, hasExpiryData: false, error: null });
         setLogs([]);
         resetAnalytics();
 
@@ -581,7 +715,9 @@ export default function IngredientDetailPage() {
                     return;
                 }
 
-                setIngredient(baseIngredient);
+                setIngredient(baseIngredient.ingredient);
+                setExpiryLots(baseIngredient.lots);
+                setExpiryMeta(baseIngredient.expiry);
             } catch (e) {
                 if (controller.signal.aborted) return;
                 console.error("fetchIngredient error:", e);
@@ -861,6 +997,68 @@ export default function IngredientDetailPage() {
                 )}
             </Card>
 
+            <Card title="ล็อตและวันหมดอายุ">
+                {loading ? (
+                    <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
+                ) : !ingredient ? (
+                    <div className="text-sm text-[var(--text-secondary)]">-</div>
+                ) : expiryLots.length === 0 || !expiryMeta.hasLotData || !expiryMeta.hasExpiryData ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-[var(--text-secondary)]">
+                        ยังไม่มีข้อมูลวันหมดอายุ
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-white/10 text-left text-[var(--text-secondary)]">
+                                    <th className="py-2 pr-3 whitespace-nowrap">ล็อต</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">คงเหลือ</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">รับเข้า</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">เปิดใช้</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">หมดอายุ</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">ควรใช้ก่อน</th>
+                                    <th className="py-2 pr-3 whitespace-nowrap">สถานะ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {expiryLots
+                                    .slice()
+                                    .sort((a, b) => (a.days_to_expiry ?? 9999) - (b.days_to_expiry ?? 9999))
+                                    .map((lot, index) => {
+                                        const unit = lot.unit ?? unitLabel;
+
+                                        return (
+                                            <tr key={lot.id ?? `${lot.lot_code ?? "lot"}-${index}`} className="border-b border-white/5">
+                                                <td className="py-2 pr-3 whitespace-nowrap font-medium">
+                                                    {lot.lot_code ?? "-"}
+                                                </td>
+                                                <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
+                                                    {lot.qty_remaining.toLocaleString("th-TH")} {unit}
+                                                </td>
+                                                <td className="py-2 pr-3 whitespace-nowrap">{formatDate(lot.received_at)}</td>
+                                                <td className="py-2 pr-3 whitespace-nowrap">{formatDate(lot.opened_at)}</td>
+                                                <td className="py-2 pr-3 whitespace-nowrap">
+                                                    <div>{formatDate(lot.expires_at ?? lot.effective_expiry_at)}</div>
+                                                    <div className="text-xs text-[var(--text-secondary)]">
+                                                        {expiryDaysText(lot.days_to_expiry)}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2 pr-3 whitespace-nowrap">{formatDate(lot.best_before_at)}</td>
+                                                <td className="py-2 pr-3 whitespace-nowrap">
+                                                    <ExpiryStatusBadge lot={lot} />
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                        </table>
+                        {expiryMeta.error ? (
+                            <div className="mt-3 text-xs text-red-600">{expiryMeta.error}</div>
+                        ) : null}
+                    </div>
+                )}
+            </Card>
+
             {/* Logs - compact, owner-friendly */}
             <Card title="การเคลื่อนไหวสต็อก (ดูไว)">
                 <div className="flex items-center justify-between gap-3 mb-3">
@@ -1013,7 +1211,11 @@ export default function IngredientDetailPage() {
                         void (async () => {
                             try {
                                 const baseIngredient = await fetchIngredient(id);
-                                if (baseIngredient) setIngredient(baseIngredient);
+                                if (baseIngredient) {
+                                    setIngredient(baseIngredient.ingredient);
+                                    setExpiryLots(baseIngredient.lots);
+                                    setExpiryMeta(baseIngredient.expiry);
+                                }
                             } catch (e) {
                                 console.error("fetchIngredient refresh error:", e);
                             }
