@@ -5,12 +5,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { computeDailyCloseReport, computeSnapshotFromReport } from "@/lib/dailyCloseReport";
+import { roundMoney } from "@/lib/dailyCloseMoney";
 
 export const dynamic = "force-dynamic";
 
 type DailyCloseQuery = {
      select: (cols: string) => DailyCloseQuery;
      eq: (col: string, val: string | undefined) => DailyCloseQuery;
+     in: (col: string, values: string[]) => DailyCloseQuery;
      order: (col: string, opts: { ascending: boolean }) => DailyCloseQuery;
      limit: (count: number) => DailyCloseQuery;
      maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
@@ -48,7 +50,42 @@ function toMoney(value: unknown): number {
     if (!Number.isFinite(n) || n < 0) {
         throw new Error("Must be a non-negative finite number");
     }
-    return Math.round(n * 100) / 100;
+    return roundMoney(n);
+}
+
+function validateCountedCash(value: unknown): number {
+    if (value === null || value === undefined) {
+        throw new Error("counted_cash is required");
+    }
+    if (typeof value !== "number") {
+        throw new Error("counted_cash must be a number");
+    }
+    if (!Number.isFinite(value)) {
+        throw new Error("counted_cash must be a finite number");
+    }
+    if (value < 0) {
+        throw new Error("counted_cash cannot be negative");
+    }
+    return roundMoney(value);
+}
+
+async function assertBranchBelongsToShop(
+    admin: ReturnType<typeof getSupabaseAdmin>,
+    shopId: string,
+    branchId: string
+): Promise<void> {
+    const { data, error } = await admin
+        .from("branch")
+        .select("id")
+        .eq("id", branchId)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+    if (error) {
+        throw new Error(error.message);
+    }
+    if (!data) {
+        throw new Error("Branch does not belong to the current shop");
+    }
 }
 
 export async function GET(req: NextRequest) {
@@ -102,6 +139,7 @@ export async function GET(req: NextRequest) {
                 )
                 .eq("shop_id", currentShopId)
                 .eq("branch_id", currentBranchId)
+                .in("status", ["closed", "approved"])
                 .order("business_date", { ascending: false })
                 .limit(limit) as unknown)) as { data: Array<Record<string, unknown>> | null; error: { message: string } | null };
 
@@ -124,6 +162,8 @@ export async function GET(req: NextRequest) {
 
             return NextResponse.json({
                 context: { shopId: currentShopId, branchId: currentBranchId },
+                role: membership.role,
+                permissions: { canFinalize: membership.role === "owner" },
                 history: rows,
             });
         }
@@ -150,6 +190,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             date,
             context: { shopId: currentShopId, branchId: currentBranchId },
+            role: membership.role,
+            permissions: { canFinalize: membership.role === "owner" },
             close: close
                 ? {
                       ...close,
@@ -247,7 +289,7 @@ export async function POST(req: NextRequest) {
         }
 
         const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
-        const snapshot = computeSnapshotFromReport(report);
+        const snapshot = computeSnapshotFromReport(report, openingCashFloat);
 
         const payload = {
             shop_id: currentShopId,
@@ -346,12 +388,15 @@ return NextResponse.json(
              );
          }
 
-         if (typeof body.counted_cash !== "number" && body.counted_cash !== undefined) {
-             return NextResponse.json({ error: "counted_cash is required" }, { status: 400 });
-         }
+        let countedCash: number;
+        try {
+            countedCash = validateCountedCash(body.counted_cash);
+        } catch (validationError) {
+            const message = validationError instanceof Error ? validationError.message : "counted_cash is required";
+            return NextResponse.json({ error: message }, { status: 400 });
+        }
 
-         const countedCash = toMoney(body.counted_cash as number);
-         const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+        const notes = typeof body.notes === "string" ? body.notes.trim() : null;
 
          const { data: existing, error: existingError } = await dcAdmin
              .from("daily_closes")
@@ -368,19 +413,21 @@ return NextResponse.json(
              return NextResponse.json({ error: "Daily close not found" }, { status: 404 });
          }
 
-         const existingRecord = existing as Record<string, unknown>;
-         if (existingRecord.status !== "draft") {
-             return NextResponse.json(
-                 { error: "Can only close a draft daily close" },
-                 { status: 409 }
-             );
-         }
+        const existingRecord = existing as Record<string, unknown>;
+        if (existingRecord.status !== "draft") {
+            return NextResponse.json(
+                { error: "Can only close a draft daily close" },
+                { status: 409 }
+            );
+        }
 
-         const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
-         const snapshot = computeSnapshotFromReport(report);
-         const openingCashFloat = Number(existingRecord.opening_cash_float) || 0;
-         const expectedCash = openingCashFloat + snapshot.expected_cash;
-         const cashDifference = countedCash - expectedCash;
+        await assertBranchBelongsToShop(admin, currentShopId, currentBranchId);
+
+        const openingCashFloat = Number(existingRecord.opening_cash_float) || 0;
+        const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
+        const snapshot = computeSnapshotFromReport(report, openingCashFloat);
+        const expectedCash = snapshot.expected_cash;
+        const cashDifference = countedCash - expectedCash;
 
          const updatePayload = {
              status: "closed",

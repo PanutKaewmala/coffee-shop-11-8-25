@@ -1,6 +1,8 @@
 // src/lib/dailyCloseReport.ts
 // Shared server-only helper for daily close live calculations.
 
+import { computeExpectedCash, roundMoney } from "@/lib/dailyCloseMoney";
+
 export const PAGE_SIZE = 500;
 export const TIME_ZONE = "Asia/Bangkok";
 
@@ -474,20 +476,24 @@ export async function computeDailyCloseReport(
     return report;
 }
 
-export function computeSnapshotFromReport(report: DailyCloseReport): DailyCloseSnapshot {
-    const retained = report.cash.retained;
-    const cashMovementNet = report.cashMovements.cashMovementNet;
+export function computeSnapshotFromReport(report: DailyCloseReport, openingCash: number): DailyCloseSnapshot {
+    // retained (tendered - change) is kept only as a reconciliation diagnostic and is
+    // intentionally NOT used as the source for expected cash.
+    const paidCashSales = report.payments.cash.sales;
+    const cashIn = report.cashMovements.cashInTotal;
+    const cashOut = report.cashMovements.cashOutTotal;
+    const expectedCash = computeExpectedCash({ openingCash, paidCashSales, cashIn, cashOut });
     return {
-        gross_sales: report.summary.paidTotal,
-        net_sales: report.summary.paidTotal,
-        cash_sales: report.payments.cash.sales,
-        promptpay_sales: report.payments.promptPay.sales,
-        unknown_payment_sales: report.payments.unknown.sales,
+        gross_sales: roundMoney(report.summary.paidTotal),
+        net_sales: roundMoney(report.summary.paidTotal),
+        cash_sales: roundMoney(report.payments.cash.sales),
+        promptpay_sales: roundMoney(report.payments.promptPay.sales),
+        unknown_payment_sales: roundMoney(report.payments.unknown.sales),
         paid_order_count: report.summary.paidOrderCount,
         cancelled_order_count: report.cancellations.count,
         refunded_order_count: 0,
         void_order_count: 0,
-        expected_cash: retained + cashMovementNet,
+        expected_cash: expectedCash,
         cash_difference: null,
     };
 }

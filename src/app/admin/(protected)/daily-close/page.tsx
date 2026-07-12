@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import Card from "@/components/admin/Card";
 import { Button } from "@/components/ui/button";
+import { computeExpectedCash } from "@/lib/dailyCloseMoney";
 
 type DataQualityWarning = {
     code: string;
@@ -118,6 +119,17 @@ type DailyCloseRecord = {
     closed_at: string | null;
 };
 
+type DailyClosePermissions = {
+    canFinalize: boolean;
+};
+
+type DailyCloseResponse = {
+    close?: DailyClose;
+    role?: string;
+    permissions?: DailyClosePermissions;
+    history?: DailyCloseRecord[];
+};
+
 function bangkokDateKey() {
     const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Bangkok",
@@ -215,6 +227,20 @@ function ownerFacingError(message: string) {
             return "เริ่มปิดยอดไม่สำเร็จ";
         case "Failed to close daily close":
             return "ปิดยอดไม่สำเร็จ";
+        case "Failed to prepare daily close":
+            return "บันทึกยอดนับไม่สำเร็จ";
+        case "counted_cash is required":
+            return "กรุณากรอกเงินสดที่นับได้จริง";
+        case "counted_cash must be a number":
+            return "เงินสดที่นับได้จริงต้องเป็นตัวเลข";
+        case "counted_cash must be a finite number":
+            return "เงินสดที่นับได้จริงต้องเป็นตัวเลขที่ถูกต้อง";
+        case "counted_cash cannot be negative":
+            return "เงินสดที่นับได้จริงต้องไม่ติดลบ";
+        case "Branch does not belong to the current shop":
+            return "สาขาไม่ได้อยู่ในร้านที่เลือก";
+        case "Can only prepare a draft daily close":
+            return "บันทึกยอดนับได้เฉพาะรายการที่ยังไม่ปิดยอด";
         case "Failed to create cash movement":
         case "server_error":
             return "บันทึกรายการเงินสดไม่สำเร็จ";
@@ -257,6 +283,7 @@ export default function DailyClosePage() {
     const [close, setClose] = useState<DailyClose | null>(null);
     const [closeLoading, setCloseLoading] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
+    const [permissions, setPermissions] = useState<DailyClosePermissions | null>(null);
     const [openingCashFloat, setOpeningCashFloat] = useState<number | string>("");
     const [countedCash, setCountedCash] = useState<number | string>("");
     const [notes, setNotes] = useState("");
@@ -324,8 +351,14 @@ export default function DailyClosePage() {
                 }
 
                 if (!controller.signal.aborted) {
-                    const parsed = data as { close?: DailyClose };
-                    setClose(parsed.close ?? null);
+                    const parsed = data as DailyCloseResponse;
+                    const loaded = parsed.close ?? null;
+                    setClose(loaded);
+                    setPermissions(parsed.permissions ?? null);
+                    if (loaded) {
+                        setCountedCash(loaded.counted_cash != null ? String(loaded.counted_cash) : "");
+                        setNotes(loaded.notes ?? "");
+                    }
                 }
             } catch (loadError: unknown) {
                 if (controller.signal.aborted) return;
@@ -359,8 +392,9 @@ export default function DailyClosePage() {
                 }
 
                 if (!alive) return;
-                const parsed = data as { history?: DailyCloseRecord[] };
+                const parsed = data as DailyCloseResponse;
                 setHistory(parsed.history ?? []);
+                if (parsed.permissions) setPermissions(parsed.permissions);
             } catch (loadError: unknown) {
                 if (!alive) return;
                 setHistory([]);
@@ -405,7 +439,9 @@ export default function DailyClosePage() {
                 );
             }
 
-            setClose(data as DailyClose);
+            const parsed = data as DailyCloseResponse;
+            setClose(parsed.close ?? null);
+            if (parsed.permissions) setPermissions(parsed.permissions);
             setReloadKey((v) => v + 1);
         } catch (err) {
             setCloseError(err instanceof Error ? ownerFacingError(err.message) : "เกิดข้อผิดพลาด");
@@ -414,18 +450,39 @@ export default function DailyClosePage() {
         }
     };
 
+    const prepareCountedCashPayload = (): { counted_cash?: number; notes: string | null } | null => {
+        const cleanedNotes = notes.trim() || null;
+        const raw = String(countedCash).trim();
+        if (raw === "") {
+            return { notes: cleanedNotes };
+        }
+        const num = Number(raw);
+        if (!Number.isFinite(num) || num < 0) {
+            return null;
+        }
+        return { counted_cash: num, notes: cleanedNotes };
+    };
+
     const handleClose = async () => {
         setCloseLoading(true);
         setCloseError(null);
 
         try {
+            const trimmed = prepareCountedCashPayload();
+            if (!trimmed) {
+                throw new Error("กรุณากรอกเงินสดที่นับได้จริงให้ถูกต้อง");
+            }
+            if (trimmed.counted_cash === undefined) {
+                throw new Error("กรุณากรอกเงินสดที่นับได้จริง");
+            }
+
             const res = await fetch("/api/daily-close", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     business_date: date,
-                    counted_cash: Number(countedCash),
-                    notes: notes.trim() || null,
+                    counted_cash: trimmed.counted_cash,
+                    notes: trimmed.notes,
                 }),
             });
             const data: unknown = await res.json().catch(() => null);
@@ -436,7 +493,9 @@ export default function DailyClosePage() {
                 );
             }
 
-            setClose(data as DailyClose);
+            const parsed = data as DailyCloseResponse;
+            setClose(parsed.close ?? null);
+            if (parsed.permissions) setPermissions(parsed.permissions);
             setReloadKey((v) => v + 1);
         } catch (err) {
             setCloseError(err instanceof Error ? ownerFacingError(err.message) : "เกิดข้อผิดพลาด");
@@ -445,9 +504,61 @@ export default function DailyClosePage() {
         }
     };
 
-    const expectedDrawerCashDisplay = close
-        ? close.expected_cash
-        : (report?.cash.retained || 0) + (report?.cashMovements.cashMovementNet || 0);
+    const handlePrepareDraft = async () => {
+        setCloseLoading(true);
+        setCloseError(null);
+
+        try {
+            const trimmed = prepareCountedCashPayload();
+            if (!trimmed) {
+                throw new Error("กรุณากรอกเงินสดที่นับได้จริงให้ถูกต้อง");
+            }
+
+            const res = await fetch("/api/daily-close/prep", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    business_date: date,
+                    ...trimmed,
+                }),
+            });
+            const data: unknown = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(
+                    responseErrorMessage(data, "บันทึกยอดนับไม่สำเร็จ")
+                );
+            }
+
+            const parsed = data as DailyCloseResponse;
+            setClose(parsed.close ?? null);
+            setReloadKey((v) => v + 1);
+        } catch (err) {
+            setCloseError(err instanceof Error ? ownerFacingError(err.message) : "เกิดข้อผิดพลาด");
+        } finally {
+            setCloseLoading(false);
+        }
+    };
+
+    const isCloseFinalized = close?.status === "closed" || close?.status === "approved";
+
+    // Drafts: always show the live, canonical expected cash (report + opening cash).
+    // Never show the stale persisted draft expected_cash.
+    // Finalized rows: show the stored, server-trusted snapshot (do not recalc from mutable data).
+    const expectedDrawerCashDisplay = (() => {
+        if (isCloseFinalized && close) {
+            return close.expected_cash;
+        }
+        if (report) {
+            return computeExpectedCash({
+                openingCash: close?.opening_cash_float ?? 0,
+                paidCashSales: report.payments.cash.sales,
+                cashIn: report.cashMovements.cashInTotal,
+                cashOut: report.cashMovements.cashOutTotal,
+            });
+        }
+        return close?.expected_cash ?? 0;
+    })();
 
     const handleAddCashMovement = async () => {
         setCmLoading(true);
@@ -482,8 +593,6 @@ export default function DailyClosePage() {
             setCmLoading(false);
         }
     };
-
-    const isCloseFinalized = close?.status === "closed" || close?.status === "approved";
 
     const handlePrint = () => {
         if (loading || !report) return;
@@ -789,7 +898,7 @@ export default function DailyClosePage() {
                                         />
                                     </div>
                                     <Button onClick={handleCreateDraft} disabled={closeLoading || loading}>
-                                        {closeLoading ? "กำลังเริ่มปิดยอด..." : "เริ่มปิดยอดวันนี้"}
+                                        {closeLoading ? "กำลังเริ่มวันขาย..." : "เริ่มวันขาย"}
                                     </Button>
                                 </div>
                             </>
@@ -831,9 +940,20 @@ export default function DailyClosePage() {
                                             disabled={closeLoading}
                                         />
                                     </div>
-                                    <Button onClick={handleClose} disabled={closeLoading || loading}>
-                                        {closeLoading ? "กำลังปิดยอด..." : "ปิดยอดวันนี้"}
-                                    </Button>
+                                    {permissions?.canFinalize ? (
+                                        <Button onClick={handleClose} disabled={closeLoading || loading}>
+                                            {closeLoading ? "กำลังปิดยอด..." : "ปิดยอดวันนี้"}
+                                        </Button>
+                                    ) : (
+                                        <>
+                                            <Button onClick={handlePrepareDraft} disabled={closeLoading || loading}>
+                                                {closeLoading ? "กำลังบันทึก..." : "บันทึกยอดนับ"}
+                                            </Button>
+                                            <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-text-secondary">
+                                                รอเจ้าของตรวจและปิดยอด
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </>
                         ) : (
