@@ -13,6 +13,19 @@ function safeNext(raw: string | null) {
     return raw.startsWith("/") ? raw : "/admin";
 }
 
+type AccessResponse = { role: string; home: string };
+
+function isOwnerOnlyDestination(href: string) {
+    const pathname = href.split("?", 1)[0];
+    return pathname === "/admin" || pathname === "/admin/reports" || pathname.startsWith("/admin/reports/");
+}
+
+async function resolveDestination(nextHref: string) {
+    const access = await jsonFetch<AccessResponse>("/api/context/access");
+    if (access.role !== "owner" && isOwnerOnlyDestination(nextHref)) return access.home;
+    return nextHref;
+}
+
 type EnsureResult =
     | { action: "go"; href: string }
     | { action: "select-shop"; href: "/admin/select-shop" }
@@ -106,8 +119,8 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
         });
     }
 
-    // 3) All good
-    return { action: "go", href: nextHref };
+    // 3) All good; resolve the first usable page from the current shop role.
+    return { action: "go", href: await resolveDestination(nextHref) };
 }
 
 export default function LoginClient() {

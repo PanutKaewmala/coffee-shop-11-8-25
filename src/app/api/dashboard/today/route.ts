@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getServerIdentity } from "@/lib/supabaseServer";
 import { computeDailyCloseReport } from "@/lib/dailyCloseReport";
 import { dashboardDates, type DashboardTodayResponse } from "@/lib/dashboardToday";
 import { getDaysToExpiry, getExpiryAlertTone } from "@/lib/ingredientExpiry";
@@ -34,22 +34,21 @@ const numberOrZero = (value: unknown) => {
 const numberOrNull = (value: unknown) => value == null ? null : numberOrZero(value);
 
 export async function GET() {
-    const supabase = await getSupabaseServer();
+    const identity = await getServerIdentity();
     const admin = getSupabaseAdmin();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError) return NextResponse.json({ error: authError.message }, { status: 500 });
-    if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!identity.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!identity.currentShopId) return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+    if (identity.currentShopRole !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    if (!identity.currentBranchId) return NextResponse.json({ error: "กรุณาเลือกสาขาเพื่อดูภาพรวมวันนี้" }, { status: 409 });
 
-    const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
-    if (!currentShopId) return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
-    if (!currentBranchId) return NextResponse.json({ error: "กรุณาเลือกสาขาเพื่อดูภาพรวมวันนี้" }, { status: 409 });
-
-    const [{ data: membership, error: membershipError }, { data: branch, error: branchError }] = await Promise.all([
-        admin.from("shop_members").select("role").eq("user_id", auth.user.id).eq("shop_id", currentShopId).maybeSingle(),
-        admin.from("branch").select("id,name").eq("id", currentBranchId).eq("shop_id", currentShopId).maybeSingle(),
-    ]);
-    if (membershipError) return NextResponse.json({ error: membershipError.message }, { status: 500 });
-    if (!membership || membership.role !== "owner") return NextResponse.json({ error: "Owner only" }, { status: 403 });
+    const currentShopId = identity.currentShopId;
+    const currentBranchId = identity.currentBranchId;
+    const { data: branch, error: branchError } = await admin
+        .from("branch")
+        .select("id,name")
+        .eq("id", currentBranchId)
+        .eq("shop_id", currentShopId)
+        .maybeSingle();
     if (branchError) return NextResponse.json({ error: branchError.message }, { status: 500 });
     if (!branch) return NextResponse.json({ error: "Branch not in current shop" }, { status: 403 });
 

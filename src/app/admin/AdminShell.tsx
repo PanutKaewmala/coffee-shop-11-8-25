@@ -9,10 +9,12 @@ export default function AdminShell({
     children,
     currentShopId,
     currentBranchId,
+    currentShopRole,
 }: {
     children: ReactNode;
     currentShopId: string;
     currentBranchId: string | null;
+    currentShopRole: string | null;
 }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -23,6 +25,7 @@ export default function AdminShell({
                 onClose={() => setIsSidebarOpen(false)}
                 currentShopId={currentShopId}
                 currentBranchId={currentBranchId}
+                currentShopRole={currentShopRole}
             />
 
             <div className="flex-1 min-w-0 flex flex-col relative z-10">

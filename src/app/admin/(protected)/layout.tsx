@@ -9,7 +9,7 @@ const LOGIN_NEXT = "/login?next=/admin";
 const SELECT_SHOP = "/admin/select-shop?next=/admin";
 
 export default async function ProtectedAdminLayout({ children }: { children: ReactNode }) {
-    const { user, currentShopId, currentBranchId } = await getServerIdentity();
+    const { user, currentShopId, currentBranchId, currentShopRole } = await getServerIdentity();
 
     if (!user) redirect(LOGIN_NEXT);
 
@@ -20,7 +20,11 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
     // - Owner: ดูภาพรวมได้ (currentBranchId ว่างได้)
     // - Staff: จะถูกบังคับ branch เฉพาะหน้า POS / งานหน้าร้าน
     return (
-        <AdminShell currentShopId={currentShopId} currentBranchId={currentBranchId}>
+        <AdminShell
+            currentShopId={currentShopId}
+            currentBranchId={currentBranchId}
+            currentShopRole={currentShopRole}
+        >
             {children}
         </AdminShell>
     );
