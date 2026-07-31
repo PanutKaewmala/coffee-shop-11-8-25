@@ -215,7 +215,7 @@ export default function AdminNavbar({
                         </select>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className={`${branches.length === 1 ? "hidden" : "flex"} items-center gap-2`}>
                         <GitBranch size={16} className="text-[var(--text-secondary)]" />
                         <select
                             className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm min-w-[240px]"
@@ -293,7 +293,7 @@ export default function AdminNavbar({
                     </select>
 
                     <select
-                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                        className={`${branches.length === 1 ? "hidden" : "block"} bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0`}
                         value={currentBranchId ?? ""}
                         disabled={loadingSwitchers || switching || !currentShopId}
                         onChange={(e) => onChangeBranch(e.target.value)}

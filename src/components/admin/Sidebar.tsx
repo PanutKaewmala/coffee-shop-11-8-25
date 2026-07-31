@@ -34,7 +34,10 @@ type NavItem = {
 const navSections: { title: string; items: NavItem[] }[] = [
     {
         title: "ภาพรวม",
-        items: [{ label: "หน้าหลัก", path: "/admin" }],
+        items: [
+            { label: "ภาพรวมวันนี้", path: "/admin" },
+            { label: "รายงาน", path: "/admin/reports" },
+        ],
     },
     {
         title: "จัดการสินค้า",
