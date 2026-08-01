@@ -383,6 +383,8 @@ export default function AdminOrdersPage() {
         setSearch,
         dateFilter,
         setDateFilter,
+        exactDate,
+        setExactDate,
         filteredOrders,
         paginatedOrders,
         page,
@@ -603,7 +605,7 @@ export default function AdminOrdersPage() {
     }, [paginatedOrders, page]);
 
     const isEmpty = !loading && (filteredOrders?.length ?? 0) === 0;
-    const showReset = search.trim().length > 0 || df !== "today";
+    const showReset = search.trim().length > 0 || df !== "today" || exactDate.length > 0;
 
     function updateHoverPreview(rowIndex: number, event: ReactMouseEvent<HTMLTableRowElement>) {
         if (typeof window === "undefined" || !window.matchMedia("(min-width: 1024px)").matches) {
@@ -639,6 +641,19 @@ export default function AdminOrdersPage() {
                         </div>
 
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
+                            <label className="flex w-full min-w-0 flex-col gap-1 text-xs text-text-secondary md:w-auto">
+                                เลือกวันที่
+                                <input
+                                    type="date"
+                                    value={exactDate}
+                                    onChange={(event) => {
+                                        setExactDate(event.target.value);
+                                        setPage(1);
+                                        setInputPage("1");
+                                    }}
+                                    className="min-w-0 rounded-lg border border-border/40 bg-card px-3 py-2 text-sm text-text-primary md:w-44"
+                                />
+                            </label>
                             <div className="min-w-0 flex-1 [&>div]:mb-0">
                                 <SearchBox
                                     value={search}
@@ -647,7 +662,7 @@ export default function AdminOrdersPage() {
                                         setPage(1);
                                         setInputPage("1");
                                     }}
-                                    placeholder="ค้นหาเลขออเดอร์ / วันที่ / เวลา"
+                                    placeholder="ค้นหาเลขออเดอร์ / ข้อความ / รายการสินค้า"
                                 />
                             </div>
 
@@ -657,6 +672,7 @@ export default function AdminOrdersPage() {
                                     className="self-end whitespace-nowrap text-sm text-accent hover:underline md:self-auto"
                                     onClick={() => {
                                         setSearch("");
+                                        setExactDate("");
                                         setDateFilter("today" as DateFilter);
                                         setPage(1);
                                         setInputPage("1");

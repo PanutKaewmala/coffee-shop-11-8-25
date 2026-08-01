@@ -44,6 +44,14 @@ function safeDate(dateStr: string) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function orderFilterTimestamp(order: OrderLite): string {
+    if (order.status === "paid") return order.paid_at ?? order.created_at;
+    if (order.status === "cancelled" || order.status === "void" || order.status === "refunded") {
+        return order.cancelled_at ?? order.created_at;
+    }
+    return order.created_at;
+}
+
 function isOrderStatus(v: unknown): v is OrderStatusUI {
     return v === "paid" || v === "cancelled" || v === "void" || v === "refunded";
 }
@@ -110,6 +118,13 @@ function inBangkokRange(d: Date, startKey: string, endKey: string) {
     return k >= startKey && k < endKey;
 }
 
+function inExactBangkokDay(d: Date, dateKey: string) {
+    const start = keyToDate(dateKey).getTime();
+    const end = keyToDate(addDaysKey(dateKey, 1)).getTime();
+    const timestamp = d.getTime();
+    return timestamp >= start && timestamp < end;
+}
+
 // ✅ ใช้สร้างช่วงของ "ตาราง" ตาม dateFilter โดยอิง Bangkok 00:00
 function getListRangeKeysByDateFilter(df: DateFilter, todayKey: string) {
     if (df === "today") {
@@ -162,7 +177,17 @@ export default function useOrdersSearch({
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
 
-    const [dateFilter, setDateFilter] = useState<DateFilter>(initialFilter);
+    const [dateFilter, setDateFilterState] = useState<DateFilter>(initialFilter);
+    const [exactDate, setExactDateState] = useState("");
+
+    const setDateFilter = useCallback((value: DateFilter) => {
+        setDateFilterState(value);
+        setExactDateState("");
+    }, []);
+    const setExactDate = useCallback((value: string) => {
+        setExactDateState(value);
+        if (value) setDateFilterState("all");
+    }, []);
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
@@ -246,22 +271,21 @@ export default function useOrdersSearch({
 
     /* -------------------- QUICK DATE FILTER (LIST uses created_at, Bangkok boundary) -------------------- */
     const isWithinFilter = useCallback(
-        (d: Date) => {
+        (order: OrderLite) => {
+            const d = safeDate(orderFilterTimestamp(order));
+            if (!d) return false;
+            if (exactDate) return inExactBangkokDay(d, exactDate);
             const todayKey = fmtKey(new Date());
             const range = getListRangeKeysByDateFilter(dateFilter, todayKey);
-            if (!range) return true; // all
+            if (!range) return true;
             return inBangkokRange(d, range.startKey, range.endKey);
         },
-        [dateFilter]
+        [dateFilter, exactDate]
     );
 
     /* -------------------- FILTER + SORT (LIST) -------------------- */
     const filteredOrders = useMemo(() => {
-        let result = orders.filter((o) => {
-            const d = safeDate(o.created_at);
-            if (!d) return false;
-            return isWithinFilter(d);
-        });
+        let result = orders.filter(isWithinFilter);
 
         if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
         if (paymentFilter !== "all") result = result.filter((o) => o.payment_method === paymentFilter);
@@ -269,10 +293,14 @@ export default function useOrdersSearch({
         if (debouncedSearch) {
             const q = debouncedSearch.toLowerCase();
             result = result.filter((o) => {
-                const id = (o.id ?? "").toLowerCase();
-                const d = safeDate(o.created_at);
-                const dt = d ? d.toLocaleString("th-TH").toLowerCase() : "";
-                return id.includes(q) || dt.includes(q);
+                const searchable = [
+                    o.id,
+                    o.note,
+                    o.cancel_reason,
+                    o.cancel_note,
+                    ...o.items.map((item) => item.name),
+                ].filter(Boolean).join(" ").toLowerCase();
+                return searchable.includes(q);
             });
         }
 
@@ -290,7 +318,7 @@ export default function useOrdersSearch({
     useEffect(() => {
         setPage(1);
         setInputPage("1");
-    }, [debouncedSearch, dateFilter, statusFilter, paymentFilter]);
+    }, [debouncedSearch, dateFilter, exactDate, statusFilter, paymentFilter]);
 
     useEffect(() => {
         setInputPage(String(page));
@@ -361,6 +389,8 @@ export default function useOrdersSearch({
 
         dateFilter,
         setDateFilter,
+        exactDate,
+        setExactDate,
 
         statusFilter,
         setStatusFilter,

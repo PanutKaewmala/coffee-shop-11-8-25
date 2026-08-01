@@ -92,11 +92,11 @@ export default function Sidebar({
 
     const shopLabel =
         currentShopName ??
-        (currentShopId ? `ร้าน: ${currentShopId.slice(0, 8)}…` : "ยังไม่ได้เลือกร้าน");
+        (currentShopId ? "กำลังโหลดชื่อร้าน…" : "ยังไม่ได้เลือกร้าน");
 
     const branchLabel =
         currentBranchName ??
-        (currentBranchId ? `สาขา: ${currentBranchId.slice(0, 8)}…` : "ยังไม่ได้เลือกสาขา");
+        (currentBranchId ? "กำลังโหลดชื่อสาขา…" : "ยังไม่ได้เลือกสาขา");
 
     return (
         <>
