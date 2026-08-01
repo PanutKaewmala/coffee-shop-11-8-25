@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { CalendarDays, X } from "lucide-react";
 
 import Card from "@/components/admin/Card";
 import Table from "@/components/admin/table/Table";
@@ -99,6 +100,18 @@ function safeDateTH(dateStr: string) {
     const d = new Date(dateStr);
     if (Number.isNaN(d.getTime())) return "-";
     return d.toLocaleString("th-TH");
+}
+
+function formatExactDateTH(dateKey: string) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+    if (!match) return "เลือกวันที่";
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12));
+    return new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+    }).format(date);
 }
 
 function shortId(id: string) {
@@ -383,6 +396,8 @@ export default function AdminOrdersPage() {
         setSearch,
         dateFilter,
         setDateFilter,
+        exactDate,
+        setExactDate,
         filteredOrders,
         paginatedOrders,
         page,
@@ -603,7 +618,7 @@ export default function AdminOrdersPage() {
     }, [paginatedOrders, page]);
 
     const isEmpty = !loading && (filteredOrders?.length ?? 0) === 0;
-    const showReset = search.trim().length > 0 || df !== "today";
+    const showReset = search.trim().length > 0 || df !== "today" || exactDate.length > 0;
 
     function updateHoverPreview(rowIndex: number, event: ReactMouseEvent<HTMLTableRowElement>) {
         if (typeof window === "undefined" || !window.matchMedia("(min-width: 1024px)").matches) {
@@ -639,6 +654,42 @@ export default function AdminOrdersPage() {
                         </div>
 
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
+                            <div className="relative w-full min-w-0 rounded-xl focus-within:ring-2 focus-within:ring-accent/35 md:w-[240px] md:shrink-0">
+                                <div className="pointer-events-none flex h-11 min-w-0 items-center gap-2 rounded-xl border border-border/50 bg-card px-3 text-sm text-text-primary shadow-sm transition-colors">
+                                    <CalendarDays size={18} className="shrink-0 text-accent" aria-hidden="true" />
+                                    <span className={`min-w-0 flex-1 truncate text-left ${exactDate ? "font-medium" : "text-text-secondary"}`}>
+                                        {exactDate ? formatExactDateTH(exactDate) : "เลือกวันที่"}
+                                    </span>
+                                    {exactDate ? <span className="h-7 w-7 shrink-0" aria-hidden="true" /> : null}
+                                </div>
+                                <input
+                                    type="date"
+                                    value={exactDate}
+                                    aria-label="เลือกวันที่ออเดอร์"
+                                    onChange={(event) => {
+                                        setExactDate(event.target.value);
+                                        setPage(1);
+                                        setInputPage("1");
+                                    }}
+                                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 focus:outline-none"
+                                />
+                                {exactDate ? (
+                                    <button
+                                        type="button"
+                                        aria-label="ล้างวันที่"
+                                        className="absolute right-2 top-1/2 z-20 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-text-secondary transition hover:bg-border/40 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            setExactDate("");
+                                            setPage(1);
+                                            setInputPage("1");
+                                        }}
+                                    >
+                                        <X size={16} aria-hidden="true" />
+                                    </button>
+                                ) : null}
+                            </div>
                             <div className="min-w-0 flex-1 [&>div]:mb-0">
                                 <SearchBox
                                     value={search}
@@ -647,7 +698,7 @@ export default function AdminOrdersPage() {
                                         setPage(1);
                                         setInputPage("1");
                                     }}
-                                    placeholder="ค้นหาเลขออเดอร์ / วันที่ / เวลา"
+                                    placeholder="ค้นหาเลขออเดอร์ / ข้อความ / รายการสินค้า"
                                 />
                             </div>
 
@@ -657,6 +708,7 @@ export default function AdminOrdersPage() {
                                     className="self-end whitespace-nowrap text-sm text-accent hover:underline md:self-auto"
                                     onClick={() => {
                                         setSearch("");
+                                        setExactDate("");
                                         setDateFilter("today" as DateFilter);
                                         setPage(1);
                                         setInputPage("1");

@@ -46,10 +46,13 @@ export async function getCurrentContextFromCookies(): Promise<{
 /**
  * ✅ identity + current context (ใช้ใน admin layouts)
  */
+export type CurrentShopRole = "owner" | "staff" | string;
+
 export async function getServerIdentity(): Promise<{
     user: { id: string; email: string | null } | null;
     currentShopId: string | null;
     currentBranchId: string | null;
+    currentShopRole: CurrentShopRole | null;
 }> {
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
@@ -61,12 +64,13 @@ export async function getServerIdentity(): Promise<{
 
     let effectiveShopId: string | null = currentShopId;
     let effectiveBranchId: string | null = currentBranchId;
+    let currentShopRole: CurrentShopRole | null = null;
 
     // Validate context cookies against current user membership.
     if (u && effectiveShopId) {
         const { data: member, error: mErr } = await admin
             .from("shop_members")
-            .select("shop_id")
+            .select("shop_id, role")
             .eq("user_id", u.id)
             .eq("shop_id", effectiveShopId)
             .maybeSingle();
@@ -74,6 +78,8 @@ export async function getServerIdentity(): Promise<{
         if (mErr || !member) {
             effectiveShopId = null;
             effectiveBranchId = null;
+        } else {
+            currentShopRole = member.role;
         }
     }
 
@@ -93,5 +99,6 @@ export async function getServerIdentity(): Promise<{
         user: u ? { id: u.id, email: u.email ?? null } : null,
         currentShopId: effectiveShopId,
         currentBranchId: effectiveBranchId,
+        currentShopRole,
     };
 }

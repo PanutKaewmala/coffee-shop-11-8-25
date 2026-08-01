@@ -15,6 +15,7 @@ export interface AdminNavbarProps {
 
     currentShopName?: string | null;
     currentBranchName?: string | null;
+    onContextLoaded?: (context: { shopName: string | null; branchName: string | null }) => void;
 }
 
 type ShopOption = { id: string; name: string };
@@ -52,6 +53,7 @@ export default function AdminNavbar({
     currentBranchId,
     currentShopName,
     currentBranchName,
+    onContextLoaded,
 }: AdminNavbarProps) {
     const router = useRouter();
     const { toggleTheme } = useTheme();
@@ -81,17 +83,17 @@ export default function AdminNavbar({
         if (currentShopName) return currentShopName;
         const found = currentShopId ? shops.find((s) => s.id === currentShopId) : null;
         if (found?.name) return found.name;
-        if (currentShopId) return `ร้าน: ${currentShopId.slice(0, 8)}…`;
+        if (currentShopId) return loadingSwitchers ? "กำลังโหลดชื่อร้าน…" : "ร้านปัจจุบัน";
         return "ยังไม่ได้เลือกร้าน";
-    }, [currentShopId, currentShopName, shops]);
+    }, [currentShopId, currentShopName, loadingSwitchers, shops]);
 
     const branchLabel = useMemo(() => {
         if (currentBranchName) return currentBranchName;
         const found = currentBranchId ? branches.find((b) => b.id === currentBranchId) : null;
         if (found?.name) return found.name;
-        if (currentBranchId) return `สาขา: ${currentBranchId.slice(0, 8)}…`;
+        if (currentBranchId) return loadingSwitchers ? "กำลังโหลดชื่อสาขา…" : "สาขาปัจจุบัน";
         return "ยังไม่ได้เลือกสาขา";
-    }, [currentBranchId, currentBranchName, branches]);
+    }, [branches, currentBranchId, currentBranchName, loadingSwitchers]);
 
     const noBranchInCurrentShop = useMemo(() => {
         return Boolean(currentShopId) && !loadingSwitchers && branches.length === 0;
@@ -116,8 +118,14 @@ export default function AdminNavbar({
 
                 const email = data.me?.email ?? null;
                 setMeLabel(email ? email : "ผู้ดูแลร้าน");
-                setShops(Array.isArray(data.shops) ? data.shops : []);
-                setBranches(Array.isArray(data.branches) ? data.branches : []);
+                const nextShops = Array.isArray(data.shops) ? data.shops : [];
+                const nextBranches = Array.isArray(data.branches) ? data.branches : [];
+                setShops(nextShops);
+                setBranches(nextBranches);
+                onContextLoaded?.({
+                    shopName: nextShops.find((shop) => shop.id === currentShopId)?.name ?? null,
+                    branchName: nextBranches.find((branch) => branch.id === currentBranchId)?.name ?? null,
+                });
             } catch (e) {
                 if (!alive) return;
                 const msg = e instanceof Error ? e.message : "โหลดข้อมูลแถบเมนูไม่สำเร็จ";
@@ -134,7 +142,7 @@ export default function AdminNavbar({
         return () => {
             alive = false;
         };
-    }, [currentShopId]);
+    }, [currentShopId, currentBranchId, onContextLoaded]);
 
     const onChangeShop = async (shopId: string) => {
         if (!shopId) return;
@@ -198,7 +206,7 @@ export default function AdminNavbar({
                 <div className="hidden lg:flex items-center gap-3 min-w-[520px] justify-center">
                     <div className="flex items-center gap-2">
                         <Store size={16} className="text-[var(--text-secondary)]" />
-                        <select
+                        {shops.length > 1 ? <select
                             className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm min-w-[240px]"
                             value={currentShopId ?? ""}
                             disabled={loadingSwitchers || switching || shops.length === 0}
@@ -209,15 +217,15 @@ export default function AdminNavbar({
                             </option>
                             {shops.map((s) => (
                                 <option key={s.id} value={s.id}>
-                                    {`${s.name} (${s.id.slice(0, 8)})`}
+                                    {s.name}
                                 </option>
                             ))}
-                        </select>
+                        </select> : <span className="max-w-60 truncate text-sm font-medium">{shopLabel}</span>}
                     </div>
 
                     <div className="flex items-center gap-2">
                         <GitBranch size={16} className="text-[var(--text-secondary)]" />
-                        <select
+                        {branches.length > 1 ? <select
                             className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm min-w-[240px]"
                             value={currentBranchId ?? ""}
                             disabled={loadingSwitchers || switching || !currentShopId}
@@ -228,10 +236,10 @@ export default function AdminNavbar({
                             </option>
                             {branches.map((b) => (
                                 <option key={b.id} value={b.id}>
-                                    {`${b.name} (${b.id.slice(0, 8)})`}
+                                    {b.name}
                                 </option>
                             ))}
-                        </select>
+                        </select> : branches.length === 1 ? <span className="max-w-60 truncate text-sm font-medium">{branchLabel}</span> : null}
                         {noBranchInCurrentShop ? (
                             <button
                                 type="button"
@@ -276,7 +284,7 @@ export default function AdminNavbar({
                 {err ? <div className="mb-2 text-xs text-red-500">{err}</div> : null}
 
                 <div className="flex min-w-0 flex-col sm:flex-row gap-2">
-                    <select
+                    {shops.length > 1 ? <select
                         className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
                         value={currentShopId ?? ""}
                         disabled={loadingSwitchers || switching || shops.length === 0}
@@ -287,13 +295,13 @@ export default function AdminNavbar({
                         </option>
                         {shops.map((s) => (
                             <option key={s.id} value={s.id}>
-                                {`${s.name} (${s.id.slice(0, 8)})`}
+                                {s.name}
                             </option>
                         ))}
-                    </select>
+                    </select> : <div className="min-w-0 truncate rounded-lg border border-[var(--text-muted)]/20 bg-[var(--background)] px-3 py-2 text-sm">{shopLabel}</div>}
 
-                    <select
-                        className="bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                    {branches.length > 1 ? <select
+                        className="block bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-lg px-3 py-2 text-sm w-full min-w-0"
                         value={currentBranchId ?? ""}
                         disabled={loadingSwitchers || switching || !currentShopId}
                         onChange={(e) => onChangeBranch(e.target.value)}
@@ -303,10 +311,10 @@ export default function AdminNavbar({
                         </option>
                         {branches.map((b) => (
                             <option key={b.id} value={b.id}>
-                                {`${b.name} (${b.id.slice(0, 8)})`}
+                                {b.name}
                             </option>
                         ))}
-                    </select>
+                    </select> : branches.length === 1 ? <div className="min-w-0 truncate rounded-lg border border-[var(--text-muted)]/20 bg-[var(--background)] px-3 py-2 text-sm">{branchLabel}</div> : null}
                 </div>
 
                 {noBranchInCurrentShop ? (

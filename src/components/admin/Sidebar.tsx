@@ -15,6 +15,7 @@ export interface SidebarProps {
     // SaaS context
     currentShopId?: string;
     currentBranchId?: string | null;
+    currentShopRole?: string | null;
 
     // optional: ถ้าส่งชื่อมาจาก server
     currentShopName?: string | null;
@@ -34,7 +35,10 @@ type NavItem = {
 const navSections: { title: string; items: NavItem[] }[] = [
     {
         title: "ภาพรวม",
-        items: [{ label: "หน้าหลัก", path: "/admin" }],
+        items: [
+            { label: "ภาพรวมวันนี้", path: "/admin" },
+            { label: "รายงาน", path: "/admin/reports" },
+        ],
     },
     {
         title: "จัดการสินค้า",
@@ -77,18 +81,22 @@ export default function Sidebar({
     onClose,
     currentShopId,
     currentBranchId,
+    currentShopRole,
     currentShopName,
     currentBranchName,
 }: SidebarProps) {
     const pathname = usePathname();
+    const visibleSections = currentShopRole === "owner"
+        ? navSections
+        : navSections.filter((section) => section.title !== "ภาพรวม");
 
     const shopLabel =
         currentShopName ??
-        (currentShopId ? `ร้าน: ${currentShopId.slice(0, 8)}…` : "ยังไม่ได้เลือกร้าน");
+        (currentShopId ? "กำลังโหลดชื่อร้าน…" : "ยังไม่ได้เลือกร้าน");
 
     const branchLabel =
         currentBranchName ??
-        (currentBranchId ? `สาขา: ${currentBranchId.slice(0, 8)}…` : "ยังไม่ได้เลือกสาขา");
+        (currentBranchId ? "กำลังโหลดชื่อสาขา…" : "ยังไม่ได้เลือกสาขา");
 
     return (
         <>
@@ -137,7 +145,7 @@ export default function Sidebar({
 
                 {/* Navigation Sections */}
                 <nav className="flex flex-col gap-6 px-3 mt-6">
-                    {navSections.map((section) => (
+                    {visibleSections.map((section) => (
                         <div key={section.title}>
                             {/* Section header */}
                             <div className="text-xs uppercase tracking-wide text-[var(--text-muted)] px-2 mb-2">
