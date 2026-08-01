@@ -44,17 +44,17 @@ export default function TodayOverview() {
         <header>
             <p className="text-sm font-medium text-[var(--accent)]">สำหรับ Owner · {data.context.branchName}</p>
             <h1 className="mt-1 text-2xl font-bold text-[var(--text-primary)] md:text-3xl">ภาพรวมวันนี้</h1>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">ข้อมูลสาขาที่เลือก · เวลา Asia/Bangkok</p>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">ข้อมูลของสาขาที่เลือก · อ้างอิงเวลาไทย</p>
         </header>
 
         <section aria-labelledby="situation-title">
-            <Card className="overflow-hidden border-[var(--accent)]/30 bg-[var(--accent)]/5">
-                <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <Card className={`overflow-hidden border-[var(--accent)]/30 bg-[var(--accent)]/5 ${view.overview.actionCount === 0 && !view.overview.primaryAction ? "!p-4" : ""}`}>
+                <div className={`flex flex-col md:flex-row md:items-center md:justify-between ${view.overview.actionCount === 0 && !view.overview.primaryAction ? "gap-3" : "gap-5"}`}>
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์</p>
                         <h2 id="situation-title" className="mt-2 text-xl font-bold text-[var(--text-primary)] md:text-2xl">{view.overview.title}</h2>
                         <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{view.overview.description}</p>
-                        <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">กลุ่มเรื่องที่ต้องจัดการ: {view.overview.actionCount.toLocaleString("th-TH")}</p>
+                        {view.overview.actionCount > 0 ? <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">มี {view.overview.actionCount.toLocaleString("th-TH")} เรื่องที่ต้องจัดการ</p> : null}
                     </div>
                     {view.overview.primaryAction ? <Link href={view.overview.primaryAction.href} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">{view.overview.primaryAction.label}<ArrowRight size={16}/></Link> : null}
                 </div>
@@ -77,7 +77,7 @@ export default function TodayOverview() {
         </section> : null}
 
         <section className="space-y-3" aria-labelledby="sales-title">
-            <SectionTitle id="sales-title" icon={<ReceiptText size={20}/>} title="สรุปเมื่อวาน" description={`ยอดชำระแล้วในวันที่ ${data.dates.yesterday.date}`}/>
+            <SectionTitle id="sales-title" icon={<ReceiptText size={20}/>} title="สรุปเมื่อวาน" description={`ยอดชำระแล้วเมื่อวาน · ${view.formattedYesterdayDate}`}/>
             {view.hasPaidSales ? <Card><div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <div><p className="text-xs text-[var(--text-muted)]">ยอดขายเมื่อวาน</p><p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{money(data.sales.netSales)}</p></div>
                 <div><p className="text-xs text-[var(--text-muted)]">จำนวนออเดอร์</p><p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{data.sales.paidOrderCount.toLocaleString("th-TH")}</p></div>

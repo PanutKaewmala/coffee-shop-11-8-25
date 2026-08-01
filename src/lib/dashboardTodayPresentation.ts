@@ -33,12 +33,24 @@ export type DashboardTodayPresentation = {
     reviews: DashboardReviewGroup[];
     reviewCount: number;
     hasPaidSales: boolean;
+    formattedYesterdayDate: string;
 };
 
 const formatMoney = (value: number) =>
     `${value.toLocaleString("th-TH", { maximumFractionDigits: 2 })} บาท`;
 
 const uniqueNames = (names: string[]) => [...new Set(names.filter(Boolean))].slice(0, 3);
+
+function formatThaiDate(dateKey: string): string {
+    const date = new Date(`${dateKey}T12:00:00+07:00`);
+    if (!Number.isFinite(date.getTime())) return dateKey;
+    return new Intl.DateTimeFormat("th-TH", {
+        timeZone: "Asia/Bangkok",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+    }).format(date);
+}
 
 export function buildDashboardTodayPresentation(data: DashboardTodayResponse): DashboardTodayPresentation {
     const actions: DashboardActionGroup[] = [];
@@ -169,7 +181,7 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
         ? `จัดลำดับจากข้อมูลสต็อก การปิดยอด และยอดขายเมื่อวาน${reviewCount ? ` · มีอีก ${reviewCount.toLocaleString("th-TH")} รายการที่ควรตรวจ` : ""}`
         : reviewCount > 0
             ? "ไม่พบกลุ่มปัญหาที่ต้องจัดการทันที แต่มีข้อมูลจริงที่ควรตรวจเพิ่มเติม"
-            : "ไม่พบปัญหาสต็อกหรือการปิดยอดที่เข้าเกณฑ์ และไม่มีรายการที่ควรตรวจเพิ่มเติม";
+            : "ตอนนี้ยังไม่มีเรื่องที่ต้องจัดการหรือรายการที่ต้องตรวจเพิ่มเติม";
 
     return {
         overview: {
@@ -188,5 +200,6 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
         reviews,
         reviewCount,
         hasPaidSales: data.sales.paidOrderCount > 0,
+        formattedYesterdayDate: formatThaiDate(data.dates.yesterday.date),
     };
 }
