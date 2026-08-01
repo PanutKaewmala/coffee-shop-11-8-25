@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Banknote, ClipboardCheck, PackageX, ReceiptText } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, ClipboardCheck, PackageCheck, ReceiptText } from "lucide-react";
 import Card from "@/components/admin/Card";
 import type { DashboardTodayResponse } from "@/lib/dashboardToday";
+import { buildDashboardTodayPresentation } from "@/lib/dashboardTodayPresentation";
 
 const money = (value: number) => `${value.toLocaleString("th-TH", { maximumFractionDigits: 2 })} ฿`;
-const statusText: Record<string, string> = { cancelled: "ออเดอร์ยกเลิก", void: "ออเดอร์ยกเลิก", refunded: "คืนเงิน", draft: "ร่าง", closed: "ปิดแล้ว", approved: "อนุมัติแล้ว" };
 
-function Empty({ children }: { children: React.ReactNode }) {
-    return <p className="rounded-xl border border-dashed border-[var(--text-muted)]/30 p-4 text-sm text-[var(--text-muted)]">{children}</p>;
+function SectionTitle({ icon, id, title, description }: { icon: React.ReactNode; id: string; title: string; description: string }) {
+    return <div className="flex items-start gap-3"><span className="mt-0.5 shrink-0 rounded-xl bg-[var(--accent)]/10 p-2 text-[var(--accent)]">{icon}</span><div className="min-w-0"><h2 id={id} className="text-lg font-bold text-[var(--text-primary)] md:text-xl">{title}</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{description}</p></div></div>;
 }
 
-function SectionTitle({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-    return <div className="flex items-start gap-3"><span className="mt-0.5 rounded-xl bg-[var(--accent)]/10 p-2 text-[var(--accent)]">{icon}</span><div><h2 className="text-lg font-bold text-[var(--text-primary)] md:text-xl">{title}</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{description}</p></div></div>;
-}
+const actionTone = {
+    critical: "border-red-500/30 bg-red-500/5",
+    warning: "border-amber-500/30 bg-amber-500/5",
+};
 
 export default function TodayOverview() {
     const [data, setData] = useState<DashboardTodayResponse | null>(null);
@@ -33,37 +34,67 @@ export default function TodayOverview() {
         return () => { active = false; };
     }, []);
 
-    if (loading) return <div className="space-y-5 animate-pulse"><div className="h-20 rounded-2xl bg-[var(--surface)]"/><div className="h-48 rounded-2xl bg-[var(--surface)]"/><div className="h-64 rounded-2xl bg-[var(--surface)]"/></div>;
+    if (loading) return <div className="space-y-5 animate-pulse"><div className="h-44 rounded-2xl bg-[var(--surface)]"/><div className="h-48 rounded-2xl bg-[var(--surface)]"/><div className="h-48 rounded-2xl bg-[var(--surface)]"/></div>;
     if (error) return <Card><div className="flex gap-3 text-red-600 dark:text-red-300"><AlertTriangle className="shrink-0"/><div><h1 className="font-bold">เปิดภาพรวมวันนี้ไม่ได้</h1><p className="mt-1 text-sm">{error}</p></div></div></Card>;
     if (!data) return null;
 
-    const close = data.yesterdayClose;
-    const cashDifference = close?.cashDifference ?? null;
-    const tasksCount = data.tasks.outOfStock.length + data.tasks.lowStock.length + data.tasks.expiringLots.length;
-    const eventCount = data.reviewEvents.orders.length + data.reviewEvents.stock.length + (cashDifference != null && cashDifference !== 0 ? 1 : 0);
+    const view = buildDashboardTodayPresentation(data);
 
     return <div className="space-y-6 md:space-y-8">
-        <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div><p className="text-sm font-medium text-[var(--accent)]">สำหรับ Owner · {data.context.branchName}</p><h1 className="mt-1 text-2xl font-bold text-[var(--text-primary)] md:text-3xl">ภาพรวมวันนี้</h1><p className="mt-2 text-sm text-[var(--text-muted)]">ตรวจข้อมูลเมื่อวานและเรื่องที่ต้องจัดการของสาขาที่เลือก · เวลา Asia/Bangkok</p></div>
-            <Link href="/admin/reports" className="inline-flex items-center gap-2 self-start rounded-xl border border-[var(--text-muted)]/25 px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--accent)]/10">ดูรายงานย้อนหลัง <ArrowRight size={16}/></Link>
+        <header>
+            <p className="text-sm font-medium text-[var(--accent)]">สำหรับ Owner · {data.context.branchName}</p>
+            <h1 className="mt-1 text-2xl font-bold text-[var(--text-primary)] md:text-3xl">ภาพรวมวันนี้</h1>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">ข้อมูลสาขาที่เลือก · เวลา Asia/Bangkok</p>
         </header>
 
-        <section className="space-y-3"><SectionTitle icon={<ClipboardCheck size={20}/>} title="สถานะปิดยอดเมื่อวาน" description={`ข้อมูลวันที่ ${data.dates.yesterday.date}`}/><Card>
-            {!close ? <div><p className="font-semibold text-amber-700 dark:text-amber-300">ยังไม่มีการปิดยอดของเมื่อวาน</p><p className="mt-1 text-sm text-[var(--text-muted)]">ระบบไม่พบ daily close สำหรับสาขานี้ในวันที่ดังกล่าว</p><Link href="/admin/daily-close" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">ไปหน้าปิดยอด <ArrowRight size={15}/></Link></div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><div><p className="text-xs text-[var(--text-muted)]">สถานะ</p><p className="mt-1 font-bold text-[var(--text-primary)]">{statusText[close.status] ?? close.status}</p></div><div><p className="text-xs text-[var(--text-muted)]">เงินสดขาด/เกิน</p><p className={`mt-1 font-bold ${cashDifference === 0 ? "text-emerald-600" : "text-amber-600"}`}>{cashDifference == null ? "ยังไม่มีข้อมูล" : cashDifference === 0 ? "ตรงยอด" : `${cashDifference > 0 ? "เกิน" : "ขาด"} ${money(Math.abs(cashDifference))}`}</p></div><div><p className="text-xs text-[var(--text-muted)]">เงินสดตามระบบ</p><p className="mt-1 font-bold text-[var(--text-primary)]">{money(close.expectedCash)}</p></div><div><p className="text-xs text-[var(--text-muted)]">เงินสดที่นับได้</p><p className="mt-1 font-bold text-[var(--text-primary)]">{close.countedCash == null ? "ยังไม่มีข้อมูล" : money(close.countedCash)}</p></div></div>}
-        </Card></section>
+        <section aria-labelledby="situation-title">
+            <Card className="overflow-hidden border-[var(--accent)]/30 bg-[var(--accent)]/5">
+                <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์</p>
+                        <h2 id="situation-title" className="mt-2 text-xl font-bold text-[var(--text-primary)] md:text-2xl">{view.overview.title}</h2>
+                        <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{view.overview.description}</p>
+                        <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">กลุ่มเรื่องที่ต้องจัดการ: {view.overview.actionCount.toLocaleString("th-TH")}</p>
+                    </div>
+                    {view.overview.primaryAction ? <Link href={view.overview.primaryAction.href} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">{view.overview.primaryAction.label}<ArrowRight size={16}/></Link> : null}
+                </div>
+            </Card>
+        </section>
 
-        <section className="space-y-3"><SectionTitle icon={<PackageX size={20}/>} title="เรื่องที่ต้องจัดการวันนี้" description={tasksCount ? `พบ ${tasksCount} รายการจากข้อมูลสต็อกจริง` : "วัตถุดิบและล็อตสินค้ายังไม่พบรายการที่เข้าเกณฑ์"}/>{tasksCount === 0 ? <Card><div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4"><p className="font-semibold text-[var(--text-primary)]">ไม่มีเรื่องที่ต้องจัดการวันนี้</p><p className="mt-1 text-sm text-[var(--text-muted)]">วัตถุดิบและล็อตสินค้ายังไม่พบรายการที่เข้าเกณฑ์</p></div></Card> : <div className="grid gap-4 lg:grid-cols-3">
-            {data.tasks.outOfStock.length > 0 ? <Card title={`วัตถุดิบหมด (${data.tasks.outOfStock.length})`}><div className="space-y-2">{data.tasks.outOfStock.map(item => <Link key={item.id} href={`/admin/ingredients/${item.id}`} className="flex justify-between gap-3 rounded-lg p-2 hover:bg-[var(--accent)]/10"><span className="font-medium text-[var(--text-primary)]">{item.name}</span><span className="text-red-600">{item.stock} {item.unit}</span></Link>)}</div></Card> : null}
-            {data.tasks.lowStock.length > 0 ? <Card title={`ต่ำกว่า Min stock (${data.tasks.lowStock.length})`}><div className="space-y-2">{data.tasks.lowStock.map(item => <Link key={item.id} href={`/admin/ingredients/${item.id}`} className="block rounded-lg p-2 hover:bg-[var(--accent)]/10"><div className="flex justify-between gap-3"><span className="font-medium text-[var(--text-primary)]">{item.name}</span><span>{item.stock} {item.unit}</span></div><p className="mt-1 text-xs text-[var(--text-muted)]">ขั้นต่ำ {item.minStock} {item.unit}</p></Link>)}</div></Card> : null}
-            {data.tasks.expiringLots.length > 0 ? <Card title={`ล็อตใกล้หมดอายุ (${data.tasks.expiringLots.length})`}><div className="space-y-2">{data.tasks.expiringLots.map(item => <Link key={item.id} href={`/admin/ingredients/${item.ingredientId}`} className="block rounded-lg p-2 hover:bg-[var(--accent)]/10"><div className="flex justify-between gap-3"><span className="font-medium text-[var(--text-primary)]">{item.ingredientName}</span><span className="text-amber-600">{item.daysToExpiry < 0 ? `เลย ${Math.abs(item.daysToExpiry)} วัน` : `อีก ${item.daysToExpiry} วัน`}</span></div><p className="mt-1 text-xs text-[var(--text-muted)]">ล็อต {item.lotCode ?? "-"} · {item.quantity} {item.unit ?? ""}</p></Link>)}</div></Card> : null}
-        </div>}</section>
+        {view.actions.length > 0 ? <section className="space-y-3" aria-labelledby="actions-title">
+            <SectionTitle id="actions-title" icon={<ClipboardCheck size={20}/>} title="เรื่องที่ต้องจัดการ" description={`เรียงตามความสำคัญทั้งหมด ${view.actions.length.toLocaleString("th-TH")} กลุ่ม`}/>
+            <div className="grid gap-4 lg:grid-cols-3">
+                {view.visibleActions.map((action) => <Card key={action.id} className={actionTone[action.tone]}>
+                    <div className="flex h-full flex-col">
+                        <div className="flex items-start justify-between gap-3"><h3 className="font-bold text-[var(--text-primary)]">{action.title}</h3><span className="shrink-0 rounded-full bg-[var(--surface)] px-2.5 py-1 text-xs font-bold">{action.itemCount.toLocaleString("th-TH")} รายการ</span></div>
+                        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{action.description}</p>
+                        {action.examples.length ? <p className="mt-2 text-sm text-[var(--text-muted)]">ตัวอย่าง: {action.examples.join(", ")}</p> : null}
+                        <Link href={action.href} className="mt-5 inline-flex items-center gap-2 self-start rounded-lg font-semibold text-[var(--accent)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">{action.linkLabel}<ArrowRight size={15}/></Link>
+                    </div>
+                </Card>)}
+            </div>
+            {view.hiddenActionCount > 0 ? <p className="text-sm font-medium text-[var(--text-muted)]">มีอีก {view.hiddenActionCount.toLocaleString("th-TH")} กลุ่มที่ไม่ได้แสดงในรายการเด่น</p> : null}
+        </section> : null}
 
-        <section className="space-y-3"><SectionTitle icon={<AlertTriangle size={20}/>} title="เหตุการณ์ที่ควรตรวจจากเมื่อวาน" description={eventCount ? `พบ ${eventCount} เหตุการณ์ตามกฎที่กำหนด` : "ไม่พบออเดอร์ยกเลิก คืนเงิน การปรับสต๊อก ของเสีย หรือเงินสดต่างยอด"}/><Card>{eventCount === 0 ? <Empty>ไม่มีเหตุการณ์ที่เข้าเกณฑ์ให้ตรวจ</Empty> : <div className="divide-y divide-[var(--text-muted)]/15">
-            {data.reviewEvents.orders.map(order => <Link key={order.id} href={`/admin/orders/${order.id}`} className="flex items-center justify-between gap-3 py-3 hover:text-[var(--accent)]"><span><b>{statusText[order.status] ?? order.status}</b> · ออเดอร์ #{order.id.slice(0, 8)}</span><span>{money(order.total)}</span></Link>)}
-            {data.reviewEvents.stock.map(event => <Link key={event.id} href={`/admin/stock?ingredient_id=${event.ingredientId}`} className="flex items-center justify-between gap-3 py-3 hover:text-[var(--accent)]"><span><b>{event.type === "waste" ? "ของเสีย" : "ปรับสต๊อก"}</b> · {event.ingredientName}{event.note ? ` · ${event.note}` : ""}</span><span>{event.amount.toLocaleString("th-TH")}</span></Link>)}
-            {cashDifference != null && cashDifference !== 0 ? <Link href="/admin/daily-close" className="flex items-center justify-between gap-3 py-3 hover:text-[var(--accent)]"><span><b>เงินสดขาดหรือเกิน</b> · จากการปิดยอดเมื่อวาน</span><span>{cashDifference > 0 ? "เกิน" : "ขาด"} {money(Math.abs(cashDifference))}</span></Link> : null}
-        </div>}</Card></section>
+        <section className="space-y-3" aria-labelledby="sales-title">
+            <SectionTitle id="sales-title" icon={<ReceiptText size={20}/>} title="สรุปเมื่อวาน" description={`ยอดชำระแล้วในวันที่ ${data.dates.yesterday.date}`}/>
+            {view.hasPaidSales ? <Card><div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div><p className="text-xs text-[var(--text-muted)]">ยอดขายเมื่อวาน</p><p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{money(data.sales.netSales)}</p></div>
+                <div><p className="text-xs text-[var(--text-muted)]">จำนวนออเดอร์</p><p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{data.sales.paidOrderCount.toLocaleString("th-TH")}</p></div>
+                <div><p className="text-xs text-[var(--text-muted)]">เฉลี่ยต่อบิล</p><p className="mt-1 text-xl font-bold text-[var(--text-primary)]">{money(data.sales.averageOrderValue)}</p></div>
+                <div><p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]"><Banknote size={14}/>เงินสด</p><p className="mt-1 font-bold text-[var(--text-primary)]">{money(data.sales.cashSales)}</p></div>
+                <div><p className="text-xs text-[var(--text-muted)]">PromptPay</p><p className="mt-1 font-bold text-[var(--text-primary)]">{money(data.sales.promptPaySales)}</p></div>
+                {data.sales.otherSales > 0 ? <div><p className="text-xs text-[var(--text-muted)]">วิธีอื่น/ไม่ระบุ</p><p className="mt-1 font-bold text-[var(--text-primary)]">{money(data.sales.otherSales)}</p></div> : null}
+            </div></Card> : <Card><div className="flex items-start gap-3"><PackageCheck className="shrink-0 text-[var(--accent)]"/><div><p className="font-bold text-[var(--text-primary)]">เมื่อวานไม่มีรายการขาย</p><p className="mt-1 text-sm text-[var(--text-muted)]">ไม่พบออเดอร์ที่ชำระแล้วในวันที่ดังกล่าว</p></div></div></Card>}
+        </section>
 
-        <section className="space-y-3"><SectionTitle icon={<ReceiptText size={20}/>} title="สรุปยอดขายเมื่อวาน" description={`ยอดชำระแล้วในวันที่ ${data.dates.yesterday.date}`}/><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Card title="ยอดขายสุทธิ"><p className="text-2xl font-bold text-[var(--text-primary)]">{money(data.sales.netSales)}</p></Card><Card title="จำนวนออเดอร์"><p className="text-2xl font-bold text-[var(--text-primary)]">{data.sales.paidOrderCount.toLocaleString("th-TH")}</p></Card><Card title="เฉลี่ยต่อบิล"><p className="text-2xl font-bold text-[var(--text-primary)]">{money(data.sales.averageOrderValue)}</p></Card><Card title="วิธีชำระเงิน"><div className="space-y-2 text-sm"><p className="flex justify-between"><span className="inline-flex gap-2"><Banknote size={16}/>เงินสด</span><b>{money(data.sales.cashSales)}</b></p><p className="flex justify-between"><span>PromptPay</span><b>{money(data.sales.promptPaySales)}</b></p>{data.sales.otherSales > 0 ? <p className="flex justify-between text-[var(--text-muted)]"><span>วิธีอื่น/ไม่ระบุ</span><b>{money(data.sales.otherSales)}</b></p> : null}</div></Card></div></section>
+        {view.reviews.length > 0 ? <section className="space-y-3" aria-labelledby="reviews-title">
+            <SectionTitle id="reviews-title" icon={<AlertTriangle size={20}/>} title="รายการที่ควรตรวจ" description={`พบ ${view.reviewCount.toLocaleString("th-TH")} รายการที่ควรตรวจเพิ่มเติม`}/>
+            <div className="grid gap-4 md:grid-cols-2">{view.reviews.map((review) => <Card key={review.id}>
+                <div className="flex items-start justify-between gap-3"><h3 className="font-bold text-[var(--text-primary)]">{review.title}</h3><span className="shrink-0 text-sm font-bold">{review.itemCount.toLocaleString("th-TH")} รายการ</span></div>
+                <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{review.description}</p>
+                <Link href={review.href} className="mt-4 inline-flex items-center gap-2 rounded-lg font-semibold text-[var(--accent)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">{review.linkLabel}<ArrowRight size={15}/></Link>
+            </Card>)}</div>
+        </section> : null}
     </div>;
 }
