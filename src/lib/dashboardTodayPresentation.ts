@@ -64,8 +64,7 @@ export function buildDashboardTodayPresentation(
             ...data.tasks.outOfStock.map((item) => item.name),
             ...expiredLots.map((item) => item.ingredientName),
         ];
-        const firstItem = data.tasks.outOfStock[0] ?? expiredLots[0];
-        const ingredientId = "ingredientId" in firstItem ? firstItem.ingredientId : firstItem.id;
+        const ingredientId = data.tasks.outOfStock[0]?.id ?? expiredLots[0]!.ingredientId;
 
         actions.push({
             id: "critical-stock",
@@ -84,7 +83,7 @@ export function buildDashboardTodayPresentation(
     }
 
     const closeIsFinal = close?.status === "closed" || close?.status === "approved";
-    if (closeIsFinal && close.cashDifference != null && close.cashDifference !== 0) {
+    if (close && closeIsFinal && close.cashDifference != null && close.cashDifference !== 0) {
         actions.push({
             id: "cash-variance",
             title: close.cashDifference > 0 ? "เงินสดเกินจากการปิดยอด" : "เงินสดขาดจากการปิดยอด",
@@ -123,8 +122,7 @@ export function buildDashboardTodayPresentation(
             ...data.tasks.lowStock.map((item) => item.name),
             ...nearExpiryLots.map((item) => item.ingredientName),
         ];
-        const firstItem = data.tasks.lowStock[0] ?? nearExpiryLots[0];
-        const ingredientId = "ingredientId" in firstItem ? firstItem.ingredientId : firstItem.id;
+        const ingredientId = data.tasks.lowStock[0]?.id ?? nearExpiryLots[0]!.ingredientId;
 
         actions.push({
             id: "stock-warning",
