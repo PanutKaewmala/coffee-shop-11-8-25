@@ -1,0 +1,159 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronUp, ReceiptText } from "lucide-react";
+import Card from "@/components/admin/Card";
+import ReportsSalesTrendChart from "@/components/admin/reports/ReportsSalesTrendChart";
+import {
+    REPORTS_SALES_RANGE_KEYS,
+    type ReportsSalesMenu,
+    type ReportsSalesPayment,
+    type ReportsSalesRangeKey,
+    type ReportsSalesResponse,
+} from "@/lib/reportsSales";
+import {
+    buildReportsKpis,
+    formatReportsDateRange,
+    formatReportsMoney,
+    formatReportsPercent,
+    hasReportsDataQualityIssues,
+    isReportsMainEmpty,
+    reportsErrorMessage,
+    reportsSalesRangeLabels,
+    salesSituation,
+    trendTitle,
+} from "@/lib/reportsSalesPresentation";
+
+const paymentLabels: Record<ReportsSalesPayment["method"], string> = {
+    cash: "เงินสด",
+    promptpay: "PromptPay",
+    unknown: "ไม่ระบุวิธีชำระ",
+};
+
+function SectionHeading({ id, title, description }: { id: string; title: string; description: string }) {
+    return <div><h2 id={id} className="text-lg font-bold text-[var(--text-primary)] md:text-xl">{title}</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{description}</p></div>;
+}
+
+function LoadingSkeleton() {
+    return <div className="animate-pulse space-y-6" aria-label="กำลังโหลดรายงานยอดขาย">
+        <div className="h-24 rounded-2xl bg-[var(--surface)]"/>
+        <div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="h-36 rounded-2xl bg-[var(--surface)]"/>)}</div>
+        <div className="h-[360px] rounded-2xl bg-[var(--surface)]"/>
+        <div className="grid gap-4 lg:grid-cols-2"><div className="h-64 rounded-2xl bg-[var(--surface)]"/><div className="h-64 rounded-2xl bg-[var(--surface)]"/></div>
+    </div>;
+}
+
+function Delta({ amount, percent, kind }: { amount: number; percent: number | null; kind: "money" | "count" }) {
+    const symbol = amount > 0 ? "↑" : amount < 0 ? "↓" : "→";
+    const formattedAmount = kind === "money"
+        ? formatReportsMoney(Math.abs(amount))
+        : `${Math.abs(amount).toLocaleString("th-TH")} ออเดอร์`;
+    return <div className="mt-3 border-t border-black/5 pt-3 text-xs dark:border-white/10">
+        <p className="font-semibold text-[var(--text-secondary)]">{symbol} {formattedAmount}{percent === null ? "" : ` (${formatReportsPercent(percent)})`}</p>
+        <p className="mt-1 text-[var(--text-muted)]">เทียบช่วงก่อนหน้า</p>
+    </div>;
+}
+
+function PaymentBreakdown({ payments }: { payments: ReportsSalesPayment[] }) {
+    const visible = payments.filter((payment) => payment.method !== "unknown" || payment.paidSales > 0 || payment.paidOrderCount > 0);
+    return <div className="space-y-4">{visible.map((payment) => <div key={payment.method}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="font-semibold text-[var(--text-primary)]">{paymentLabels[payment.method]}</p>
+            <p className="font-bold text-[var(--text-primary)]">{formatReportsMoney(payment.paidSales)}</p>
+        </div>
+        <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-[var(--text-muted)]"><span>{payment.paidOrderCount.toLocaleString("th-TH")} ออเดอร์</span><span>{formatReportsPercent(payment.contributionPercent)}</span></div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/5 dark:bg-white/10"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.max(0, Math.min(100, payment.contributionPercent))}%` }}/></div>
+    </div>)}</div>;
+}
+
+function MenuRow({ menu, rank }: { menu: ReportsSalesMenu; rank: number }) {
+    const [expanded, setExpanded] = useState(false);
+    const hasVariants = menu.variants.length > 0;
+    return <article className="rounded-xl border border-black/5 p-4 dark:border-white/10">
+        <div className="flex items-start gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10 text-sm font-bold text-[var(--accent)]">{rank}</span>
+            <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><h3 className="break-words font-semibold text-[var(--text-primary)]">{menu.name}</h3><p className="shrink-0 font-bold text-[var(--text-primary)]">{formatReportsMoney(menu.revenue)}</p></div>
+                <div className="mt-1 flex flex-wrap justify-between gap-2 text-xs text-[var(--text-muted)]"><span>{menu.quantity.toLocaleString("th-TH")} รายการ</span><span>{formatReportsPercent(menu.contributionPercent)}</span></div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/5 dark:bg-white/10"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.max(0, Math.min(100, menu.contributionPercent))}%` }}/></div>
+                {hasVariants ? <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} className="mt-3 inline-flex items-center gap-1 rounded-lg text-sm font-semibold text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                    {expanded ? "ซ่อนรายละเอียดตัวเลือก" : "ดูรายละเอียดตัวเลือก"}{expanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>} </button> : null}
+                {expanded ? <div className="mt-3 space-y-2 border-t border-black/5 pt-3 dark:border-white/10">{menu.variants.map((variant) => <div key={variant.key} className="rounded-lg bg-[var(--background)] p-3 text-sm">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:justify-between"><span className="break-words font-medium text-[var(--text-primary)]">{variant.label}</span><span className="font-semibold text-[var(--text-primary)]">{formatReportsMoney(variant.revenue)}</span></div>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">{variant.quantity.toLocaleString("th-TH")} รายการ · {formatReportsPercent(variant.contributionPercentWithinMenu)} ของเมนูนี้</p>
+                </div>)}</div> : null}
+            </div>
+        </div>
+    </article>;
+}
+
+function MenuContribution({ menus }: { menus: ReportsSalesMenu[] }) {
+    const [showAll, setShowAll] = useState(false);
+    const displayed = showAll ? menus : menus.slice(0, 5);
+    return <><div className="space-y-3">{displayed.map((menu, index) => <MenuRow key={menu.key} menu={menu} rank={index + 1}/>)}</div>
+        {menus.length > 5 ? <button type="button" aria-expanded={showAll} onClick={() => setShowAll((value) => !value)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)] hover:bg-[var(--accent)]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+            {showAll ? "ซ่อนรายการเพิ่มเติม" : "ดูทั้งหมด"}{showAll ? <ChevronUp size={16}/> : <ChevronDown size={16}/>} </button> : null}</>;
+}
+
+export default function ReportsSalesDashboard() {
+    const [selectedRange, setSelectedRange] = useState<ReportsSalesRangeKey>("week");
+    const [data, setData] = useState<ReportsSalesResponse | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [retryKey, setRetryKey] = useState(0);
+
+    const load = useCallback((controller: AbortController) => {
+        setLoading(true);
+        setError(null);
+        fetch(`/api/reports/sales?range=${selectedRange}`, { cache: "no-store", signal: controller.signal })
+            .then(async (response) => {
+                const body: unknown = await response.json().catch(() => null);
+                const apiError = typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : null;
+                if (!response.ok) throw new Error(reportsErrorMessage(response.status, apiError));
+                return body as ReportsSalesResponse;
+            })
+            .then((response) => setData(response))
+            .catch((reason: unknown) => {
+                if (reason instanceof DOMException && reason.name === "AbortError") return;
+                setData(null);
+                setError(reason instanceof Error ? reason.message : "โหลดรายงานยอดขายไม่สำเร็จ");
+            })
+            .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, [selectedRange]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        load(controller);
+        return () => controller.abort();
+    }, [load, retryKey]);
+
+    const empty = data ? isReportsMainEmpty(data) : false;
+    return <div className="min-w-0 space-y-6 md:space-y-8">
+        <header className="space-y-4">
+            <div><h1 className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl">รายงานยอดขาย</h1><p className="mt-2 text-sm text-[var(--text-muted)]">ดูแนวโน้มยอดขาย ช่องทางชำระ และเมนูที่ทำยอด</p>
+                {data ? <><p className="mt-2 text-sm font-medium text-[var(--text-secondary)]">{data.context.isAllBranches ? "ทุกสาขา" : data.context.branchName} · อ้างอิงเวลาไทย</p><p className="mt-1 text-xs text-[var(--text-muted)]">{formatReportsDateRange(data.range)}</p></> : null}
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="เลือกช่วงเวลารายงาน">
+                {REPORTS_SALES_RANGE_KEYS.map((range) => <button type="button" key={range} aria-pressed={selectedRange === range} onClick={() => setSelectedRange(range)} className={`min-h-10 min-w-0 rounded-xl border px-2 text-sm font-semibold transition sm:px-4 ${selectedRange === range ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm" : "border-black/10 bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] dark:border-white/10"}`}>{reportsSalesRangeLabels[range]}</button>)}
+            </div>
+        </header>
+
+        {loading ? <LoadingSkeleton/> : error ? <Card><div className="flex items-start gap-3"><AlertTriangle className="shrink-0 text-red-600 dark:text-red-300"/><div><h2 className="font-bold text-[var(--text-primary)]">เปิดรายงานไม่ได้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{error}</p><button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-10 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white">ลองใหม่</button></div></div></Card> : data ? <>
+            <section aria-labelledby="situation-heading"><Card className="border-[var(--accent)]/25 bg-[var(--accent)]/5"><p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์ยอดขาย</p><h2 id="situation-heading" className="mt-2 text-lg font-bold leading-7 text-[var(--text-primary)] md:text-xl">{salesSituation(data.summary, data.comparison)}</h2></Card></section>
+
+            {empty ? <Card><div className="flex items-start gap-3"><ReceiptText className="shrink-0 text-[var(--accent)]"/><div><h2 className="font-bold text-[var(--text-primary)]">ยังไม่มียอดขายที่ชำระแล้วในช่วงนี้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">ลองเลือกช่วงเวลาอื่น หรือตรวจสอบสาขาที่กำลังดู</p></div></div></Card> : <>
+                <section className="space-y-3" aria-labelledby="kpi-heading"><SectionHeading id="kpi-heading" title="ภาพรวมยอดขาย" description="ตัวเลขจากออเดอร์ที่ชำระแล้วในช่วงที่เลือก"/><div className="grid gap-4 md:grid-cols-3">{buildReportsKpis(data).map((kpi) => <Card key={kpi.label}><p className="text-sm text-[var(--text-muted)]">{kpi.label}</p><p className="mt-2 break-words text-xl font-bold text-[var(--text-primary)] md:text-2xl">{kpi.value}</p>{data.comparison.available && kpi.delta !== null ? <Delta amount={kpi.delta} percent={kpi.deltaPercent} kind={kpi.deltaKind}/> : <p className="mt-3 border-t border-black/5 pt-3 text-xs text-[var(--text-muted)] dark:border-white/10">ไม่มีช่วงเปรียบเทียบ</p>}</Card>)}</div></section>
+                <section className="min-w-0 space-y-3" aria-labelledby="trend-heading"><SectionHeading id="trend-heading" title={trendTitle(data.range.granularity)} description="แนวโน้มยอดขายที่ชำระแล้วตามช่วงเวลาจากรายงาน"/><Card className="min-w-0 overflow-hidden"><ReportsSalesTrendChart trend={data.trend} granularity={data.range.granularity}/></Card></section>
+                <section className="space-y-3" aria-labelledby="payments-heading"><SectionHeading id="payments-heading" title="ช่องทางชำระ" description="สัดส่วนยอดขายและจำนวนออเดอร์แยกตามวิธีชำระ"/><Card><PaymentBreakdown payments={data.payments}/></Card></section>
+                <section className="space-y-3" aria-labelledby="menus-heading"><SectionHeading id="menus-heading" title="เมนูที่ทำรายได้" description="เรียงตามรายได้ตามลำดับที่รายงานส่งมา"/><Card><MenuContribution menus={data.menus}/></Card></section>
+            </>}
+
+            {hasReportsDataQualityIssues(data.dataQuality) ? <section className="space-y-3" aria-labelledby="quality-heading"><SectionHeading id="quality-heading" title="คุณภาพข้อมูล" description="ข้อจำกัดของข้อมูลที่อาจมีผลต่อการอ่านรายงาน"/><Card className="border-amber-500/30 bg-amber-500/5"><ul className="space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
+                {data.dataQuality.legacyPaidFallbackCount > 0 ? <li>ออเดอร์ชำระแล้ว {data.dataQuality.legacyPaidFallbackCount.toLocaleString("th-TH")} รายการใช้เวลาสร้างแทนเวลาชำระ</li> : null}
+                {data.dataQuality.unknownPaymentCount > 0 ? <li>มี {data.dataQuality.unknownPaymentCount.toLocaleString("th-TH")} ออเดอร์ที่ไม่ระบุวิธีชำระ</li> : null}
+                {data.dataQuality.itemRevenueMismatchOrderCount > 0 ? <li>ยอดรวมสินค้าไม่ตรงกับยอดออเดอร์ {data.dataQuality.itemRevenueMismatchOrderCount.toLocaleString("th-TH")} รายการ<br/>ผลต่างรวม {formatReportsMoney(data.dataQuality.itemRevenueMismatchAmount)}</li> : null}
+            </ul><Link href="/admin/orders" className="mt-4 inline-flex min-h-10 items-center font-semibold text-[var(--accent)] hover:underline">ไปดูรายการออเดอร์</Link></Card></section> : null}
+        </> : null}
+    </div>;
+}
