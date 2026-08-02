@@ -185,6 +185,17 @@ export function isReportsSalesRangeKey(value: string): value is ReportsSalesRang
     return (REPORTS_SALES_RANGE_KEYS as readonly string[]).includes(value);
 }
 
+export function getReportsSalesAccessError(identity: {
+    user: { id: string } | null;
+    currentShopId: string | null;
+    currentShopRole: string | null;
+}): { status: 401 | 403 | 409; error: string } | null {
+    if (!identity.user) return { status: 401, error: "Unauthorized" };
+    if (!identity.currentShopId) return { status: 409, error: "No current shop selected" };
+    if (identity.currentShopRole !== "owner") return { status: 403, error: "Owner only" };
+    return null;
+}
+
 export function resolveReportsSalesTimestamp(
     paidAt: string | null,
     createdAt: string | null,
@@ -401,34 +412,70 @@ export function buildReportsSalesPayments(
     return payments;
 }
 
-type MutableVariant = Omit<ReportsSalesMenuVariant, "contributionPercentWithinMenu">;
-type MutableMenu = Omit<ReportsSalesMenu, "contributionPercent" | "variants"> & { variants: Map<string, MutableVariant> };
+type MutableVariant = Omit<ReportsSalesMenuVariant, "contributionPercentWithinMenu"> & {
+    snapshotOccurredAt: number;
+    hasSnapshotLabel: boolean;
+};
+type MutableMenu = Omit<ReportsSalesMenu, "contributionPercent" | "variants"> & {
+    snapshotOccurredAt: number;
+    hasSnapshotName: boolean;
+    variants: Map<string, MutableVariant>;
+};
 
 const fallbackKey = (value: string) => encodeURIComponent(value.trim().toLocaleLowerCase("th-TH") || "ไม่ระบุ");
 
 export function buildReportsSalesMenus(orders: ReportsSalesPaidOrder[]): ReportsSalesMenu[] {
     const menus = new Map<string, MutableMenu>();
     for (const order of orders) {
+        const occurredAt = new Date(order.occurredAt).getTime();
+        const snapshotOccurredAt = Number.isFinite(occurredAt) ? occurredAt : Number.NEGATIVE_INFINITY;
         for (const item of order.items) {
-            const name = item.name.trim() || "ไม่ระบุชื่อเมนู";
+            const snapshotName = item.name.trim();
+            const name = snapshotName || "ไม่ระบุชื่อเมนู";
             const menuKey = item.menuId ? `menu:${item.menuId}` : `snapshot:${fallbackKey(name)}`;
             let menu = menus.get(menuKey);
             if (!menu) {
-                menu = { key: menuKey, menuId: item.menuId, name, quantity: 0, revenue: 0, variants: new Map() };
+                menu = {
+                    key: menuKey,
+                    menuId: item.menuId,
+                    name,
+                    quantity: 0,
+                    revenue: 0,
+                    snapshotOccurredAt,
+                    hasSnapshotName: Boolean(snapshotName),
+                    variants: new Map(),
+                };
                 menus.set(menuKey, menu);
+            } else if (snapshotName && (!menu.hasSnapshotName || snapshotOccurredAt >= menu.snapshotOccurredAt)) {
+                menu.name = snapshotName;
+                menu.snapshotOccurredAt = snapshotOccurredAt;
+                menu.hasSnapshotName = true;
             }
             const revenue = item.price * item.quantity;
             menu.quantity += item.quantity;
             menu.revenue += revenue;
 
-            const label = item.variantLabel?.trim() || "ไม่ระบุ Variant";
+            const snapshotLabel = item.variantLabel?.trim() ?? "";
+            const label = snapshotLabel || "ไม่ระบุ Variant";
             const variantKey = item.variantId
                 ? `${menuKey}:variant:${item.variantId}`
                 : `${menuKey}:snapshot:${fallbackKey(label)}`;
             let variant = menu.variants.get(variantKey);
             if (!variant) {
-                variant = { key: variantKey, variantId: item.variantId, label, quantity: 0, revenue: 0 };
+                variant = {
+                    key: variantKey,
+                    variantId: item.variantId,
+                    label,
+                    quantity: 0,
+                    revenue: 0,
+                    snapshotOccurredAt,
+                    hasSnapshotLabel: Boolean(snapshotLabel),
+                };
                 menu.variants.set(variantKey, variant);
+            } else if (snapshotLabel && (!variant.hasSnapshotLabel || snapshotOccurredAt >= variant.snapshotOccurredAt)) {
+                variant.label = snapshotLabel;
+                variant.snapshotOccurredAt = snapshotOccurredAt;
+                variant.hasSnapshotLabel = true;
             }
             variant.quantity += item.quantity;
             variant.revenue += revenue;
@@ -446,7 +493,11 @@ export function buildReportsSalesMenus(orders: ReportsSalesPaidOrder[]): Reports
             contributionPercent: totalItemRevenue > 0 ? (menu.revenue / totalItemRevenue) * 100 : 0,
             variants: [...menu.variants.values()]
                 .map((variant): ReportsSalesMenuVariant => ({
-                    ...variant,
+                    key: variant.key,
+                    variantId: variant.variantId,
+                    label: variant.label,
+                    quantity: variant.quantity,
+                    revenue: variant.revenue,
                     contributionPercentWithinMenu: menu.revenue > 0 ? (variant.revenue / menu.revenue) * 100 : 0,
                 }))
                 .sort((a, b) => b.revenue - a.revenue || a.label.localeCompare(b.label, "th")),

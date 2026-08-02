@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { getServerIdentity } from "@/lib/supabaseServer";
 import {
     buildReportsSalesComparison,
     buildReportsSalesContext,
@@ -12,6 +12,7 @@ import {
     buildReportsSalesRange,
     buildReportsSalesTrend,
     calculateReportsSalesMetrics,
+    getReportsSalesAccessError,
     isReportsSalesRangeKey,
     resolveReportsSalesTimestamp,
     type ReportsSalesOrderItem,
@@ -192,23 +193,12 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Invalid range" }, { status: 400 });
         }
 
-        const supabase = await getSupabaseServer();
         const admin = getSupabaseAdmin();
-        const { data: auth, error: authError } = await supabase.auth.getUser();
-        if (authError) return NextResponse.json({ error: authError.message }, { status: 500 });
-        if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
-        if (!currentShopId) return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
-
-        const { data: membership, error: membershipError } = await admin
-            .from("shop_members")
-            .select("shop_id")
-            .eq("user_id", auth.user.id)
-            .eq("shop_id", currentShopId)
-            .maybeSingle();
-        if (membershipError) return NextResponse.json({ error: membershipError.message }, { status: 500 });
-        if (!membership) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        const identity = await getServerIdentity();
+        const accessError = getReportsSalesAccessError(identity);
+        if (accessError) return NextResponse.json({ error: accessError.error }, { status: accessError.status });
+        const currentShopId = identity.currentShopId as string;
+        const currentBranchId = identity.currentBranchId;
 
         const shopPromise = admin.from("shops").select("id,name").eq("id", currentShopId).maybeSingle();
         const branchPromise = currentBranchId
