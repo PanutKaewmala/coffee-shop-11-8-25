@@ -17,6 +17,9 @@ export const reportsSalesRangeLabels: Record<ReportsSalesRange["key"], string> =
     all: "ทั้งหมด",
 };
 
+export const REPORTS_MENU_EMPTY_MESSAGE = "ยังไม่มีข้อมูลเมนูสำหรับช่วงนี้";
+export const REPORTS_FETCH_FALLBACK_MESSAGE = "โหลดรายงานยอดขายไม่สำเร็จ";
+
 export function formatReportsMoney(value: number): string {
     return `${value.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท`;
 }
@@ -70,6 +73,30 @@ export function isReportsMainEmpty(data: ReportsSalesResponse): boolean {
     return data.summary.paidOrderCount === 0 && !previousHasSales;
 }
 
+export function shouldShowReportsSalesSituation(data: ReportsSalesResponse): boolean {
+    return !isReportsMainEmpty(data);
+}
+
+export function visibleReportsMenus<T>(menus: T[], showAll: boolean): T[] {
+    return showAll ? menus : menus.slice(0, 5);
+}
+
+export function isReportsAbortError(reason: unknown): boolean {
+    return typeof reason === "object"
+        && reason !== null
+        && "name" in reason
+        && reason.name === "AbortError";
+}
+
+export function reportsRequestFailureMessage(reason: unknown, mappedHttpMessage: string | null = null): string | null {
+    if (isReportsAbortError(reason)) return null;
+    return mappedHttpMessage ?? REPORTS_FETCH_FALLBACK_MESSAGE;
+}
+
+export function shouldShowReportsContext(loading: boolean, hasData: boolean): boolean {
+    return !loading && hasData;
+}
+
 export function hasReportsDataQualityIssues(dataQuality: ReportsSalesResponse["dataQuality"]): boolean {
     return dataQuality.legacyPaidFallbackCount !== 0
         || dataQuality.unknownPaymentCount !== 0
@@ -82,7 +109,7 @@ export function reportsErrorMessage(status: number, apiError: string | null): st
     if (status === 403 && apiError === "Owner only") return "หน้านี้สำหรับเจ้าของร้านเท่านั้น";
     if (status === 403 && apiError === "Branch not in current shop") return "สาขาที่เลือกไม่ถูกต้อง กรุณาเลือกสาขาใหม่หรือทุกสาขา";
     if (status === 409) return "ยังไม่ได้เลือกร้านที่ต้องการดู";
-    return "โหลดรายงานยอดขายไม่สำเร็จ";
+    return REPORTS_FETCH_FALLBACK_MESSAGE;
 }
 
 export type ReportsKpi = {

@@ -19,11 +19,19 @@ import {
     formatReportsPercent,
     hasReportsDataQualityIssues,
     isReportsMainEmpty,
+    isReportsAbortError,
+    REPORTS_MENU_EMPTY_MESSAGE,
     reportsErrorMessage,
+    reportsRequestFailureMessage,
     reportsSalesRangeLabels,
     salesSituation,
+    shouldShowReportsSalesSituation,
+    shouldShowReportsContext,
     trendTitle,
+    visibleReportsMenus,
 } from "@/lib/reportsSalesPresentation";
+
+class ReportsHttpError extends Error {}
 
 const paymentLabels: Record<ReportsSalesPayment["method"], string> = {
     cash: "เงินสด",
@@ -90,7 +98,12 @@ function MenuRow({ menu, rank }: { menu: ReportsSalesMenu; rank: number }) {
 
 function MenuContribution({ menus }: { menus: ReportsSalesMenu[] }) {
     const [showAll, setShowAll] = useState(false);
-    const displayed = showAll ? menus : menus.slice(0, 5);
+    const displayed = visibleReportsMenus(menus, showAll);
+    if (menus.length === 0) {
+        return <div className="rounded-xl border border-dashed border-black/10 p-5 text-center dark:border-white/15">
+            <p className="font-semibold text-[var(--text-primary)]">{REPORTS_MENU_EMPTY_MESSAGE}</p>
+        </div>;
+    }
     return <><div className="space-y-3">{displayed.map((menu, index) => <MenuRow key={menu.key} menu={menu} rank={index + 1}/>)}</div>
         {menus.length > 5 ? <button type="button" aria-expanded={showAll} onClick={() => setShowAll((value) => !value)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--accent)] px-4 text-sm font-bold text-[var(--accent)] hover:bg-[var(--accent)]/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
             {showAll ? "ซ่อนรายการเพิ่มเติม" : "ดูทั้งหมด"}{showAll ? <ChevronUp size={16}/> : <ChevronDown size={16}/>} </button> : null}</>;
@@ -104,20 +117,22 @@ export default function ReportsSalesDashboard() {
     const [retryKey, setRetryKey] = useState(0);
 
     const load = useCallback((controller: AbortController) => {
-        setLoading(true);
-        setError(null);
         fetch(`/api/reports/sales?range=${selectedRange}`, { cache: "no-store", signal: controller.signal })
             .then(async (response) => {
-                const body: unknown = await response.json().catch(() => null);
+                const parsed = await response.json()
+                    .then((body: unknown) => ({ valid: true as const, body }))
+                    .catch(() => ({ valid: false as const, body: null }));
+                const body = parsed.body;
                 const apiError = typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : null;
-                if (!response.ok) throw new Error(reportsErrorMessage(response.status, apiError));
+                if (!response.ok) throw new ReportsHttpError(reportsErrorMessage(response.status, apiError));
+                if (!parsed.valid || typeof body !== "object" || body === null) throw new Error("Invalid reports response");
                 return body as ReportsSalesResponse;
             })
             .then((response) => setData(response))
             .catch((reason: unknown) => {
-                if (reason instanceof DOMException && reason.name === "AbortError") return;
+                if (isReportsAbortError(reason)) return;
                 setData(null);
-                setError(reason instanceof Error ? reason.message : "โหลดรายงานยอดขายไม่สำเร็จ");
+                setError(reportsRequestFailureMessage(reason, reason instanceof ReportsHttpError ? reason.message : null));
             })
             .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, [selectedRange]);
@@ -128,19 +143,34 @@ export default function ReportsSalesDashboard() {
         return () => controller.abort();
     }, [load, retryKey]);
 
+    const selectRange = (range: ReportsSalesRangeKey) => {
+        if (range === selectedRange) return;
+        setLoading(true);
+        setError(null);
+        setData(null);
+        setSelectedRange(range);
+    };
+
+    const retry = () => {
+        setLoading(true);
+        setError(null);
+        setData(null);
+        setRetryKey((value) => value + 1);
+    };
+
     const empty = data ? isReportsMainEmpty(data) : false;
     return <div className="min-w-0 space-y-6 md:space-y-8">
         <header className="space-y-4">
             <div><h1 className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl">รายงานยอดขาย</h1><p className="mt-2 text-sm text-[var(--text-muted)]">ดูแนวโน้มยอดขาย ช่องทางชำระ และเมนูที่ทำยอด</p>
-                {data ? <><p className="mt-2 text-sm font-medium text-[var(--text-secondary)]">{data.context.isAllBranches ? "ทุกสาขา" : data.context.branchName} · อ้างอิงเวลาไทย</p><p className="mt-1 text-xs text-[var(--text-muted)]">{formatReportsDateRange(data.range)}</p></> : null}
+                {shouldShowReportsContext(loading, data !== null) && data ? <><p className="mt-2 text-sm font-medium text-[var(--text-secondary)]">{data.context.isAllBranches ? "ทุกสาขา" : data.context.branchName} · อ้างอิงเวลาไทย</p><p className="mt-1 text-xs text-[var(--text-muted)]">{formatReportsDateRange(data.range)}</p></> : null}
             </div>
             <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="เลือกช่วงเวลารายงาน">
-                {REPORTS_SALES_RANGE_KEYS.map((range) => <button type="button" key={range} aria-pressed={selectedRange === range} onClick={() => setSelectedRange(range)} className={`min-h-10 min-w-0 rounded-xl border px-2 text-sm font-semibold transition sm:px-4 ${selectedRange === range ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm" : "border-black/10 bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] dark:border-white/10"}`}>{reportsSalesRangeLabels[range]}</button>)}
+                {REPORTS_SALES_RANGE_KEYS.map((range) => <button type="button" key={range} aria-pressed={selectedRange === range} onClick={() => selectRange(range)} className={`min-h-10 min-w-0 rounded-xl border px-2 text-sm font-semibold transition sm:px-4 ${selectedRange === range ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm" : "border-black/10 bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] dark:border-white/10"}`}>{reportsSalesRangeLabels[range]}</button>)}
             </div>
         </header>
 
-        {loading ? <LoadingSkeleton/> : error ? <Card><div className="flex items-start gap-3"><AlertTriangle className="shrink-0 text-red-600 dark:text-red-300"/><div><h2 className="font-bold text-[var(--text-primary)]">เปิดรายงานไม่ได้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{error}</p><button type="button" onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-10 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white">ลองใหม่</button></div></div></Card> : data ? <>
-            <section aria-labelledby="situation-heading"><Card className="border-[var(--accent)]/25 bg-[var(--accent)]/5"><p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์ยอดขาย</p><h2 id="situation-heading" className="mt-2 text-lg font-bold leading-7 text-[var(--text-primary)] md:text-xl">{salesSituation(data.summary, data.comparison)}</h2></Card></section>
+        {loading ? <LoadingSkeleton/> : error ? <Card><div className="flex items-start gap-3"><AlertTriangle className="shrink-0 text-red-600 dark:text-red-300"/><div><h2 className="font-bold text-[var(--text-primary)]">เปิดรายงานไม่ได้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{error}</p><button type="button" onClick={retry} className="mt-4 min-h-10 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white">ลองใหม่</button></div></div></Card> : data ? <>
+            {shouldShowReportsSalesSituation(data) ? <section aria-labelledby="situation-heading"><Card className="border-[var(--accent)]/25 bg-[var(--accent)]/5"><p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์ยอดขาย</p><h2 id="situation-heading" className="mt-2 text-lg font-bold leading-7 text-[var(--text-primary)] md:text-xl">{salesSituation(data.summary, data.comparison)}</h2></Card></section> : null}
 
             {empty ? <Card><div className="flex items-start gap-3"><ReceiptText className="shrink-0 text-[var(--accent)]"/><div><h2 className="font-bold text-[var(--text-primary)]">ยังไม่มียอดขายที่ชำระแล้วในช่วงนี้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">ลองเลือกช่วงเวลาอื่น หรือตรวจสอบสาขาที่กำลังดู</p></div></div></Card> : <>
                 <section className="space-y-3" aria-labelledby="kpi-heading"><SectionHeading id="kpi-heading" title="ภาพรวมยอดขาย" description="ตัวเลขจากออเดอร์ที่ชำระแล้วในช่วงที่เลือก"/><div className="grid gap-4 md:grid-cols-3">{buildReportsKpis(data).map((kpi) => <Card key={kpi.label}><p className="text-sm text-[var(--text-muted)]">{kpi.label}</p><p className="mt-2 break-words text-xl font-bold text-[var(--text-primary)] md:text-2xl">{kpi.value}</p>{data.comparison.available && kpi.delta !== null ? <Delta amount={kpi.delta} percent={kpi.deltaPercent} kind={kpi.deltaKind}/> : <p className="mt-3 border-t border-black/5 pt-3 text-xs text-[var(--text-muted)] dark:border-white/10">ไม่มีช่วงเปรียบเทียบ</p>}</Card>)}</div></section>
