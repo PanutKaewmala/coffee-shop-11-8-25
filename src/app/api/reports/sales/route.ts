@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getServerIdentity } from "@/lib/supabaseServer";
 import {
     buildReportsSalesComparison,
+    buildReportsSalesCalendar,
     buildReportsSalesContext,
     buildReportsSalesDataQuality,
     buildReportsSalesMenus,
@@ -243,6 +244,7 @@ export async function GET(request: Request) {
             range,
             summary,
             comparison: buildReportsSalesComparison(comparisonAvailable, summary, previousMetrics),
+            calendar: buildReportsSalesCalendar(currentOrders, currentPeriod),
             trend: buildReportsSalesTrend(currentOrders, range),
             payments: buildReportsSalesPayments(currentOrders, summary.paidSales),
             menus: buildReportsSalesMenus(currentOrders),

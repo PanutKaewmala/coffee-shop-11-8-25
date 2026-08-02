@@ -1,10 +1,39 @@
 import type {
     ReportsSalesComparison,
+    ReportsSalesCalendar,
+    ReportsSalesCalendarDay,
     ReportsSalesGranularity,
     ReportsSalesMetrics,
     ReportsSalesRange,
     ReportsSalesResponse,
 } from "@/lib/reportsSales";
+
+const reportsMonthKey = (date: string) => date.slice(0, 7);
+
+export function getDefaultReportsCalendarMonth(calendar: ReportsSalesCalendar): string {
+    const latestSale = [...calendar.days].reverse().find((day) => day.paidSales > 0);
+    const latestDay = calendar.days.at(-1);
+    return reportsMonthKey(latestSale?.date ?? latestDay?.date ?? new Date().toISOString().slice(0, 10));
+}
+
+export function getDefaultReportsCalendarDay(days: ReportsSalesCalendarDay[], selectedMonth: string, today: string): string | null {
+    const monthDays = days.filter((day) => reportsMonthKey(day.date) === selectedMonth);
+    if (monthDays.some((day) => day.date === today)) return today;
+    return [...monthDays].reverse().find((day) => day.paidSales > 0)?.date ?? monthDays.at(-1)?.date ?? null;
+}
+
+export function getReportsCalendarMonthSummary(days: ReportsSalesCalendarDay[]) {
+    const paidDays = days.filter((day) => day.paidSales > 0);
+    const peakDay = paidDays.reduce<ReportsSalesCalendarDay | null>(
+        (peak, day) => !peak || day.paidSales > peak.paidSales ? day : peak,
+        null,
+    );
+    return {
+        paidSales: days.reduce((sum, day) => sum + day.paidSales, 0),
+        paidDayCount: paidDays.length,
+        peakDay,
+    };
+}
 
 const THAI_TIME_ZONE = "Asia/Bangkok";
 
