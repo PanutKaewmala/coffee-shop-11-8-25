@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, ReceiptText } from "lucide-react";
 import Card from "@/components/admin/Card";
 import ReportsSalesTrendChart from "@/components/admin/reports/ReportsSalesTrendChart";
@@ -20,6 +20,7 @@ import {
     hasReportsDataQualityIssues,
     isReportsMainEmpty,
     isReportsAbortError,
+    isReportsRequestCurrent,
     REPORTS_MENU_EMPTY_MESSAGE,
     reportsErrorMessage,
     reportsRequestFailureMessage,
@@ -115,10 +116,13 @@ export default function ReportsSalesDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retryKey, setRetryKey] = useState(0);
+    const activeControllerRef = useRef<AbortController | null>(null);
+    const requestVersionRef = useRef(0);
 
-    const load = useCallback((controller: AbortController) => {
-        fetch(`/api/reports/sales?range=${selectedRange}`, { cache: "no-store", signal: controller.signal })
-            .then(async (response) => {
+    const load = useCallback(async (range: ReportsSalesRangeKey, controller: AbortController, requestVersion: number) => {
+        const isCurrent = () => isReportsRequestCurrent(requestVersionRef.current, requestVersion, controller.signal.aborted);
+        try {
+            const response = await fetch(`/api/reports/sales?range=${range}`, { cache: "no-store", signal: controller.signal });
                 const parsed = await response.json()
                     .then((body: unknown) => ({ valid: true as const, body }))
                     .catch(() => ({ valid: false as const, body: null }));
@@ -126,25 +130,40 @@ export default function ReportsSalesDashboard() {
                 const apiError = typeof body === "object" && body !== null && "error" in body && typeof body.error === "string" ? body.error : null;
                 if (!response.ok) throw new ReportsHttpError(reportsErrorMessage(response.status, apiError));
                 if (!parsed.valid || typeof body !== "object" || body === null) throw new Error("Invalid reports response");
-                return body as ReportsSalesResponse;
-            })
-            .then((response) => setData(response))
-            .catch((reason: unknown) => {
-                if (isReportsAbortError(reason)) return;
-                setData(null);
-                setError(reportsRequestFailureMessage(reason, reason instanceof ReportsHttpError ? reason.message : null));
-            })
-            .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    }, [selectedRange]);
+            if (isCurrent()) setData(body as ReportsSalesResponse);
+        } catch (reason: unknown) {
+            if (!isCurrent() || isReportsAbortError(reason)) return;
+            setData(null);
+            setError(reportsRequestFailureMessage(reason, reason instanceof ReportsHttpError ? reason.message : null));
+        } finally {
+            if (isCurrent()) {
+                activeControllerRef.current = null;
+                setLoading(false);
+            }
+        }
+    }, []);
 
     useEffect(() => {
         const controller = new AbortController();
-        load(controller);
-        return () => controller.abort();
-    }, [load, retryKey]);
+        const requestVersion = ++requestVersionRef.current;
+        activeControllerRef.current = controller;
+        void load(selectedRange, controller, requestVersion);
+        return () => {
+            controller.abort();
+            if (requestVersionRef.current === requestVersion) requestVersionRef.current += 1;
+            if (activeControllerRef.current === controller) activeControllerRef.current = null;
+        };
+    }, [load, retryKey, selectedRange]);
+
+    const invalidateActiveRequest = () => {
+        requestVersionRef.current += 1;
+        activeControllerRef.current?.abort();
+        activeControllerRef.current = null;
+    };
 
     const selectRange = (range: ReportsSalesRangeKey) => {
         if (range === selectedRange) return;
+        invalidateActiveRequest();
         setLoading(true);
         setError(null);
         setData(null);
@@ -152,6 +171,7 @@ export default function ReportsSalesDashboard() {
     };
 
     const retry = () => {
+        invalidateActiveRequest();
         setLoading(true);
         setError(null);
         setData(null);

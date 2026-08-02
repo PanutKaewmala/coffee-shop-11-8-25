@@ -88,6 +88,10 @@ export function isReportsAbortError(reason: unknown): boolean {
         && reason.name === "AbortError";
 }
 
+export function isReportsRequestCurrent(currentVersion: number, requestVersion: number, aborted: boolean): boolean {
+    return !aborted && currentVersion === requestVersion;
+}
+
 export function reportsRequestFailureMessage(reason: unknown, mappedHttpMessage: string | null = null): string | null {
     if (isReportsAbortError(reason)) return null;
     return mappedHttpMessage ?? REPORTS_FETCH_FALLBACK_MESSAGE;
