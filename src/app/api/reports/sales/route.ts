@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getServerIdentity } from "@/lib/supabaseServer";
+import { getCurrentContextFromCookies, getServerIdentity } from "@/lib/supabaseServer";
 import {
     buildReportsSalesComparison,
     buildReportsSalesContext,
@@ -14,6 +14,8 @@ import {
     calculateReportsSalesMetrics,
     getReportsSalesAccessError,
     isReportsSalesRangeKey,
+    normalizeReportsSalesRequestedBranchId,
+    resolveReportsSalesBranchScope,
     resolveReportsSalesTimestamp,
     type ReportsSalesOrderItem,
     type ReportsSalesPaidOrder,
@@ -182,10 +184,6 @@ async function fetchOrderItems(shopId: string, orderIds: string[]): Promise<Map<
     return byOrderId;
 }
 
-function unavailableComparisonMetrics() {
-    return { paidSales: 0, paidOrderCount: 0, averagePaidOrderValue: 0 };
-}
-
 export async function GET(request: Request) {
     try {
         const requestedRange = new URL(request.url).searchParams.get("range") ?? "today";
@@ -193,24 +191,28 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Invalid range" }, { status: 400 });
         }
 
-        const admin = getSupabaseAdmin();
         const identity = await getServerIdentity();
         const accessError = getReportsSalesAccessError(identity);
         if (accessError) return NextResponse.json({ error: accessError.error }, { status: accessError.status });
         const currentShopId = identity.currentShopId as string;
-        const currentBranchId = identity.currentBranchId;
+        const { currentBranchId: rawCurrentBranchId } = await getCurrentContextFromCookies();
+        const requestedBranchId = normalizeReportsSalesRequestedBranchId(rawCurrentBranchId);
+        const admin = getSupabaseAdmin();
 
         const shopPromise = admin.from("shops").select("id,name").eq("id", currentShopId).maybeSingle();
-        const branchPromise = currentBranchId
-            ? admin.from("branch").select("id,name,shop_id").eq("id", currentBranchId).eq("shop_id", currentShopId).maybeSingle()
+        const branchPromise = requestedBranchId
+            ? admin.from("branch").select("id,name,shop_id").eq("id", requestedBranchId).eq("shop_id", currentShopId).maybeSingle()
             : Promise.resolve({ data: null, error: null });
         const [shopResult, branchResult] = await Promise.all([shopPromise, branchPromise]);
         if (shopResult.error) return NextResponse.json({ error: shopResult.error.message }, { status: 500 });
         if (!shopResult.data) return NextResponse.json({ error: "Current shop not found" }, { status: 404 });
         if (branchResult.error) return NextResponse.json({ error: branchResult.error.message }, { status: 500 });
-        if (currentBranchId && !branchResult.data) {
-            return NextResponse.json({ error: "Branch not in current shop" }, { status: 403 });
-        }
+        const branchScope = resolveReportsSalesBranchScope(
+            requestedBranchId,
+            branchResult.data ? { id: branchResult.data.id, name: branchResult.data.name } : null,
+        );
+        if (!branchScope.ok) return NextResponse.json({ error: branchScope.error }, { status: branchScope.status });
+        const currentBranchId = branchScope.branchId;
 
         const now = new Date();
         const firstPaidOrderAt = requestedRange === "all"
@@ -231,14 +233,12 @@ export async function GET(request: Request) {
         for (const order of currentOrders) order.items = itemsByOrderId.get(order.id) ?? [];
 
         const summary = calculateReportsSalesMetrics(currentOrders);
-        const previousMetrics = comparisonAvailable
-            ? calculateReportsSalesMetrics(previousOrders)
-            : unavailableComparisonMetrics();
+        const previousMetrics = comparisonAvailable ? calculateReportsSalesMetrics(previousOrders) : null;
         const response: ReportsSalesResponse = {
             context: buildReportsSalesContext(
                 currentShopId,
                 shopResult.data.name,
-                branchResult.data ? { id: branchResult.data.id, name: branchResult.data.name } : null,
+                branchScope.branch,
             ),
             range,
             summary,

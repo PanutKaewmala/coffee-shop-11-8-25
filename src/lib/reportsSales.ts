@@ -87,23 +87,34 @@ export type ReportsSalesMenu = {
     variants: ReportsSalesMenuVariant[];
 };
 
+export type ReportsSalesDelta = {
+    paidSalesAmount: number;
+    paidSalesPercent: number | null;
+    paidOrderCount: number;
+    paidOrderCountPercent: number | null;
+    averagePaidOrderValueAmount: number;
+    averagePaidOrderValuePercent: number | null;
+};
+
+export type ReportsSalesComparison =
+    | {
+        available: true;
+        current: ReportsSalesMetrics;
+        previous: ReportsSalesMetrics;
+        delta: ReportsSalesDelta;
+    }
+    | {
+        available: false;
+        current: ReportsSalesMetrics;
+        previous: null;
+        delta: null;
+    };
+
 export type ReportsSalesResponse = {
     context: ReportsSalesContext;
     range: ReportsSalesRange;
     summary: ReportsSalesMetrics;
-    comparison: {
-        available: boolean;
-        current: ReportsSalesMetrics;
-        previous: ReportsSalesMetrics;
-        delta: {
-            paidSalesAmount: number;
-            paidSalesPercent: number | null;
-            paidOrderCount: number;
-            paidOrderCountPercent: number | null;
-            averagePaidOrderValueAmount: number;
-            averagePaidOrderValuePercent: number | null;
-        };
-    };
+    comparison: ReportsSalesComparison;
     trend: ReportsSalesTrendBucket[];
     payments: ReportsSalesPayment[];
     menus: ReportsSalesMenu[];
@@ -194,6 +205,23 @@ export function getReportsSalesAccessError(identity: {
     if (!identity.currentShopId) return { status: 409, error: "No current shop selected" };
     if (identity.currentShopRole !== "owner") return { status: 403, error: "Owner only" };
     return null;
+}
+
+export function normalizeReportsSalesRequestedBranchId(rawCurrentBranchId: string | null): string | null {
+    return rawCurrentBranchId?.trim() || null;
+}
+
+export function resolveReportsSalesBranchScope(
+    requestedBranchId: string | null,
+    branch: { id: string; name: string } | null,
+):
+    | { ok: true; branchId: string | null; branch: { id: string; name: string } | null; isAllBranches: boolean }
+    | { ok: false; status: 403; error: "Branch not in current shop" } {
+    if (!requestedBranchId) return { ok: true, branchId: null, branch: null, isAllBranches: true };
+    if (!branch || branch.id !== requestedBranchId) {
+        return { ok: false, status: 403, error: "Branch not in current shop" };
+    }
+    return { ok: true, branchId: requestedBranchId, branch, isAllBranches: false };
 }
 
 export function resolveReportsSalesTimestamp(
@@ -297,21 +325,21 @@ export function percentChange(current: number, previous: number): number | null 
 export function buildReportsSalesComparison(
     available: boolean,
     current: ReportsSalesMetrics,
-    previous: ReportsSalesMetrics,
-): ReportsSalesResponse["comparison"] {
+    previous: ReportsSalesMetrics | null,
+): ReportsSalesComparison {
+    if (!available) return { available: false, current, previous: null, delta: null };
+    if (!previous) throw new Error("Previous metrics are required when comparison is available");
     return {
-        available,
+        available: true,
         current,
         previous,
         delta: {
             paidSalesAmount: current.paidSales - previous.paidSales,
-            paidSalesPercent: available ? percentChange(current.paidSales, previous.paidSales) : null,
+            paidSalesPercent: percentChange(current.paidSales, previous.paidSales),
             paidOrderCount: current.paidOrderCount - previous.paidOrderCount,
-            paidOrderCountPercent: available ? percentChange(current.paidOrderCount, previous.paidOrderCount) : null,
+            paidOrderCountPercent: percentChange(current.paidOrderCount, previous.paidOrderCount),
             averagePaidOrderValueAmount: current.averagePaidOrderValue - previous.averagePaidOrderValue,
-            averagePaidOrderValuePercent: available
-                ? percentChange(current.averagePaidOrderValue, previous.averagePaidOrderValue)
-                : null,
+            averagePaidOrderValuePercent: percentChange(current.averagePaidOrderValue, previous.averagePaidOrderValue),
         },
     };
 }
