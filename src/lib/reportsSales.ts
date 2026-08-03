@@ -1,9 +1,8 @@
+import { REPORTS_SALES_RANGE_KEYS, type ReportsSalesRangeKey, type ReportsSalesRangeQuery } from "@/lib/reportsSalesRangeQuery";
+export { REPORTS_SALES_RANGE_KEYS, type ReportsSalesRangeKey } from "@/lib/reportsSalesRangeQuery";
 export const REPORTS_SALES_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_OFFSET = "+07:00";
-
-export const REPORTS_SALES_RANGE_KEYS = ["today", "week", "month", "year", "5year", "all"] as const;
-export type ReportsSalesRangeKey = (typeof REPORTS_SALES_RANGE_KEYS)[number];
-export type ReportsSalesGranularity = "hourly" | "daily" | "monthly";
+export type ReportsSalesGranularity = "hourly" | "daily" | "weekly" | "monthly";
 
 export type ReportsSalesPeriod = {
     startInclusive: string;
@@ -267,46 +266,57 @@ export function buildReportsSalesContext(
 }
 
 export function buildReportsSalesRange(
-    key: ReportsSalesRangeKey,
+    query: ReportsSalesRangeQuery,
     now = new Date(),
     firstPaidOrderAt: string | null = null,
 ): ReportsSalesRange {
     const nowParts = bangkokParts(now);
     const todayKey = dateKey(nowParts);
-    const endExclusive = now.toISOString();
+    let endExclusive = now.toISOString();
     let startInclusive: string;
     let comparisonStartInclusive: string | null = null;
     let comparisonEndExclusive: string | null = null;
     let granularity: ReportsSalesGranularity;
 
+    const key = query.key;
     if (key === "today") {
         startInclusive = bangkokMidnightIso(todayKey);
         const yesterdayKey = addDays(todayKey, -1);
         comparisonStartInclusive = bangkokMidnightIso(yesterdayKey);
         comparisonEndExclusive = bangkokIso(partsForDateKey(yesterdayKey, nowParts));
         granularity = "hourly";
-    } else if (key === "week" || key === "month") {
-        const dayCount = key === "week" ? 7 : 30;
+    } else if (key === "7d" || key === "30d" || key === "90d") {
+        const dayCount = key === "7d" ? 7 : key === "30d" ? 30 : 90;
         startInclusive = bangkokMidnightIso(addDays(todayKey, -(dayCount - 1)));
         const duration = now.getTime() - new Date(startInclusive).getTime();
         const previousEnd = new Date(startInclusive);
         comparisonEndExclusive = previousEnd.toISOString();
         comparisonStartInclusive = new Date(previousEnd.getTime() - duration).toISOString();
-        granularity = "daily";
+        granularity = key === "90d" ? "weekly" : "daily";
     } else if (key === "year") {
         startInclusive = bangkokMidnightIso(`${nowParts.year}-01-01`);
         comparisonStartInclusive = bangkokMidnightIso(`${nowParts.year - 1}-01-01`);
         comparisonEndExclusive = sameBangkokTimeInYear(nowParts, nowParts.year - 1);
         granularity = "monthly";
-    } else if (key === "5year") {
-        startInclusive = bangkokMidnightIso(`${nowParts.year - 4}-01-01`);
-        granularity = "monthly";
-    } else {
+    } else if (query.allTime) {
         const firstAt = firstPaidOrderAt ? new Date(firstPaidOrderAt) : null;
         startInclusive = firstAt && Number.isFinite(firstAt.getTime()) && firstAt < now
             ? firstAt.toISOString()
-            : endExclusive;
+            : bangkokMidnightIso(todayKey);
         granularity = "monthly";
+    } else {
+        const startKey = query.start;
+        const endKey = query.end;
+        if (startKey === null || endKey === null) throw new Error("Custom dates are required");
+        startInclusive = bangkokMidnightIso(startKey);
+        const inclusiveDays = keyToDayNumber(endKey) - keyToDayNumber(startKey) + 1;
+        const isToday = endKey === todayKey;
+        const customEnd = isToday ? now : new Date(bangkokMidnightIso(addDays(endKey, 1)));
+        const duration = customEnd.getTime() - new Date(startInclusive).getTime();
+        endExclusive = customEnd.toISOString();
+        comparisonEndExclusive = startInclusive;
+        comparisonStartInclusive = new Date(new Date(startInclusive).getTime() - duration).toISOString();
+        granularity = inclusiveDays <= 31 ? "daily" : inclusiveDays <= 180 ? "weekly" : "monthly";
     }
 
     return {
@@ -401,7 +411,7 @@ function nextMonth(key: string): string {
     return month === 12 ? `${year + 1}-01` : `${year}-${pad(month + 1)}`;
 }
 
-function trendKey(value: Date, granularity: ReportsSalesGranularity): string {
+function trendKey(value: Date, granularity: Exclude<ReportsSalesGranularity, "weekly">): string {
     const parts = bangkokParts(value);
     if (granularity === "hourly") return `${dateKey(parts)}T${pad(parts.hour)}`;
     if (granularity === "daily") return dateKey(parts);
@@ -423,6 +433,13 @@ function bucketKeys(range: ReportsSalesRange): string[] {
     const start = new Date(range.startInclusive);
     const end = new Date(range.endExclusive);
     if (!(start < end)) return [];
+    if (range.granularity === "weekly") {
+        const firstDate = dateKey(bangkokParts(start));
+        const lastDate = dateKey(bangkokParts(new Date(end.getTime() - 1)));
+        const keys: string[] = [];
+        for (let day = keyToDayNumber(firstDate); day <= keyToDayNumber(lastDate); day += 7) keys.push(dayNumberToKey(day));
+        return keys;
+    }
     const first = trendKey(start, range.granularity);
     const last = trendKey(new Date(end.getTime() - 1), range.granularity);
     const keys: string[] = [];
@@ -445,17 +462,29 @@ export function buildReportsSalesTrend(
     range: ReportsSalesRange,
 ): ReportsSalesTrendBucket[] {
     const buckets = new Map<string, ReportsSalesTrendBucket>();
-    for (const key of bucketKeys(range)) {
+    const keys = bucketKeys(range);
+    const reportLastDate = dateKey(bangkokParts(new Date(new Date(range.endExclusive).getTime() - 1)));
+    const weeklyLabel = (startKey: string, endKey: string) => {
+        const format = (value: string, includeMonth: boolean) => new Intl.DateTimeFormat("th-TH", {
+            timeZone: "UTC", day: "numeric", ...(includeMonth ? { month: "short" as const } : {}),
+        }).format(new Date(`${value}T00:00:00.000Z`));
+        const sameMonth = startKey.slice(0, 7) === endKey.slice(0, 7);
+        return `${format(startKey, !sameMonth)}–${format(endKey, true)}`;
+    };
+    for (const key of keys) {
+        const weeklyEnd = addDays(key, 6).localeCompare(reportLastDate) > 0 ? reportLastDate : addDays(key, 6);
         buckets.set(key, {
             key,
-            label: trendLabel(key, range.granularity),
-            start: trendStart(key, range.granularity),
+            label: range.granularity === "weekly" ? weeklyLabel(key, weeklyEnd) : trendLabel(key, range.granularity),
+            start: range.granularity === "weekly" ? bangkokMidnightIso(key) : trendStart(key, range.granularity),
             paidSales: 0,
             paidOrderCount: 0,
         });
     }
     for (const order of orders) {
-        const key = trendKey(new Date(order.occurredAt), range.granularity);
+        const key = range.granularity === "weekly"
+            ? keys[Math.floor((keyToDayNumber(dateKey(bangkokParts(new Date(order.occurredAt)))) - keyToDayNumber(keys[0])) / 7)]
+            : trendKey(new Date(order.occurredAt), range.granularity);
         const bucket = buckets.get(key);
         if (!bucket) continue;
         bucket.paidSales += order.total;

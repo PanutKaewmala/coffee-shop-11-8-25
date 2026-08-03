@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, ReceiptText } from "lucide-react";
 import Card from "@/components/admin/Card";
 import ReportsSalesCalendar from "@/components/admin/reports/ReportsSalesCalendar";
 import ReportsSalesTrendChart from "@/components/admin/reports/ReportsSalesTrendChart";
+import ReportsDateRangePicker from "@/components/admin/reports/ReportsDateRangePicker";
 import {
     REPORTS_SALES_RANGE_KEYS,
     type ReportsSalesMenu,
@@ -13,6 +15,7 @@ import {
     type ReportsSalesRangeKey,
     type ReportsSalesResponse,
 } from "@/lib/reportsSales";
+import { buildReportsSalesRangeSearch, parseReportsSalesRangeQuery, type ReportsSalesRangeQuery } from "@/lib/reportsSalesRangeQuery";
 import {
     buildReportsKpis,
     formatReportsDateRange,
@@ -112,19 +115,27 @@ function MenuContribution({ menus }: { menus: ReportsSalesMenu[] }) {
 }
 
 export default function ReportsSalesDashboard() {
-    const [selectedRange, setSelectedRange] = useState<ReportsSalesRangeKey>("week");
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const search = searchParams.toString();
+    const parsedQuery = useMemo(() => parseReportsSalesRangeQuery(new URLSearchParams(search)), [search]);
+    const activeQuery: ReportsSalesRangeQuery = useMemo(() => parsedQuery.ok ? parsedQuery.value : { key: "7d", start: null, end: null, allTime: false }, [parsedQuery]);
+    const selectedRange = activeQuery.key;
     const [data, setData] = useState<ReportsSalesResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retryKey, setRetryKey] = useState(0);
     const [salesView, setSalesView] = useState<"calendar" | "graph">("calendar");
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const customTriggerRef = useRef<HTMLButtonElement>(null);
     const activeControllerRef = useRef<AbortController | null>(null);
     const requestVersionRef = useRef(0);
 
-    const load = useCallback(async (range: ReportsSalesRangeKey, controller: AbortController, requestVersion: number) => {
+    const load = useCallback(async (query: ReportsSalesRangeQuery, controller: AbortController, requestVersion: number) => {
         const isCurrent = () => isReportsRequestCurrent(requestVersionRef.current, requestVersion, controller.signal.aborted);
         try {
-            const response = await fetch(`/api/reports/sales?range=${range}`, { cache: "no-store", signal: controller.signal });
+            const response = await fetch(`/api/reports/sales?${buildReportsSalesRangeSearch(query)}`, { cache: "no-store", signal: controller.signal });
                 const parsed = await response.json()
                     .then((body: unknown) => ({ valid: true as const, body }))
                     .catch(() => ({ valid: false as const, body: null }));
@@ -146,16 +157,26 @@ export default function ReportsSalesDashboard() {
     }, []);
 
     useEffect(() => {
+        if (parsedQuery.ok) return;
+        const normalized = new URLSearchParams(search);
+        normalized.set("range", "7d");
+        normalized.delete("start"); normalized.delete("end"); normalized.delete("preset");
+        router.replace(`${pathname}?${normalized.toString()}`);
+    }, [parsedQuery.ok, pathname, router, search]);
+
+    useEffect(() => {
+        if (!parsedQuery.ok) return;
         const controller = new AbortController();
         const requestVersion = ++requestVersionRef.current;
         activeControllerRef.current = controller;
-        void load(selectedRange, controller, requestVersion);
+        setLoading(true); setError(null); setData(null);
+        void load(activeQuery, controller, requestVersion);
         return () => {
             controller.abort();
             if (requestVersionRef.current === requestVersion) requestVersionRef.current += 1;
             if (activeControllerRef.current === controller) activeControllerRef.current = null;
         };
-    }, [load, retryKey, selectedRange]);
+    }, [activeQuery, load, parsedQuery.ok, retryKey, search]);
 
     const invalidateActiveRequest = () => {
         requestVersionRef.current += 1;
@@ -163,14 +184,25 @@ export default function ReportsSalesDashboard() {
         activeControllerRef.current = null;
     };
 
-    const selectRange = (range: ReportsSalesRangeKey) => {
-        if (range === selectedRange) return;
+    const navigate = (query: ReportsSalesRangeQuery) => {
         invalidateActiveRequest();
         setLoading(true);
         setError(null);
         setData(null);
-        setSelectedRange(range);
+        const next = new URLSearchParams(search);
+        next.delete("range"); next.delete("start"); next.delete("end"); next.delete("preset");
+        new URLSearchParams(buildReportsSalesRangeSearch(query)).forEach((value, key) => next.set(key, value));
+        router.push(`${pathname}?${next.toString()}`);
     };
+
+    const selectRange = (range: ReportsSalesRangeKey) => {
+        if (range === "custom") { setPickerOpen(true); return; }
+        if (range === selectedRange) return;
+        navigate({ key: range, start: null, end: null, allTime: false });
+    };
+
+    const closePicker = useCallback(() => { setPickerOpen(false); requestAnimationFrame(() => customTriggerRef.current?.focus()); }, []);
+    const applyCustom = (query: ReportsSalesRangeQuery) => { setPickerOpen(false); navigate(query); requestAnimationFrame(() => customTriggerRef.current?.focus()); };
 
     const retry = () => {
         invalidateActiveRequest();
@@ -186,10 +218,11 @@ export default function ReportsSalesDashboard() {
             <div><h1 className="text-2xl font-bold text-[var(--text-primary)] md:text-3xl">รายงานยอดขาย</h1><p className="mt-2 text-sm text-[var(--text-muted)]">ดูแนวโน้มยอดขาย ช่องทางชำระ และเมนูที่ทำยอด</p>
                 {shouldShowReportsContext(loading, data !== null) && data ? <><p className="mt-2 text-sm font-medium text-[var(--text-secondary)]">{data.context.isAllBranches ? "ทุกสาขา" : data.context.branchName} · อ้างอิงเวลาไทย</p><p className="mt-1 text-xs text-[var(--text-muted)]">{formatReportsDateRange(data.range)}</p></> : null}
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="เลือกช่วงเวลารายงาน">
-                {REPORTS_SALES_RANGE_KEYS.map((range) => <button type="button" key={range} aria-pressed={selectedRange === range} onClick={() => selectRange(range)} className={`min-h-10 min-w-0 rounded-xl border px-2 text-sm font-semibold transition sm:px-4 ${selectedRange === range ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm" : "border-black/10 bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] dark:border-white/10"}`}>{reportsSalesRangeLabels[range]}</button>)}
+            <div className="grid max-w-2xl grid-cols-3 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="เลือกช่วงเวลารายงาน">
+                {REPORTS_SALES_RANGE_KEYS.map((range) => <button type="button" key={range} ref={range === "custom" ? customTriggerRef : undefined} aria-pressed={selectedRange === range} aria-haspopup={range === "custom" ? "dialog" : undefined} onClick={() => selectRange(range)} className={`min-h-11 min-w-0 rounded-xl border px-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:px-4 ${selectedRange === range ? "border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm ring-2 ring-[var(--accent)]/25" : "border-black/10 bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--accent)] dark:border-white/10"}`}>{reportsSalesRangeLabels[range]}</button>)}
             </div>
         </header>
+        {pickerOpen ? <ReportsDateRangePicker open applied={activeQuery} onClose={closePicker} onApply={applyCustom}/> : null}
 
         {loading ? <LoadingSkeleton/> : error ? <Card><div className="flex items-start gap-3"><AlertTriangle className="shrink-0 text-red-600 dark:text-red-300"/><div><h2 className="font-bold text-[var(--text-primary)]">เปิดรายงานไม่ได้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">{error}</p><button type="button" onClick={retry} className="mt-4 min-h-10 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-white">ลองใหม่</button></div></div></Card> : data ? <>
             {shouldShowReportsSalesSituation(data) ? <section aria-labelledby="situation-heading"><Card className="border-[var(--accent)]/25 bg-[var(--accent)]/5"><p className="text-sm font-semibold text-[var(--accent)]">สรุปสถานการณ์ยอดขาย</p><h2 id="situation-heading" className="mt-2 text-lg font-bold leading-7 text-[var(--text-primary)] md:text-xl">{salesSituation(data.summary, data.comparison)}</h2></Card></section> : null}

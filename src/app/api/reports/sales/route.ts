@@ -14,16 +14,15 @@ import {
     buildReportsSalesTrend,
     calculateReportsSalesMetrics,
     getReportsSalesAccessError,
-    isReportsSalesRangeKey,
     normalizeReportsSalesRequestedBranchId,
     resolveReportsSalesBranchScope,
     resolveReportsSalesTimestamp,
     type ReportsSalesOrderItem,
     type ReportsSalesPaidOrder,
     type ReportsSalesPeriod,
-    type ReportsSalesRangeKey,
     type ReportsSalesResponse,
 } from "@/lib/reportsSales";
+import { parseReportsSalesRangeQuery } from "@/lib/reportsSalesRangeQuery";
 
 export const dynamic = "force-dynamic";
 
@@ -187,10 +186,9 @@ async function fetchOrderItems(shopId: string, orderIds: string[]): Promise<Map<
 
 export async function GET(request: Request) {
     try {
-        const requestedRange = new URL(request.url).searchParams.get("range") ?? "today";
-        if (!isReportsSalesRangeKey(requestedRange)) {
-            return NextResponse.json({ error: "Invalid range" }, { status: 400 });
-        }
+        const parsedRange = parseReportsSalesRangeQuery(new URL(request.url).searchParams);
+        if (!parsedRange.ok) return NextResponse.json({ error: parsedRange.error }, { status: 400 });
+        const requestedRange = parsedRange.value;
 
         const identity = await getServerIdentity();
         const accessError = getReportsSalesAccessError(identity);
@@ -216,10 +214,10 @@ export async function GET(request: Request) {
         const currentBranchId = branchScope.branchId;
 
         const now = new Date();
-        const firstPaidOrderAt = requestedRange === "all"
+        const firstPaidOrderAt = requestedRange.allTime
             ? await findFirstPaidOrderAt(currentShopId, currentBranchId)
             : null;
-        const range = buildReportsSalesRange(requestedRange as ReportsSalesRangeKey, now, firstPaidOrderAt);
+        const range = buildReportsSalesRange(requestedRange, now, firstPaidOrderAt);
         const currentPeriod = { startInclusive: range.startInclusive, endExclusive: range.endExclusive };
         const comparisonAvailable = range.comparisonStartInclusive !== null && range.comparisonEndExclusive !== null;
         const comparisonPeriod = comparisonAvailable
