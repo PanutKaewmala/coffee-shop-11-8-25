@@ -472,11 +472,21 @@ export function buildReportsSalesTrend(
         return `${format(startKey, !sameMonth)}–${format(endKey, true)}`;
     };
     for (const key of keys) {
-        const weeklyEnd = addDays(key, 6).localeCompare(reportLastDate) > 0 ? reportLastDate : addDays(key, 6);
+        if (range.granularity === "weekly") {
+            const weeklyEnd = addDays(key, 6).localeCompare(reportLastDate) > 0 ? reportLastDate : addDays(key, 6);
+            buckets.set(key, {
+                key,
+                label: weeklyLabel(key, weeklyEnd),
+                start: bangkokMidnightIso(key),
+                paidSales: 0,
+                paidOrderCount: 0,
+            });
+            continue;
+        }
         buckets.set(key, {
             key,
-            label: range.granularity === "weekly" ? weeklyLabel(key, weeklyEnd) : trendLabel(key, range.granularity),
-            start: range.granularity === "weekly" ? bangkokMidnightIso(key) : trendStart(key, range.granularity),
+            label: trendLabel(key, range.granularity),
+            start: trendStart(key, range.granularity),
             paidSales: 0,
             paidOrderCount: 0,
         });
