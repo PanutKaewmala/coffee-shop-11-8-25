@@ -1,10 +1,60 @@
 import type {
     ReportsSalesComparison,
+    ReportsSalesCalendar,
+    ReportsSalesCalendarDay,
     ReportsSalesGranularity,
     ReportsSalesMetrics,
     ReportsSalesRange,
     ReportsSalesResponse,
 } from "@/lib/reportsSales";
+
+const reportsMonthKey = (date: string) => date.slice(0, 7);
+
+const reportsThaiDayFormatter = new Intl.DateTimeFormat("th-TH", {
+    timeZone: "UTC", day: "numeric", month: "long", year: "numeric",
+});
+
+export function getReportsBangkokToday(now: Date = new Date()): string {
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(now);
+}
+
+export function getDefaultReportsCalendarMonth(calendar: ReportsSalesCalendar, today = getReportsBangkokToday()): string {
+    const latestDay = calendar.days.at(-1);
+    const todayInRange = calendar.days.some((day) => day.date === today);
+    return reportsMonthKey(todayInRange ? today : latestDay?.date ?? today);
+}
+
+export function getDefaultReportsCalendarDay(days: ReportsSalesCalendarDay[], selectedMonth: string, today: string): string | null {
+    const monthDays = days.filter((day) => reportsMonthKey(day.date) === selectedMonth);
+    if (monthDays.some((day) => day.date === today)) return today;
+    return [...monthDays].reverse().find((day) => day.paidSales > 0)?.date ?? monthDays.at(-1)?.date ?? null;
+}
+
+export function getReportsSelectedDayEmptyMessage(date: string, today: string): string {
+    return date === today ? "ยังไม่มียอดขายที่ชำระแล้วในวันนี้" : "ยังไม่มียอดขายที่ชำระแล้วในวันที่เลือก";
+}
+
+export function formatReportsCalendarDayLabel(day: ReportsSalesCalendarDay | undefined, date: string, today: string): string {
+    const formattedDate = reportsThaiDayFormatter.format(new Date(`${date}T00:00:00.000Z`));
+    const todayLabel = date === today ? " วันนี้" : "";
+    if (!day) return `${formattedDate}${todayLabel} ไม่มีข้อมูลในช่วงรายงาน`;
+    return `${formattedDate}${todayLabel} ยอดขายที่ชำระแล้ว ${formatReportsMoney(day.paidSales)} ${day.paidOrderCount.toLocaleString("th-TH")} ออเดอร์`;
+}
+
+export function getReportsCalendarMonthSummary(days: ReportsSalesCalendarDay[]) {
+    const paidDays = days.filter((day) => day.paidSales > 0);
+    const peakDay = paidDays.reduce<ReportsSalesCalendarDay | null>(
+        (peak, day) => !peak || day.paidSales > peak.paidSales ? day : peak,
+        null,
+    );
+    return {
+        paidSales: days.reduce((sum, day) => sum + day.paidSales, 0),
+        paidDayCount: paidDays.length,
+        peakDay,
+    };
+}
 
 const THAI_TIME_ZONE = "Asia/Bangkok";
 

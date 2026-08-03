@@ -61,6 +61,19 @@ export type ReportsSalesTrendBucket = {
     paidOrderCount: number;
 };
 
+export type ReportsSalesCalendarDay = {
+    date: string;
+    paidSales: number;
+    paidOrderCount: number;
+    averagePaidOrderValue: number;
+};
+
+export type ReportsSalesCalendar = {
+    startDateInclusive: string;
+    endDateExclusive: string;
+    days: ReportsSalesCalendarDay[];
+};
+
 export type ReportsSalesPayment = {
     method: "cash" | "promptpay" | "unknown";
     paidSales: number;
@@ -115,6 +128,7 @@ export type ReportsSalesResponse = {
     range: ReportsSalesRange;
     summary: ReportsSalesMetrics;
     comparison: ReportsSalesComparison;
+    calendar: ReportsSalesCalendar;
     trend: ReportsSalesTrendBucket[];
     payments: ReportsSalesPayment[];
     menus: ReportsSalesMenu[];
@@ -314,6 +328,40 @@ export function calculateReportsSalesMetrics(orders: ReportsSalesPaidOrder[]): R
         paidOrderCount,
         averagePaidOrderValue: paidOrderCount > 0 ? paidSales / paidOrderCount : 0,
     };
+}
+
+export function buildReportsSalesCalendar(
+    orders: ReportsSalesPaidOrder[],
+    period: ReportsSalesPeriod,
+): ReportsSalesCalendar {
+    const start = new Date(period.startInclusive);
+    const end = new Date(period.endExclusive);
+    const days: ReportsSalesCalendarDay[] = [];
+    const byDate = new Map<string, ReportsSalesCalendarDay>();
+
+    if (start < end) {
+        const firstDate = dateKey(bangkokParts(start));
+        const lastDate = dateKey(bangkokParts(new Date(end.getTime() - 1)));
+        for (let day = keyToDayNumber(firstDate); day <= keyToDayNumber(lastDate); day += 1) {
+            const date = dayNumberToKey(day);
+            const calendarDay = { date, paidSales: 0, paidOrderCount: 0, averagePaidOrderValue: 0 };
+            days.push(calendarDay);
+            byDate.set(date, calendarDay);
+        }
+    }
+
+    for (const order of orders) {
+        const occurredAt = new Date(order.occurredAt);
+        if (!Number.isFinite(occurredAt.getTime())) continue;
+        const day = byDate.get(dateKey(bangkokParts(occurredAt)));
+        if (!day) continue;
+        day.paidSales += order.total;
+        day.paidOrderCount += 1;
+    }
+    for (const day of days) {
+        day.averagePaidOrderValue = day.paidOrderCount > 0 ? day.paidSales / day.paidOrderCount : 0;
+    }
+    return { startDateInclusive: period.startInclusive, endDateExclusive: period.endExclusive, days };
 }
 
 export function percentChange(current: number, previous: number): number | null {

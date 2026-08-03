@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronUp, ReceiptText } from "lucide-react";
 import Card from "@/components/admin/Card";
+import ReportsSalesCalendar from "@/components/admin/reports/ReportsSalesCalendar";
 import ReportsSalesTrendChart from "@/components/admin/reports/ReportsSalesTrendChart";
 import {
     REPORTS_SALES_RANGE_KEYS,
@@ -116,6 +117,7 @@ export default function ReportsSalesDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retryKey, setRetryKey] = useState(0);
+    const [salesView, setSalesView] = useState<"calendar" | "graph">("calendar");
     const activeControllerRef = useRef<AbortController | null>(null);
     const requestVersionRef = useRef(0);
 
@@ -194,7 +196,10 @@ export default function ReportsSalesDashboard() {
 
             {empty ? <Card><div className="flex items-start gap-3"><ReceiptText className="shrink-0 text-[var(--accent)]"/><div><h2 className="font-bold text-[var(--text-primary)]">ยังไม่มียอดขายที่ชำระแล้วในช่วงนี้</h2><p className="mt-1 text-sm text-[var(--text-muted)]">ลองเลือกช่วงเวลาอื่น หรือตรวจสอบสาขาที่กำลังดู</p></div></div></Card> : <>
                 <section className="space-y-3" aria-labelledby="kpi-heading"><SectionHeading id="kpi-heading" title="ภาพรวมยอดขาย" description="ตัวเลขจากออเดอร์ที่ชำระแล้วในช่วงที่เลือก"/><div className="grid gap-4 md:grid-cols-3">{buildReportsKpis(data).map((kpi) => <Card key={kpi.label}><p className="text-sm text-[var(--text-muted)]">{kpi.label}</p><p className="mt-2 break-words text-xl font-bold text-[var(--text-primary)] md:text-2xl">{kpi.value}</p>{data.comparison.available && kpi.delta !== null ? <Delta amount={kpi.delta} percent={kpi.deltaPercent} kind={kpi.deltaKind}/> : <p className="mt-3 border-t border-black/5 pt-3 text-xs text-[var(--text-muted)] dark:border-white/10">ไม่มีช่วงเปรียบเทียบ</p>}</Card>)}</div></section>
-                <section className="min-w-0 space-y-3" aria-labelledby="trend-heading"><SectionHeading id="trend-heading" title={trendTitle(data.range.granularity)} description="แนวโน้มยอดขายที่ชำระแล้วตามช่วงเวลาจากรายงาน"/><Card className="min-w-0 overflow-hidden"><ReportsSalesTrendChart trend={data.trend} granularity={data.range.granularity}/></Card></section>
+                <section className="min-w-0 space-y-3" aria-labelledby="daily-sales-heading">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><SectionHeading id="daily-sales-heading" title="แนวโน้มยอดขาย" description="ดูยอดขายผ่านปฏิทินรายวันหรือกราฟตามช่วงเวลา"/><div className="inline-flex self-start rounded-xl bg-black/5 p-1 dark:bg-white/10" role="group" aria-label="เลือกรูปแบบยอดขายตามวัน"><button type="button" aria-pressed={salesView === "calendar"} onClick={() => setSalesView("calendar")} className={`min-h-11 rounded-lg px-4 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[var(--surface)] ${salesView === "calendar" ? "bg-[var(--surface)] text-[var(--accent)] shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}`}>ปฏิทิน</button><button type="button" aria-pressed={salesView === "graph"} onClick={() => setSalesView("graph")} className={`min-h-11 rounded-lg px-4 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[var(--surface)] ${salesView === "graph" ? "bg-[var(--surface)] text-[var(--accent)] shadow-sm" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"}`}>กราฟ</button></div></div>
+                    <Card className="min-w-0 overflow-hidden">{salesView === "calendar" ? <ReportsSalesCalendar key={`${data.calendar.startDateInclusive}|${data.calendar.endDateExclusive}`} calendar={data.calendar}/> : <><h3 className="sr-only">{trendTitle(data.range.granularity)}</h3><ReportsSalesTrendChart trend={data.trend} granularity={data.range.granularity}/></>}</Card>
+                </section>
                 <section className="space-y-3" aria-labelledby="payments-heading"><SectionHeading id="payments-heading" title="ช่องทางชำระ" description="สัดส่วนยอดขายและจำนวนออเดอร์แยกตามวิธีชำระ"/><Card><PaymentBreakdown payments={data.payments}/></Card></section>
                 <section className="space-y-3" aria-labelledby="menus-heading"><SectionHeading id="menus-heading" title="เมนูที่ทำรายได้" description="เรียงตามรายได้ตามลำดับที่รายงานส่งมา"/><Card><MenuContribution menus={data.menus}/></Card></section>
             </>}
