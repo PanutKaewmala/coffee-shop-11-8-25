@@ -6,6 +6,7 @@ import type {
     ReportsSalesMetrics,
     ReportsSalesRange,
     ReportsSalesResponse,
+    ReportsSalesTrendBucket,
 } from "@/lib/reportsSales";
 
 const reportsMonthKey = (date: string) => date.slice(0, 7);
@@ -60,11 +61,11 @@ const THAI_TIME_ZONE = "Asia/Bangkok";
 
 export const reportsSalesRangeLabels: Record<ReportsSalesRange["key"], string> = {
     today: "วันนี้",
-    week: "7 วัน",
-    month: "30 วัน",
+    "7d": "7 วัน",
+    "30d": "30 วัน",
+    "90d": "90 วัน",
     year: "ปีนี้",
-    "5year": "5 ปี",
-    all: "ทั้งหมด",
+    custom: "กำหนดเอง",
 };
 
 export const REPORTS_MENU_EMPTY_MESSAGE = "ยังไม่มีข้อมูลเมนูสำหรับช่วงนี้";
@@ -85,22 +86,30 @@ export function formatReportsDateRange(range: Pick<ReportsSalesRange, "startIncl
         month: "short",
         year: "numeric",
     });
-    return `${formatter.format(new Date(range.startInclusive))} – ${formatter.format(new Date(range.endExclusive))}`;
+    return `${formatter.format(new Date(range.startInclusive))} – ${formatter.format(new Date(new Date(range.endExclusive).getTime() - 1))}`;
 }
 
 export function formatTrendTick(value: string, granularity: ReportsSalesGranularity): string {
     const date = new Date(value);
     const options: Intl.DateTimeFormatOptions = granularity === "hourly"
         ? { timeZone: THAI_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }
-        : granularity === "daily"
+        : granularity === "daily" || granularity === "weekly"
             ? { timeZone: THAI_TIME_ZONE, day: "numeric", month: "short" }
             : { timeZone: THAI_TIME_ZONE, month: "short", year: "2-digit" };
     return new Intl.DateTimeFormat("th-TH", options).format(date);
 }
 
+export function formatReportsTrendBucketLabel(
+    bucket: Pick<ReportsSalesTrendBucket, "label" | "start">,
+    granularity: ReportsSalesGranularity,
+): string {
+    return granularity === "weekly" ? bucket.label : formatTrendTick(bucket.start, granularity);
+}
+
 export function trendTitle(granularity: ReportsSalesGranularity): string {
     if (granularity === "hourly") return "ยอดขายรายชั่วโมง";
     if (granularity === "daily") return "ยอดขายรายวัน";
+    if (granularity === "weekly") return "ยอดขายรายสัปดาห์";
     return "ยอดขายรายเดือน";
 }
 
@@ -159,6 +168,9 @@ export function hasReportsDataQualityIssues(dataQuality: ReportsSalesResponse["d
 }
 
 export function reportsErrorMessage(status: number, apiError: string | null): string {
+    if (status === 400) return apiError === "Custom range exceeds 10 years"
+        ? "ช่วงกำหนดเองต้องไม่เกิน 10 ปี กรุณาใช้ตั้งแต่เริ่มใช้สำหรับช่วงที่ยาวกว่านั้น"
+        : "ช่วงเวลารายงานไม่ถูกต้อง กรุณาเลือกช่วงเวลาใหม่";
     if (status === 401) return "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่";
     if (status === 403 && apiError === "Owner only") return "หน้านี้สำหรับเจ้าของร้านเท่านั้น";
     if (status === 403 && apiError === "Branch not in current shop") return "สาขาที่เลือกไม่ถูกต้อง กรุณาเลือกสาขาใหม่หรือทุกสาขา";
