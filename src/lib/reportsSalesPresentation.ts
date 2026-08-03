@@ -6,6 +6,7 @@ import type {
     ReportsSalesMetrics,
     ReportsSalesRange,
     ReportsSalesResponse,
+    ReportsSalesTrendBucket,
 } from "@/lib/reportsSales";
 
 const reportsMonthKey = (date: string) => date.slice(0, 7);
@@ -96,6 +97,13 @@ export function formatTrendTick(value: string, granularity: ReportsSalesGranular
             ? { timeZone: THAI_TIME_ZONE, day: "numeric", month: "short" }
             : { timeZone: THAI_TIME_ZONE, month: "short", year: "2-digit" };
     return new Intl.DateTimeFormat("th-TH", options).format(date);
+}
+
+export function formatReportsTrendBucketLabel(
+    bucket: Pick<ReportsSalesTrendBucket, "label" | "start">,
+    granularity: ReportsSalesGranularity,
+): string {
+    return granularity === "weekly" ? bucket.label : formatTrendTick(bucket.start, granularity);
 }
 
 export function trendTitle(granularity: ReportsSalesGranularity): string {
