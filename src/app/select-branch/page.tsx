@@ -3,6 +3,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import SelectBranchClient from "./SelectBranchClient";
+import { safeInternalPath } from "@/lib/accessPolicy.mjs";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSupabaseServer, getServerIdentity } from "@/lib/supabaseServer";
 
@@ -25,20 +26,20 @@ export default async function SelectBranchPage({
     const nextParam = sp?.next;
     const nextStr = Array.isArray(nextParam) ? nextParam[0] : nextParam;
 
-    const next =
-        typeof nextStr === "string" && nextStr.startsWith("/")
-            ? nextStr
-            : "/admin";
+    const next = safeInternalPath(nextStr, "/admin");
 
-    const { user, currentShopId } = await getServerIdentity();
+    const { user, currentShopId, currentShopRole, hasAnyShopMembership } = await getServerIdentity();
 
     if (!user) {
         redirect(`/login?next=${encodeURIComponent(`/select-branch?next=${next}`)}`);
     }
 
     if (!currentShopId) {
+        if (!hasAnyShopMembership) redirect("/no-access");
         redirect(`/admin/select-shop?next=${encodeURIComponent(next)}`);
     }
+
+    if (!currentShopRole) redirect("/no-access");
 
     const supabase = await getSupabaseServer();
 

@@ -538,7 +538,7 @@ function parseAnalytics(data: unknown): Omit<AnalyticsResponse, "ingredient"> {
 
 type LogRange = "today" | "7d" | "all";
 
-export default function IngredientDetailPage() {
+export default function IngredientDetailClient() {
     const params = useParams();
     const idParam = params?.id;
     const ingredientId = Array.isArray(idParam) ? idParam[0] : idParam;

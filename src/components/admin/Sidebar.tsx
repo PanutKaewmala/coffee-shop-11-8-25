@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
+import { isNavigationPathActive, navigationForRole } from "@/lib/navigationPolicy.mjs";
 
 /* ================================
    Types
@@ -22,55 +23,11 @@ export interface SidebarProps {
     currentBranchName?: string | null;
 }
 
-type NavItem = {
-    label: string;
-    path: string;
-    children?: NavItem[];
-    badge?: string;
-};
-
-/* ================================
-   Navigation config
-================================ */
-const navSections: { title: string; items: NavItem[] }[] = [
-    {
-        title: "ภาพรวม",
-        items: [
-            { label: "ภาพรวมวันนี้", path: "/admin" },
-            { label: "รายงาน", path: "/admin/reports" },
-        ],
-    },
-    {
-        title: "จัดการสินค้า",
-        items: [
-            { label: "เมนู", path: "/admin/menu" },
-            {
-                label: "วัตถุดิบ",
-                path: "/admin/ingredients",
-                children: [{ label: "คลังเก่า", path: "/admin/ingredients/archived" }],
-            },
-            { label: "สูตรเมนู", path: "/admin/recipes" },
-            { label: "ประวัติสต็อก", path: "/admin/stock" },
-        ],
-    },
-    {
-        title: "การดำเนินธุรกิจ",
-        items: [
-            { label: "ออเดอร์", path: "/admin/orders" },
-            { label: "ปิดยอดวัน", path: "/admin/daily-close" },
-            { label: "ข่าวสาร", path: "/admin/news" },
-            { label: "สาขา", path: "/admin/branch" },
-            { label: "ติดต่อ", path: "/admin/contact" },
-        ],
-    },
-];
-
 /* ================================
    Helpers
 ================================ */
 function isActivePath(pathname: string, itemPath: string) {
-    if (itemPath === "/admin") return pathname === "/admin";
-    return pathname === itemPath || pathname.startsWith(itemPath + "/");
+    return isNavigationPathActive(pathname, itemPath);
 }
 
 /* ================================
@@ -86,9 +43,7 @@ export default function Sidebar({
     currentBranchName,
 }: SidebarProps) {
     const pathname = usePathname();
-    const visibleSections = currentShopRole === "owner"
-        ? navSections
-        : navSections.filter((section) => section.title !== "ภาพรวม");
+    const visibleSections = navigationForRole(currentShopRole);
 
     const shopLabel =
         currentShopName ??
@@ -178,11 +133,6 @@ export default function Sidebar({
                                             >
                                                 <div className="flex items-center justify-between gap-2">
                                                     <span>{item.label}</span>
-                                                    {item.badge ? (
-                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/15">
-                                                            {item.badge}
-                                                        </span>
-                                                    ) : null}
                                                 </div>
                                             </Link>
 
@@ -207,11 +157,6 @@ export default function Sidebar({
                                                             >
                                                                 <div className="flex items-center justify-between gap-2">
                                                                     <span>{child.label}</span>
-                                                                    {child.badge ? (
-                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/20">
-                                                                            {child.badge}
-                                                                        </span>
-                                                                    ) : null}
                                                                 </div>
                                                             </Link>
                                                         );

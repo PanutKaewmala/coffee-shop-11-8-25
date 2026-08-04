@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { safeInternalPath } from "@/lib/accessPolicy.mjs";
 
 type Branch = {
     id: string;
@@ -12,8 +13,7 @@ type Branch = {
 };
 
 function safeNext(raw: string | undefined) {
-    if (!raw) return "/admin";
-    return raw.startsWith("/") ? raw : "/admin";
+    return safeInternalPath(raw, "/admin");
 }
 
 async function postJSON<T extends Record<string, unknown>>(
