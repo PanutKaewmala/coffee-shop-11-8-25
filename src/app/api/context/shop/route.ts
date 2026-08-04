@@ -4,8 +4,10 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
+import { safeInternalPath } from "@/lib/accessPolicy.mjs";
+import { shopSwitchPlan } from "@/lib/contextPolicy.mjs";
 
-type Body = { shop_id?: string };
+type Body = { shop_id?: string; next?: string };
 
 function jsonError(message: string, status = 400) {
     return NextResponse.json({ ok: false, error: message }, { status });
@@ -37,6 +39,8 @@ export async function GET(req: Request) {
         if (mErr) return jsonError(mErr.message, 500);
 
         if (!member) {
+            const { error: profileErr } = await getSupabaseAdmin().from("profiles").update({ current_shop_id: null, current_branch_id: null }).eq("id", user.id);
+            if (profileErr) return jsonError(profileErr.message, 500);
             const cookieStore = await cookies();
             cookieStore.set({
                 name: "current_shop_id",
@@ -105,11 +109,24 @@ export async function POST(req: Request) {
     if (!member) return jsonError("Not a member of this shop", 403);
 
     const admin = getSupabaseAdmin();
+    const { data: branchRows, error: branchErr } = await admin
+        .from("branch")
+        .select("id,is_primary,created_at")
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: true });
+    if (branchErr) return jsonError(branchErr.message, 500);
+
+    const plan = shopSwitchPlan(
+        (branchRows ?? []).map((branch) => ({ id: branch.id, isPrimary: branch.is_primary })),
+        safeInternalPath(body.next, "/admin"),
+        null
+    );
+    const selectedBranchId = plan.branch.action === "select" ? plan.branch.branchId : null;
     const { error: profileErr } = await admin
         .from("profiles")
         .update({
             current_shop_id: shopId,
-            current_branch_id: null,
+            current_branch_id: selectedBranchId,
         })
         .eq("id", user.id);
 
@@ -126,16 +143,13 @@ export async function POST(req: Request) {
         maxAge: 60 * 60 * 24 * 30,
     });
 
-    // Clear branch context on shop switch.
-    cookieStore.set({
-        name: "current_branch_id",
-        value: "",
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 0,
+    cookieStore.set(selectedBranchId ? {
+        name: "current_branch_id", value: selectedBranchId, httpOnly: true, sameSite: "lax",
+        secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30,
+    } : {
+        name: "current_branch_id", value: "", httpOnly: true, sameSite: "lax",
+        secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, branch_id: selectedBranchId, href: plan.href, context_ready: plan.readyToReloadDestination });
 }

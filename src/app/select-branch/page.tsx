@@ -69,6 +69,7 @@ export default async function SelectBranchPage({
             error={error?.message}
             autoPick
             next={next}
+            role={currentShopRole}
         />
     );
 }

@@ -1,0 +1,23 @@
+import "server-only";
+
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { getSupabaseServer } from "@/lib/supabaseServer";
+import { logoutOutcome, logoutPlan } from "@/lib/contextPolicy.mjs";
+
+export async function POST() {
+    const supabase = await getSupabaseServer();
+    const { error } = await supabase.auth.signOut();
+    const outcome = logoutOutcome(error);
+    if (!outcome.ok) {
+        return NextResponse.json({ ok: false, error: "Unable to sign out" }, { status: 500 });
+    }
+
+    const cookieStore = await cookies();
+    const plan = logoutPlan();
+    for (const name of plan.clearCookies) {
+        cookieStore.set({ name, value: "", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0 });
+    }
+
+    return NextResponse.json({ ok: true, destination: plan.destination });
+}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { safeInternalPath } from "@/lib/accessPolicy.mjs";
+import LogoutButton from "@/components/LogoutButton";
 
 type Branch = {
     id: string;
@@ -42,11 +43,13 @@ export default function SelectBranchClient({
     error,
     autoPick,
     next,
+    role,
 }: {
     branches: Branch[];
     error?: string;
     autoPick?: boolean;
     next?: string;
+    role: "owner" | "staff";
 }) {
     const router = useRouter();
 
@@ -160,7 +163,7 @@ export default function SelectBranchClient({
                                                         ) : null}
                                                     </div>
                                                     <div className="text-xs text-[var(--text-muted)] truncate">
-                                                        {b.address ?? b.id}
+                                                        {b.address ?? "ไม่ระบุที่อยู่"}
                                                     </div>
                                                 </div>
                                                 <div className="text-sm text-[var(--text-secondary)]">
@@ -174,25 +177,19 @@ export default function SelectBranchClient({
                         </>
                     ) : (
                         <div className="mt-5 rounded-xl border border-[var(--text-muted)]/20 bg-[var(--background)] p-4">
-                            <div className="text-sm font-medium">ยังไม่มีสาขาในร้านนี้</div>
+                            <div className="text-sm font-medium">{role === "owner" ? "ร้านนี้ยังไม่มีสาขา" : "ไม่มีสาขาที่พร้อมให้ใช้งาน"}</div>
                             <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                                ให้สร้างสาขาแรกก่อน แล้วค่อยกลับมาเลือกสาขา
+                                {role === "owner" ? "สร้างสาขาแรกก่อน แล้วค่อยกลับมาเลือกสาขา" : "กรุณาติดต่อ Owner เพื่อเพิ่มสาขาให้ร้านนี้"}
                             </div>
                             <div className="mt-4 flex flex-wrap gap-2">
-                                <button
+                                {role === "owner" ? <button
                                     type="button"
                                     onClick={() => router.push("/admin/branch")}
                                     className="rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white hover:opacity-90"
                                 >
                                     ไปหน้าจัดการสาขา
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => router.push("/admin")}
-                                    className="rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--background)]"
-                                >
-                                    ไปหน้าแอดมิน
-                                </button>
+                                </button> : null}
+                                <LogoutButton className="rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--background)]" />
                             </div>
                         </div>
                     )}

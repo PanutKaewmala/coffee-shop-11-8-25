@@ -44,6 +44,7 @@ export default function AdminShell({
                     onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
                     currentShopId={currentShopId}
                     currentBranchId={currentBranchId}
+                    currentShopRole={currentShopRole}
                     onContextLoaded={handleContextLoaded}
                 />
 
