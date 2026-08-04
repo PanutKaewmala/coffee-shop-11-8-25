@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import type { ReceiptSettings } from "@/lib/types";
 
 /* =========================
@@ -628,6 +629,7 @@ export default function POSClient() {
   >(null);
   const [configuredMenuId, setConfiguredMenuId] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const mobileAddLockRef = useRef(false);
 
     // key: menu_id -> variant_id
@@ -872,6 +874,10 @@ export default function POSClient() {
   const closeMobileOverlays = useCallback(() => {
     setConfiguredMenuId(null);
     setMobileCartOpen(false);
+  }, []);
+
+  useEffect(() => {
+    setPortalTarget(document.body);
   }, []);
 
   useEffect(() => {
@@ -1368,6 +1374,87 @@ export default function POSClient() {
     [receiptPrintMode],
     );
 
+  const cartPanel = (
+    <section
+      className={`${mobileCartOpen ? "flex h-[100dvh]" : "hidden"} fixed inset-0 z-[10000] flex-col bg-background text-text-primary md:static md:z-auto md:flex md:h-auto md:min-h-0 md:w-[42%] md:flex-none`}
+      role={mobileCartOpen ? "dialog" : undefined}
+      aria-modal={mobileCartOpen ? "true" : undefined}
+      aria-labelledby="cart-title"
+    >
+      <header className="flex flex-none items-center justify-between gap-3 border-b border-[var(--text-muted)]/20 bg-surface px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:bg-transparent md:px-4 md:pt-4">
+        <button type="button" onClick={() => setMobileCartOpen(false)} className="min-h-11 min-w-11 rounded-xl border border-[var(--text-muted)]/30 md:hidden" aria-label="ปิดตะกร้า">←</button>
+        <h2 id="cart-title" className="text-xl font-bold text-text-primary lg:text-2xl">ตะกร้า</h2>
+        <span className="text-sm text-text-muted md:hidden">{cartItemCount} ชิ้น</span>
+        <div className="hidden text-xs text-text-muted md:block">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
+      </header>
+
+      {cart.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+          <p className="text-text-muted">ยังไม่มีรายการในตะกร้า</p>
+          <button type="button" onClick={() => setMobileCartOpen(false)} className="min-h-11 rounded-xl border border-accent px-5 font-semibold text-accent md:hidden">กลับไปเลือกเมนู</button>
+        </div>
+      ) : (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-4">
+            {dailyCloseLoading ? <div className="mb-3 rounded-xl border border-[var(--text-muted)]/20 bg-surface p-3 text-sm text-text-muted">กำลังตรวจสอบสถานะปิดบิล...</div> : null}
+            {isBusinessDayClosed && businessDate ? <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/15 p-3 text-sm font-medium text-red-700">ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้</div> : null}
+            {dailyCloseError && !dailyCloseLoading && !isBusinessDayClosed ? <div className="mb-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700">{dailyCloseError}</div> : null}
+
+            <div className="space-y-3">
+              {groupedCart.map((group) => (
+                <div key={group.menu_id} className="rounded-lg border border-[var(--text-muted)]/20 bg-surface p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><div className="break-words font-semibold text-text-primary">{group.menu_name}</div><div className="text-xs text-text-muted">รวม {group.groupQty} ชิ้น</div></div>
+                    <div className="font-bold text-text-primary">{formatPrice(group.groupTotal)}</div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {group.lines.slice().sort((a, b) => getCartVariantLabel(a).localeCompare(getCartVariantLabel(b))).map((item) => (
+                      <div key={item.id} className={["flex items-center justify-between gap-2 rounded-md px-2 py-2 transition", lastTouchedVariantId === item.id ? "bg-accent/15 ring-1 ring-accent/50" : ""].join(" ")}>
+                        <div className="min-w-0"><div className="break-words text-sm text-text-secondary">• {item.menu_name} / {getCartVariantLabel(item)}</div><div className="text-xs text-text-muted">{item.qty} × {formatPrice(item.price)}</div></div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button type="button" onClick={() => decreaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/20 text-text-primary" aria-label={`ลดจำนวน ${item.menu_name}`}>−</button>
+                          <span className="min-w-7 text-center text-sm text-text-primary">{item.qty}</span>
+                          <button type="button" onClick={() => increaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/20 text-text-primary" aria-label={`เพิ่มจำนวน ${item.menu_name}`}>+</button>
+                          <button type="button" onClick={() => removeItem(item.id)} className="h-11 rounded-md bg-[var(--text-muted)]/20 px-3 text-sm text-text-secondary">ลบ</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 space-y-3 border-t border-[var(--text-muted)]/20 pt-4">
+              <div className="text-xs text-text-muted">วิธีจ่ายเงิน</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setPaymentMethod("cash")} aria-pressed={paymentMethod === "cash"} className={["min-h-11 flex-1 rounded-lg border text-sm", paymentMethod === "cash" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>เงินสด</button>
+                <button type="button" onClick={() => setPaymentMethod("promptpay")} aria-pressed={paymentMethod === "promptpay"} className={["min-h-11 flex-1 rounded-lg border text-sm", paymentMethod === "promptpay" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>พร้อมเพย์ / QR</button>
+              </div>
+              {paymentMethod === "cash" ? (
+                <div className="space-y-3">
+                  <label className="block text-xs text-text-muted" htmlFor="pos-paid-amount">รับเงิน (บาท)</label>
+                  <input id="pos-paid-amount" type="number" inputMode="decimal" min="0" step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} placeholder="กรอกจำนวนเงินที่รับ" className="min-h-11 w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-text-primary" />
+                  {(() => { const paid = parseNumberInput(paidAmount); if (paid == null) return null; return paid >= total ? <div className="text-sm text-green-600">เงินทอน: {formatPrice(paid - total)}</div> : <div className="text-sm text-red-600">เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}</div>; })()}
+                  <div><div className="mb-2 text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div><div className="flex flex-wrap gap-2"><button type="button" onClick={setExactCash} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-sm">พอดี ฿{total}</button>{CASH_PRESET_AMOUNTS.filter((amount) => amount >= total).map((amount) => <button key={amount} type="button" onClick={() => setCashPreset(amount)} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-sm">฿{amount}</button>)}</div></div>
+                  <div><div className="mb-2 text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div><div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{CASH_ADD_AMOUNTS.map((amount) => <button key={amount} type="button" onClick={() => addCashAmount(amount)} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm">+{amount}</button>)}</div></div>
+                  <button type="button" onClick={clearPaidAmount} className="min-h-11 w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary">ล้าง</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <footer className="flex-none border-t border-[var(--text-muted)]/20 bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4">
+            <div className="mb-3 flex justify-between text-lg font-bold text-text-primary"><span>ยอดรวมทั้งหมด</span><span>{formatPrice(total)}</span></div>
+            <div className="grid grid-cols-[auto_1fr] gap-2">
+              <button type="button" onClick={clearCart} disabled={loading} className="min-h-12 rounded-xl bg-[var(--text-muted)]/20 px-3 text-sm text-text-secondary disabled:opacity-50">ล้างตะกร้า</button>
+              <button type="button" onClick={() => void checkout()} disabled={loading || !canCashCheckout || isBusinessDayClosed} className="min-h-12 rounded-xl bg-accent px-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{loading ? "กำลังปิดบิล..." : "ปิดบิล"}</button>
+            </div>
+          </footer>
+        </>
+      )}
+    </section>
+  );
+
     /* -------------------- RENDER -------------------- */
     return (
     <div className="flex min-h-full flex-col bg-background pb-24 md:h-screen md:flex-row md:pb-0 text-text-primary">
@@ -1601,9 +1688,9 @@ export default function POSClient() {
                 </div>
             </div>
 
-      {configuredMenu ? (
+      {configuredMenu && portalTarget ? createPortal((
         <div
-          className="fixed inset-0 z-50 flex items-end bg-black/55 md:hidden"
+          className="fixed inset-0 z-[10000] flex h-[100dvh] items-end bg-black/55 md:hidden"
           onClick={() => setConfiguredMenuId(null)}
         >
           <section
@@ -1744,291 +1831,9 @@ export default function POSClient() {
             </div>
           </section>
         </div>
-      ) : null}
+      ), portalTarget) : null}
 
-            {/* RIGHT: Cart */}
-      <div
-        className={`${mobileCartOpen ? "flex" : "hidden"} fixed inset-0 z-40 flex-col overflow-y-auto bg-background p-3 pb-28 md:static md:z-auto md:flex md:min-h-0 md:w-[42%] md:flex-none md:overflow-y-auto md:p-4`}
-        role={mobileCartOpen ? "dialog" : undefined}
-        aria-modal={mobileCartOpen ? "true" : undefined}
-        aria-labelledby="cart-title"
-      >
-        <div className="flex flex-row items-center justify-between gap-2 lg:gap-3 mb-3 lg:mb-4">
-          <button
-            type="button"
-            onClick={() => setMobileCartOpen(false)}
-            className="min-h-11 min-w-11 rounded-xl border border-[var(--text-muted)]/30 md:hidden"
-            aria-label="ปิดตะกร้า"
-          >
-            ←
-          </button>
-          <h2
-            id="cart-title"
-            className="text-xl lg:text-2xl font-bold text-text-primary"
-          >
-            ตะกร้า
-          </h2>
-          <span className="text-sm text-text-muted md:hidden">
-            {cartItemCount} ชิ้น
-          </span>
-          <div className="hidden text-xs text-text-muted md:block">
-            Enter = ปิดบิล • Esc = ล้างตะกร้า
-          </div>
-                </div>
-
-                {dailyCloseLoading && (
-                    <div className="mb-3 rounded-xl border border-[var(--text-muted)]/20 bg-surface p-3 text-sm text-text-muted">
-                        กำลังตรวจสอบสถานะปิดบิล...
-                    </div>
-                )}
-                {isBusinessDayClosed && businessDate && (
-                    <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/15 p-3 text-sm font-medium text-red-700">
-                        ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้
-                    </div>
-                )}
-                {dailyCloseError && !dailyCloseLoading && !isBusinessDayClosed && (
-                    <div className="mb-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700">
-                        {dailyCloseError}
-                    </div>
-                )}
-
-                <div className="space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:space-y-3">
-                    {groupedCart.length === 0 ? (
-            <div className="space-y-3 p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
-              <p>ยังไม่มีรายการในตะกร้า</p>
-              <button
-                type="button"
-                onClick={() => setMobileCartOpen(false)}
-                className="min-h-11 w-full rounded-xl border border-accent px-3 font-semibold text-accent md:hidden"
-              >
-                กลับไปเลือกเมนู
-              </button>
-                        </div>
-                    ) : (
-                        groupedCart.map((g) => (
-                            <div
-                                key={g.menu_id}
-                                className="p-3 border border-[var(--text-muted)]/20 rounded-lg bg-surface"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="font-semibold text-text-primary truncate">
-                                            {g.menu_name}
-                                        </div>
-                                        <div className="text-xs text-text-muted">
-                                            รวม {g.groupQty} ชิ้น
-                                        </div>
-                                    </div>
-
-                  <div className="font-bold text-text-primary">
-                    {formatPrice(g.groupTotal)}
-                  </div>
-                                </div>
-
-                                <div className="mt-2 lg:mt-3 space-y-2 lg:space-y-2">
-                                    {g.lines
-                                        .slice()
-                    .sort((a, b) =>
-                      getCartVariantLabel(a).localeCompare(
-                        getCartVariantLabel(b),
-                      ),
-                    )
-                                        .map((it) => (
-                                            <div
-                                                key={it.id}
-                                                className={[
-                                                    "flex items-center justify-between gap-2 lg:gap-3 rounded-md px-2 py-2 transition",
-                                                    lastTouchedVariantId === it.id
-                                                        ? "bg-accent/15 ring-1 ring-accent/50"
-                                                        : "",
-                                                ].join(" ")}
-                                            >
-                                                <div className="min-w-0">
-                                                    <div className="text-sm text-text-secondary break-words">
-                                                        • {it.menu_name} / {getCartVariantLabel(it)}
-                                                    </div>
-                                                    <div className="text-xs text-text-muted">
-                                                        {it.qty} × {formatPrice(it.price)}
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => decreaseQty(it.id)}
-                                                        className="h-9 w-9 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
-                                                    >
-                                                        -
-                                                    </button>
-
-                                                    <span className="min-w-7 text-center text-sm text-text-primary">
-                                                        {it.qty}
-                                                    </span>
-
-                                                    <button
-                                                        onClick={() => increaseQty(it.id)}
-                                                        className="h-9 w-9 rounded-md bg-accent/20 text-text-primary active:scale-[0.98]"
-                                                    >
-                                                        +
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() => removeItem(it.id)}
-                                                        className="px-3 h-9 text-sm rounded-md bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98]"
-                                                    >
-                                                        ลบ
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-
-                <div className="mt-3 border-t border-[var(--text-muted)]/20 pt-3 lg:mt-4 lg:pt-4 space-y-2 lg:space-y-3">
-                    <div className="text-xs text-text-muted">วิธีจ่ายเงิน</div>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setPaymentMethod("cash")}
-                            className={[
-                                "flex-1 py-2.5 rounded-lg text-sm border transition",
-                                paymentMethod === "cash"
-                                    ? "bg-accent text-white border-accent"
-                                    : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
-                            ].join(" ")}
-                        >
-                            เงินสด
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setPaymentMethod("promptpay")}
-                            className={[
-                                "flex-1 py-2.5 rounded-lg text-sm border transition",
-                                paymentMethod === "promptpay"
-                                    ? "bg-accent text-white border-accent"
-                                    : "bg-surface text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
-                            ].join(" ")}
-                        >
-                            พร้อมเพย์ / QR
-                        </button>
-                    </div>
-
-                    {paymentMethod === "cash" && (
-                        <div className="space-y-2">
-                            <div className="text-xs text-text-muted">รับเงิน (บาท)</div>
-                            <input
-                                type="number"
-                                inputMode="numeric"
-                                min="0"
-                                step="0.01"
-                                value={paidAmount}
-                                onChange={(e) => setPaidAmount(e.target.value)}
-                                placeholder="กรอกจำนวนเงินที่รับ"
-                                className="w-full px-3 py-2.5 rounded-lg bg-surface border border-[var(--text-muted)]/20 text-text-primary"
-                            />
-                            {(() => {
-                                const paid = parseNumberInput(paidAmount);
-                                if (paid == null || total <= 0) return null;
-                                if (paid >= total) {
-                                    const change = paid - total;
-                                    return (
-                                        <div className="text-sm text-green-600">
-                                            เงินทอน: {formatPrice(change)}
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div className="text-sm text-red-600">
-                                        เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}
-                                    </div>
-                                );
-                            })()}
-
-                            <div className="space-y-1.5 lg:space-y-2 pt-1">
-                <div className="text-xs text-text-muted">
-                  รับเงินอย่างรวดเร็ว
-                </div>
-                                <div className="flex flex-wrap gap-1.5 lg:gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={setExactCash}
-                                        className="px-2.5 py-1.5 lg:px-3 lg:py-2 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
-                                    >
-                                        พอดี ฿{total}
-                                    </button>
-                  {CASH_PRESET_AMOUNTS.filter((a) => a >= total).map(
-                    (amount) => (
-                                        <button
-                                            key={amount}
-                                            type="button"
-                                            onClick={() => setCashPreset(amount)}
-                                            className="px-2.5 py-1.5 lg:px-3 lg:py-2 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
-                                        >
-                                            ฿{amount}
-                                        </button>
-                    ),
-                  )}
-                                </div>
-                            </div>
-
-                            <div className="space-y-1.5 lg:space-y-2">
-                <div className="text-xs text-text-muted">
-                  เพิ่มจำนวนเงินที่รับ
-                </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 lg:gap-2">
-                                    {CASH_ADD_AMOUNTS.map((amount) => (
-                                        <button
-                                            key={amount}
-                                            type="button"
-                                            onClick={() => addCashAmount(amount)}
-                                            className="py-1.5 text-sm rounded-lg border border-[var(--text-muted)]/20 bg-surface text-text-secondary hover:bg-accent/20 transition"
-                                        >
-                                            +{amount}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={clearPaidAmount}
-                                className="w-full py-2 lg:py-2.5 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary hover:bg-[var(--text-muted)]/30 transition"
-                            >
-                                ล้าง
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="flex justify-between text-lg font-bold text-text-primary">
-                        <span>ยอดรวมทั้งหมด</span>
-                        <span>{formatPrice(total)}</span>
-                    </div>
-
-                    <button
-                        onClick={clearCart}
-                        disabled={loading || cart.length === 0}
-                        className="mt-3 w-full py-3 rounded-lg bg-[var(--text-muted)]/20 text-text-secondary hover:bg-[var(--text-muted)]/30 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        ลบสินค้าทั้งหมด
-                    </button>
-
-                    <button
-                        onClick={() => void checkout()}
-            disabled={
-              loading ||
-              cart.length === 0 ||
-              !canCashCheckout ||
-              isBusinessDayClosed
-            }
-            className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-10 flex min-h-14 items-center justify-between rounded-xl bg-accent px-4 text-lg font-bold text-white shadow-2xl transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 md:static md:mt-4 md:block md:w-full md:py-3.5 md:text-xl md:shadow-none"
-                    >
-            <span className="md:hidden">ยอดรวม {formatPrice(total)}</span>
-            <span>{loading ? "กำลังปิดบิล..." : "ปิดบิล"}</span>
-                    </button>
-                </div>
-            </div>
+      {mobileCartOpen && portalTarget ? createPortal(cartPanel, portalTarget) : cartPanel}
 
       {cart.length > 0 && !configuredMenu && !mobileCartOpen ? (
         <button
