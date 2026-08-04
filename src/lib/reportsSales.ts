@@ -319,6 +319,12 @@ export function buildReportsSalesRange(
         granularity = inclusiveDays <= 31 ? "daily" : inclusiveDays <= 180 ? "weekly" : "monthly";
     }
 
+    // Exact midnight is a valid empty half-open period. Preserve its logical
+    // Bangkok boundary instead of borrowing time from the previous day.
+    if (new Date(startInclusive).getTime() === new Date(endExclusive).getTime()) {
+        endExclusive = startInclusive;
+    }
+
     return {
         key,
         timezone: REPORTS_SALES_TIME_ZONE,
