@@ -78,9 +78,22 @@ export default function AdminNavbar({
     };
 
     const handleLogout = async () => {
-        await fetch("/api/auth/logout", { method: "POST" });
-        router.replace("/login");
-        router.refresh();
+        setSwitching(true);
+        setErr(null);
+        try {
+            const response = await fetch("/api/auth/logout", { method: "POST" });
+            const result = await response.json().catch(() => ({})) as { destination?: string; error?: string };
+            if (!response.ok || !result.destination) {
+                setErr(result.error ?? "ออกจากระบบไม่สำเร็จ");
+                return;
+            }
+            router.replace(result.destination);
+            router.refresh();
+        } catch {
+            setErr("ออกจากระบบไม่สำเร็จ");
+        } finally {
+            setSwitching(false);
+        }
     };
 
     const shopLabel = useMemo(() => {
@@ -279,6 +292,7 @@ export default function AdminNavbar({
 
                     <button
                         onClick={handleLogout}
+                        disabled={switching}
                         className="flex items-center gap-2 bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:bg-[var(--accent-dark)] transition-colors shadow-sm"
                     >
                         <LogOut size={16} />

@@ -3,11 +3,15 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseServer } from "@/lib/supabaseServer";
-import { logoutPlan } from "@/lib/contextPolicy.mjs";
+import { logoutOutcome, logoutPlan } from "@/lib/contextPolicy.mjs";
 
 export async function POST() {
     const supabase = await getSupabaseServer();
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    const outcome = logoutOutcome(error);
+    if (!outcome.ok) {
+        return NextResponse.json({ ok: false, error: "Unable to sign out" }, { status: 500 });
+    }
 
     const cookieStore = await cookies();
     const plan = logoutPlan();

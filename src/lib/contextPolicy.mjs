@@ -41,3 +41,17 @@ export const CONTEXT_COOKIE_NAMES = ["current_shop_id", "current_branch_id"];
 export function logoutPlan() {
     return { destination: LOGOUT_DESTINATION, clearCookies: [...CONTEXT_COOKIE_NAMES] };
 }
+
+/** @param {{ sourceError?: unknown, profileError?: unknown }} [input] */
+export function contextMutationOutcome({ sourceError = null, profileError = null } = {}) {
+    if (sourceError) return { ok: false, stage: "source", mutateCookies: false };
+    if (profileError) return { ok: false, stage: "profile", mutateCookies: false };
+    return { ok: true, stage: "complete", mutateCookies: true };
+}
+
+/** @param {unknown} error */
+export function logoutOutcome(error) {
+    return error
+        ? { ok: false, destination: null, clearCookies: false }
+        : { ok: true, destination: LOGOUT_DESTINATION, clearCookies: true };
+}

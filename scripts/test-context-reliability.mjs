@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { safeInternalPath } from "../src/lib/accessPolicy.mjs";
-import { logoutPlan, resolveBranchContext, resolveShopContext, shopSwitchPlan } from "../src/lib/contextPolicy.mjs";
+import { contextMutationOutcome, logoutOutcome, logoutPlan, resolveBranchContext, resolveShopContext, shopSwitchPlan } from "../src/lib/contextPolicy.mjs";
 
 const memberships = (ids) => ids.map((shopId) => ({ shopId }));
 assert.equal(resolveShopContext([], null).action, "no-access");
@@ -31,4 +31,10 @@ for (const path of ["/pos", "/admin/orders", "/admin/orders?status=paid", "/admi
 assert.equal(safeInternalPath("//external.example", "/admin"), "/admin");
 assert.equal(safeInternalPath("https://external.example", "/admin"), "/admin");
 assert.deepEqual(logoutPlan(), { destination: "/login", clearCookies: ["current_shop_id", "current_branch_id"] });
+assert.deepEqual(contextMutationOutcome({ sourceError: new Error("membership query") }), { ok: false, stage: "source", mutateCookies: false });
+assert.deepEqual(contextMutationOutcome({ sourceError: new Error("branch query") }), { ok: false, stage: "source", mutateCookies: false });
+assert.deepEqual(contextMutationOutcome({ profileError: new Error("profile update") }), { ok: false, stage: "profile", mutateCookies: false });
+assert.deepEqual(contextMutationOutcome(), { ok: true, stage: "complete", mutateCookies: true });
+assert.deepEqual(logoutOutcome(new Error("sign out")), { ok: false, destination: null, clearCookies: false });
+assert.deepEqual(logoutOutcome(null), { ok: true, destination: "/login", clearCookies: true });
 console.log("context reliability behavioral tests passed");

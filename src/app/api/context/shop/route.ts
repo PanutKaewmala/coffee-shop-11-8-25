@@ -39,7 +39,8 @@ export async function GET(req: Request) {
         if (mErr) return jsonError(mErr.message, 500);
 
         if (!member) {
-            await getSupabaseAdmin().from("profiles").update({ current_shop_id: null, current_branch_id: null }).eq("id", user.id);
+            const { error: profileErr } = await getSupabaseAdmin().from("profiles").update({ current_shop_id: null, current_branch_id: null }).eq("id", user.id);
+            if (profileErr) return jsonError(profileErr.message, 500);
             const cookieStore = await cookies();
             cookieStore.set({
                 name: "current_shop_id",
