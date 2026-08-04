@@ -1288,7 +1288,7 @@ export default function POSClient() {
                     </div>
                 ) : null}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-4">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
                     {filteredMenu.map((item) => {
                         const variants = Array.isArray(item.variants) ? item.variants : [];
                         const selectedVariant = getSelectedVariant(item);
@@ -1299,29 +1299,38 @@ export default function POSClient() {
                                 key={item.id}
                                 // ✅ add ที่การ์ด (เหมือนเดิม)
                                 onClick={() => addToCart(item)}
-                                className="p-3 lg:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface cursor-pointer hover:bg-accent/20 transition"
+                                className="flex min-w-0 cursor-pointer flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60"
                                 title="คลิกเพื่อเพิ่ม"
                             >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="font-semibold text-text-primary truncate">
+                                <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/15 pb-3">
+                                    <div className="min-w-0 flex-1">
+                                        <div className="break-words text-lg font-bold leading-snug text-text-primary">
                                             {item.name}
                                         </div>
-                                        <div className="text-text-secondary">
+                                        <div className="mt-1 font-medium text-text-secondary">
                                             เริ่มต้น {formatPrice(getMinVariantPrice(item))}
                                         </div>
                                     </div>
 
-                                    <div className="shrink-0 text-xs text-text-muted">
-                                        คลิกเพื่อเพิ่ม
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            addToCart(item);
+                                        }}
+                                        className="min-h-11 shrink-0 rounded-xl border border-accent bg-accent px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface active:scale-[0.98]"
+                                        aria-label={`เพิ่ม ${item.name} ตัวเลือกปัจจุบันลงตะกร้า`}
+                                    >
+                                        + เพิ่ม
+                                    </button>
                                 </div>
 
-                                {/* pills: แตะเพื่อเลือก+เพิ่มทันที */}
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                {variants.length === 0 ? (
-                                    <span className="text-sm text-text-muted">ไม่มี Serve</span>
-                                ) : (
+                                <div className="mt-4">
+                                    <div className="mb-2 text-sm font-bold text-text-primary">อุณหภูมิ</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                    {variants.length === 0 ? (
+                                        <span className="col-span-full text-sm text-text-muted">ไม่มีตัวเลือกอุณหภูมิ</span>
+                                    ) : (
                                         variants.map((v) => {
                                             const active = (selectedVariant?.id ?? "") === v.id;
 
@@ -1338,25 +1347,30 @@ export default function POSClient() {
                                                         addVariantToCart(item, v.id);
                                                     }}
                                                         className={[
-                                                            "px-2.5 py-1 text-xs lg:px-3 lg:py-1.5 lg:text-sm rounded-full border transition",
+                                                            "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                                                             active
-                                                                ? "bg-accent text-white border-accent"
-                                                                : "bg-[var(--text-muted)]/10 text-text-secondary border-[var(--text-muted)]/20 hover:bg-accent/20",
+                                                                ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
+                                                                : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
                                                         ].join(" ")}
                                                     title={`${serveLabel(v)} — ${formatPrice(
                                                         toNumber(v.price, item.price)
                                                     )}`}
+                                                    aria-pressed={active}
+                                                    aria-label={`${serveLabel(v)} เลือกและเพิ่มลงตะกร้า`}
                                                 >
-                                                    {serveLabel(v)}
+                                                    {active ? <span aria-hidden="true">✓</span> : null}
+                                                    <span className="min-w-0 break-words">{serveLabel(v)}</span>
+                                                    <span className="sr-only"> เลือกและเพิ่มลงตะกร้า</span>
                                                 </button>
                                             );
                                         })
                                     )}
+                                    </div>
                                 </div>
 
-                                <div className="mt-3">
-                                    <div className="mb-1.5 text-xs text-text-muted">ระดับความหวาน</div>
-                                    <div className="flex flex-wrap gap-1.5">
+                                <div className="mt-5">
+                                    <div className="mb-2 text-sm font-bold text-text-primary">ระดับความหวาน</div>
+                                    <div className="grid grid-cols-3 gap-2">
                                         {SWEETNESS_OPTIONS.map((option) => {
                                             const active = selectedSweetness === option;
 
@@ -1372,22 +1386,32 @@ export default function POSClient() {
                                                         }));
                                                     }}
                                                     className={[
-                                                        "min-h-8 rounded-full border px-2.5 py-1 text-xs transition",
+                                                        "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                                                         active
-                                                            ? "border-accent bg-accent text-white"
-                                                            : "border-[var(--text-muted)]/20 bg-[var(--text-muted)]/10 text-text-secondary hover:bg-accent/20",
+                                                            ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
+                                                            : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
                                                     ].join(" ")}
                                                     aria-pressed={active}
+                                                    aria-label={`ความหวาน ${option}`}
                                                 >
-                                                    {option}
+                                                    {active ? <span aria-hidden="true">✓</span> : null}
+                                                    <span>{option}</span>
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
 
-                                <div className="text-xs text-text-muted">
-                                    แตะปุ่มเสิร์ฟเพื่อเพิ่มทันที หรือแตะการ์ดเพื่อเพิ่มตัวที่เลือก
+                                <div className="mt-4 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
+                                    <div className="text-xs font-medium text-text-muted">ตัวเลือกปัจจุบัน</div>
+                                    <div className="mt-0.5 font-bold text-text-primary" aria-live="polite">
+                                        {selectedVariant ? normalizeServeLabel(serveLabel(selectedVariant)) : "ยังไม่เลือก"}
+                                        {selectedVariant ? ` • ${sweetnessLabel(selectedSweetness)}` : ""}
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 text-sm leading-relaxed text-text-muted">
+                                    ปุ่มอุณหภูมิจะเลือกและเพิ่มทันที หรือกด “+ เพิ่ม” เพื่อเพิ่มตัวเลือกปัจจุบัน
                                 </div>
                             </div>
                         );
