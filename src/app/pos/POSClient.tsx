@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReceiptSettings } from "@/lib/types";
 
 /* =========================
@@ -188,19 +194,33 @@ function parsePosContext(data: unknown): PosContextView {
     const shops = asArray<unknown>(raw.shops);
     const branches = asArray<unknown>(raw.branches);
 
-    const shopObj = shops.map((x) => (isRecord(x) ? x : null)).find((x) =>
+  const shopObj = shops
+    .map((x) => (isRecord(x) ? x : null))
+    .find((x) =>
         Boolean(
-            x && typeof x.id === "string" && x.id === shopId && typeof x.name === "string"
-        )
+        x &&
+        typeof x.id === "string" &&
+        x.id === shopId &&
+        typeof x.name === "string",
+      ),
     );
-    const shopName = isRecord(shopObj) && typeof shopObj.name === "string" ? shopObj.name : null;
+  const shopName =
+    isRecord(shopObj) && typeof shopObj.name === "string" ? shopObj.name : null;
 
-    const branchObj = branches.map((x) => (isRecord(x) ? x : null)).find((x) =>
+  const branchObj = branches
+    .map((x) => (isRecord(x) ? x : null))
+    .find((x) =>
         Boolean(
-            x && typeof x.id === "string" && x.id === branchId && typeof x.name === "string"
-        )
+        x &&
+        typeof x.id === "string" &&
+        x.id === branchId &&
+        typeof x.name === "string",
+      ),
     );
-    const branchName = isRecord(branchObj) && typeof branchObj.name === "string" ? branchObj.name : null;
+  const branchName =
+    isRecord(branchObj) && typeof branchObj.name === "string"
+      ? branchObj.name
+      : null;
 
     return { shopId, shopName, branchId, branchName };
 }
@@ -318,7 +338,9 @@ function buildPosReceiptDocument({
         .map((item) => {
             const qty = Number.isFinite(item.qty) ? item.qty : 0;
             const unitPrice = Number.isFinite(item.unitPrice) ? item.unitPrice : 0;
-            const lineTotal = Number.isFinite(item.lineTotal) ? item.lineTotal : unitPrice * qty;
+      const lineTotal = Number.isFinite(item.lineTotal)
+        ? item.lineTotal
+        : unitPrice * qty;
 
             return `
                 <div class="item-row">
@@ -421,11 +443,11 @@ const SWEETNESS_OPTIONS = ["0%", "25%", "50%", "75%", "100%", "125%"] as const;
 type SweetnessLevel = (typeof SWEETNESS_OPTIONS)[number];
 const DEFAULT_SWEETNESS: SweetnessLevel = "100%";
 const LEGACY_SWEETNESS_MAP: Record<string, SweetnessLevel> = {
-    "ไม่หวาน": "0%",
-    "หวานน้อย": "75%",
-    "หวานครึ่ง": "50%",
-    "หวานปกติ": "100%",
-    "หวานมาก": "125%",
+  ไม่หวาน: "0%",
+  หวานน้อย: "75%",
+  หวานครึ่ง: "50%",
+  หวานปกติ: "100%",
+  หวานมาก: "125%",
 };
 
 /* =========================
@@ -446,10 +468,13 @@ function normalizeSweetness(value: unknown): SweetnessLevel {
     if (pct) return pct[0] as SweetnessLevel;
 
     const withoutPrefix = raw.replace(/^หวาน\s*/, "").trim();
-    const afterPrefix = SWEETNESS_OPTIONS.find((option) => option === withoutPrefix);
+  const afterPrefix = SWEETNESS_OPTIONS.find(
+    (option) => option === withoutPrefix,
+  );
     if (afterPrefix) return afterPrefix;
 
-    const exactLegacy = LEGACY_SWEETNESS_MAP[raw] ?? LEGACY_SWEETNESS_MAP[withoutPrefix];
+  const exactLegacy =
+    LEGACY_SWEETNESS_MAP[raw] ?? LEGACY_SWEETNESS_MAP[withoutPrefix];
     if (exactLegacy) return exactLegacy;
 
     for (const [legacy, next] of Object.entries(LEGACY_SWEETNESS_MAP)) {
@@ -462,9 +487,14 @@ function normalizeSweetness(value: unknown): SweetnessLevel {
 function isSweetnessLabelPart(value: string): boolean {
     const raw = value.trim();
     if (!raw) return false;
-    if (SWEETNESS_OPTIONS.some((option) => raw === option || raw.includes(option))) return true;
+  if (
+    SWEETNESS_OPTIONS.some((option) => raw === option || raw.includes(option))
+  )
+    return true;
     if (raw.startsWith("หวาน")) return true;
-    return Object.keys(LEGACY_SWEETNESS_MAP).some((legacy) => raw.includes(legacy));
+  return Object.keys(LEGACY_SWEETNESS_MAP).some((legacy) =>
+    raw.includes(legacy),
+  );
 }
 
 function normalizeServeLabel(serve: string | null | undefined) {
@@ -473,7 +503,10 @@ function normalizeServeLabel(serve: string | null | undefined) {
         .map((part) => part.trim())
         .filter((part) => part && !isSweetnessLabelPart(part));
 
-    const merged = parts.join(" / ").replace(/\bdefault\b/gi, "").trim();
+  const merged = parts
+    .join(" / ")
+    .replace(/\bdefault\b/gi, "")
+    .trim();
     return merged || "Default";
 }
 
@@ -494,7 +527,10 @@ function getCartServeLabel(item: CartItem) {
 }
 
 function getCartVariantLabel(item: CartItem) {
-    return buildVariantLabel(getCartServeLabel(item), item.sweetness ?? item.variant_label);
+  return buildVariantLabel(
+    getCartServeLabel(item),
+    item.sweetness ?? item.variant_label,
+  );
 }
 
 function normalizeCartItem(item: CartItem): CartItem {
@@ -571,21 +607,35 @@ export default function POSClient() {
     const idempotencyKeyRef = useRef<string | null>(null);
     const [feedError, setFeedError] = useState<string | null>(null);
     const [feedbackText, setFeedbackText] = useState<string | null>(null);
-    const [lastTouchedVariantId, setLastTouchedVariantId] = useState<string | null>(null);
+  const [lastTouchedVariantId, setLastTouchedVariantId] = useState<
+    string | null
+  >(null);
     const receiptPrintIframeRef = useRef<HTMLIFrameElement | null>(null);
     const feedbackTimerRef = useRef<number | null>(null);
     const lineFlashTimerRef = useRef<number | null>(null);
-    const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "promptpay">(
+    "cash",
+  );
     const [paidAmount, setPaidAmount] = useState<string>("");
     const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
-    const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">("thermal");
-    const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
-    const [loadedReceiptDocument, setLoadedReceiptDocument] = useState<string | null>(null);
+  const [receiptPrintMode, setReceiptPrintMode] = useState<"thermal" | "a4">(
+    "thermal",
+  );
+  const [receiptSettings, setReceiptSettings] =
+    useState<ReceiptSettings | null>(null);
+  const [loadedReceiptDocument, setLoadedReceiptDocument] = useState<
+    string | null
+  >(null);
+  const [configuredMenuId, setConfiguredMenuId] = useState<string | null>(null);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const mobileAddLockRef = useRef(false);
 
     // key: menu_id -> variant_id
     const [variantPick, setVariantPick] = useState<Record<string, string>>({});
     // key: menu_id -> sweetness label
-    const [sweetnessPick, setSweetnessPick] = useState<Record<string, SweetnessLevel>>({});
+  const [sweetnessPick, setSweetnessPick] = useState<
+    Record<string, SweetnessLevel>
+  >({});
 
     // filters
     const [query, setQuery] = useState("");
@@ -664,9 +714,12 @@ export default function POSClient() {
             setDailyCloseError(null);
 
             try {
-                const res = await fetch(`/api/daily-close?date=${encodeURIComponent(today)}`, {
+        const res = await fetch(
+          `/api/daily-close?date=${encodeURIComponent(today)}`,
+          {
                     cache: "no-store",
-                });
+          },
+        );
 
                 if (!res.ok) {
                     if (res.status === 409) {
@@ -682,11 +735,15 @@ export default function POSClient() {
 
                 const record = isRecord(raw) ? raw : null;
                 const close = isRecord(record?.close) ? record.close : null;
-                const status = isRecord(close) && typeof close.status === "string" ? close.status : null;
+        const status =
+          isRecord(close) && typeof close.status === "string"
+            ? close.status
+            : null;
                 setDailyCloseStatus(status);
             } catch (err) {
                 if (!alive) return;
-                const message = err instanceof Error ? err.message : "โหลดสถานะปิดยอดวันไม่สำเร็จ";
+        const message =
+          err instanceof Error ? err.message : "โหลดสถานะปิดยอดวันไม่สำเร็จ";
                 setDailyCloseError(message);
                 setDailyCloseStatus(null);
             } finally {
@@ -773,11 +830,13 @@ export default function POSClient() {
     const filteredMenu = useMemo(() => {
         const q = query.trim().toLowerCase();
         return menu.filter((m) => {
-            const okCat = activeCatId === "all" ? true : m.category?.id === activeCatId;
+      const okCat =
+        activeCatId === "all" ? true : m.category?.id === activeCatId;
             if (!okCat) return false;
 
             if (!q) return true;
-            const hay = `${m.name} ${m.description ?? ""} ${m.category?.name ?? ""}`.toLowerCase();
+      const hay =
+        `${m.name} ${m.description ?? ""} ${m.category?.name ?? ""}`.toLowerCase();
             return hay.includes(q);
         });
     }, [menu, query, activeCatId]);
@@ -796,13 +855,56 @@ export default function POSClient() {
                 null
             );
         },
-        [variantPick]
+    [variantPick],
     );
 
     const getSelectedSweetness = useCallback(
-        (menuId: string): SweetnessLevel => normalizeSweetness(sweetnessPick[menuId]),
-        [sweetnessPick]
+    (menuId: string): SweetnessLevel =>
+      normalizeSweetness(sweetnessPick[menuId]),
+    [sweetnessPick],
+  );
+
+  const configuredMenu = useMemo(
+    () => menu.find((item) => item.id === configuredMenuId) ?? null,
+    [menu, configuredMenuId],
     );
+
+  const closeMobileOverlays = useCallback(() => {
+    setConfiguredMenuId(null);
+    setMobileCartOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      if (event.matches) closeMobileOverlays();
+    };
+    handleChange(media);
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [closeMobileOverlays]);
+
+  useEffect(() => {
+    const overlayOpen = configuredMenuId !== null || mobileCartOpen;
+    if (!overlayOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [configuredMenuId, mobileCartOpen]);
+
+  useEffect(() => {
+    if (!configuredMenuId && !mobileCartOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (configuredMenuId) setConfiguredMenuId(null);
+      else setMobileCartOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [configuredMenuId, mobileCartOpen]);
 
     useEffect(() => {
         setCart((prev) => {
@@ -847,7 +949,11 @@ export default function POSClient() {
 
     /* -------------------- CART OPS -------------------- */
     const addVariantToCart = useCallback(
-        (item: PosMenuItem, variantId: string, sweetness = getSelectedSweetness(item.id)) => {
+    (
+      item: PosMenuItem,
+      variantId: string,
+      sweetness = getSelectedSweetness(item.id),
+    ) => {
             const variants = Array.isArray(item.variants) ? item.variants : [];
             const v = variants.find((x) => x.id === variantId) ?? null;
             if (!v) return;
@@ -872,7 +978,7 @@ export default function POSClient() {
                                 sweetness: normalizedSweetness,
                                 variant_label: variantLabel,
                             }
-                            : c
+              : c,
                     );
                 }
 
@@ -893,7 +999,7 @@ export default function POSClient() {
 
             pushFeedback(`เพิ่ม ${item.name} (${variantLabel})`, lineId);
         },
-        [getSelectedSweetness, pushFeedback]
+    [getSelectedSweetness, pushFeedback],
     );
 
     const addToCart = useCallback(
@@ -912,12 +1018,12 @@ export default function POSClient() {
 
             addVariantToCart(item, selected.id);
         },
-        [addVariantToCart, getSelectedVariant]
+    [addVariantToCart, getSelectedVariant],
     );
 
     const increaseQty = useCallback((lineId: string) => {
         setCart((prev) =>
-            prev.map((c) => (c.id === lineId ? { ...c, qty: c.qty + 1 } : c))
+      prev.map((c) => (c.id === lineId ? { ...c, qty: c.qty + 1 } : c)),
         );
     }, []);
 
@@ -925,7 +1031,7 @@ export default function POSClient() {
         setCart((prev) =>
             prev
                 .map((c) => (c.id === lineId ? { ...c, qty: c.qty - 1 } : c))
-                .filter((c) => c.qty > 0)
+        .filter((c) => c.qty > 0),
         );
     }, []);
 
@@ -936,13 +1042,23 @@ export default function POSClient() {
     const clearCart = useCallback(() => setCart([]), []);
 
     /* -------------------- TOTAL -------------------- */
-    const total = useMemo(() => cart.reduce((sum, i) => sum + i.price * i.qty, 0), [cart]);
+  const total = useMemo(
+    () => cart.reduce((sum, i) => sum + i.price * i.qty, 0),
+    [cart],
+  );
+  const cartItemCount = useMemo(
+    () => cart.reduce((sum, item) => sum + item.qty, 0),
+    [cart],
+  );
 
     /* -------------------- CASH TENDER HELPERS -------------------- */
-    const addCashAmount = useCallback((amount: number) => {
+  const addCashAmount = useCallback(
+    (amount: number) => {
         const current = parseNumberInput(paidAmount) ?? 0;
         setPaidAmount(String(current + amount));
-    }, [paidAmount]);
+    },
+    [paidAmount],
+  );
 
     const setExactCash = useCallback(() => {
         setPaidAmount(String(total));
@@ -990,7 +1106,8 @@ export default function POSClient() {
         }
 
         return Array.from(map.values()).sort(
-            (a, b) => (lastIndex.get(b.menu_id) ?? 0) - (lastIndex.get(a.menu_id) ?? 0)
+      (a, b) =>
+        (lastIndex.get(b.menu_id) ?? 0) - (lastIndex.get(a.menu_id) ?? 0),
         );
     }, [cart]);
 
@@ -1008,6 +1125,7 @@ export default function POSClient() {
     /* -------------------- KEYBOARD SHORTCUTS -------------------- */
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
+      if (!window.matchMedia("(min-width: 768px)").matches) return;
             const target = e.target as HTMLElement | null;
             const tag = target?.tagName?.toLowerCase();
             const isTypingTarget =
@@ -1022,7 +1140,8 @@ export default function POSClient() {
                 if (cart.length > 0 && !loading) clearCart();
             }
             if (e.key === "Enter") {
-                if (cart.length > 0 && !loading && !isBusinessDayClosed) void checkout();
+        if (cart.length > 0 && !loading && !isBusinessDayClosed)
+          void checkout();
             }
         }
         window.addEventListener("keydown", onKeyDown);
@@ -1040,7 +1159,9 @@ export default function POSClient() {
                 return;
             }
             if (paid < total) {
-                alert(`เงินไม่พอ\nยอดรวม: ${formatPrice(total)}\nได้รับ: ${formatPrice(paid)}\nขาดอีก: ${formatPrice(total - paid)}`);
+        alert(
+          `เงินไม่พอ\nยอดรวม: ${formatPrice(total)}\nได้รับ: ${formatPrice(paid)}\nขาดอีก: ${formatPrice(total - paid)}`,
+        );
                 return;
             }
         }
@@ -1067,17 +1188,25 @@ export default function POSClient() {
 
             const res = await fetch("/api/pos", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKeyRef.current ?? "" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKeyRef.current ?? "",
+        },
                 body: JSON.stringify(payload),
             });
-            const debugText = await res.clone().text().catch(() => "");
+      const debugText = await res
+        .clone()
+        .text()
+        .catch(() => "");
 
             const raw: unknown = await res.json().catch(() => {
                 console.error("⚠️ /api/pos returned non-JSON:", debugText);
                 return null;
             });
 
-            const data: PosCheckoutResponse = isRecord(raw) ? (raw as PosCheckoutResponse) : {};
+      const data: PosCheckoutResponse = isRecord(raw)
+        ? (raw as PosCheckoutResponse)
+        : {};
 
             if (!res.ok) {
                 const rawDump = (() => {
@@ -1089,16 +1218,21 @@ export default function POSClient() {
                 })();
                 console.error(
                     `POS checkout failed: HTTP ${res.status} ${res.statusText}; data=${JSON.stringify(
-                        data
-                    )}; raw=${rawDump}; text=${debugText}`
+            data,
+          )}; raw=${rawDump}; text=${debugText}`,
                 );
 
                 if (data.code === "NO_RECIPE") {
-                    alert("This item is not ready for sale. Ask the owner to add a recipe for this variant.");
+          alert(
+            "This item is not ready for sale. Ask the owner to add a recipe for this variant.",
+          );
                     return;
                 }
 
-                if (data.code === "BUSINESS_DAY_CLOSED" && typeof data.error === "string") {
+        if (
+          data.code === "BUSINESS_DAY_CLOSED" &&
+          typeof data.error === "string"
+        ) {
                     alert(data.error);
                     return;
                 }
@@ -1119,16 +1253,19 @@ export default function POSClient() {
 
             // If server returned success flag, verify it before clearing cart
             if (!data.success) {
-                const msg = (typeof data.error === "string" && data.error) || "ปิดบิลล้มเหลว";
+        const msg =
+          (typeof data.error === "string" && data.error) || "ปิดบิลล้มเหลว";
                 alert(msg);
                 return;
             }
 
-            const order = isRecord(data.order) ? (data.order as Record<string, unknown>) : null;
-            const orderIdRaw = order ? order.id ?? order.order_id : null;
+      const order = isRecord(data.order)
+        ? (data.order as Record<string, unknown>)
+        : null;
+      const orderIdRaw = order ? (order.id ?? order.order_id) : null;
             const orderId = orderIdRaw ? String(orderIdRaw) : "";
             const receiptPaidAmount =
-                paymentMethod === "cash" ? parseNumberInput(paidAmount) ?? 0 : total;
+        paymentMethod === "cash" ? (parseNumberInput(paidAmount) ?? 0) : total;
             const receiptChangeAmount =
                 paymentMethod === "cash" ? receiptPaidAmount - total : 0;
 
@@ -1149,6 +1286,7 @@ export default function POSClient() {
             });
             setCart([]);
             setPaidAmount("");
+      setMobileCartOpen(false);
         } catch (err) {
             console.error("ปิดบิลผิดพลาด:", err);
             alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
@@ -1159,7 +1297,8 @@ export default function POSClient() {
         }
     }
 
-    const receiptShopName = receiptSettings?.shopName ?? context.shopName ?? "Coffee SaaS";
+  const receiptShopName =
+    receiptSettings?.shopName ?? context.shopName ?? "Coffee SaaS";
     const receiptBranchName = receiptSettings?.branchName ?? context.branchName;
     const receiptBranchAddress = receiptSettings?.branchAddress ?? null;
     const receiptBranchPhone = receiptSettings?.branchPhone ?? null;
@@ -1226,12 +1365,12 @@ export default function POSClient() {
             setLoadedReceiptDocument(null);
             setReceiptPrintMode(nextMode);
         },
-        [receiptPrintMode]
+    [receiptPrintMode],
     );
 
     /* -------------------- RENDER -------------------- */
     return (
-            <div className="flex flex-col h-auto lg:h-screen lg:flex-row bg-background text-text-primary">
+    <div className="flex min-h-full flex-col bg-background pb-24 md:h-screen md:flex-row md:pb-0 text-text-primary">
             {feedbackText ? (
                 <div className="fixed right-2 top-2 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 text-xs text-text-primary shadow-xl backdrop-blur pointer-events-none">
                     {feedbackText}
@@ -1239,7 +1378,7 @@ export default function POSClient() {
             ) : null}
 
             {/* LEFT: Menu List */}
-            <div className="flex-none lg:flex-[1.15] lg:min-h-0 lg:overflow-y-auto border-b lg:border-r lg:w-[58%] lg:flex-none p-3 lg:p-4">
+      <div className="flex-none border-b p-3 md:min-h-0 md:w-[58%] md:flex-none md:overflow-y-auto md:border-r md:p-4">
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                     <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
                         Shop: {context.shopName ?? context.shopId ?? "-"}
@@ -1249,7 +1388,9 @@ export default function POSClient() {
                     </span>
                 </div>
                 <div className="flex flex-col gap-3 mb-4">
-                    <h2 className="text-xl lg:text-2xl font-bold text-text-primary">เมนูทั้งหมด</h2>
+          <h2 className="text-xl lg:text-2xl font-bold text-text-primary">
+            เมนูทั้งหมด
+          </h2>
 
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                         <input
@@ -1288,18 +1429,49 @@ export default function POSClient() {
                     </div>
                 ) : null}
 
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-4">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] md:gap-4">
                     {filteredMenu.map((item) => {
                         const variants = Array.isArray(item.variants) ? item.variants : [];
                         const selectedVariant = getSelectedVariant(item);
                         const selectedSweetness = getSelectedSweetness(item.id);
 
                         return (
+              <React.Fragment key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => setConfiguredMenuId(item.id)}
+                  className="flex min-h-20 w-full items-center gap-3 rounded-xl border border-[var(--text-muted)]/25 bg-surface p-3 text-left shadow-sm transition active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:hidden"
+                  aria-label={`เลือก ${item.name}`}
+                >
+                  {item.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.image_url}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : null}
+                  <span className="min-w-0 flex-1">
+                    {item.category?.name ? (
+                      <span className="block text-xs text-text-muted">
+                        {item.category.name}
+                      </span>
+                    ) : null}
+                    <span className="block break-words font-bold leading-snug text-text-primary">
+                      {item.name}
+                    </span>
+                    <span className="mt-1 block text-sm font-medium text-text-secondary">
+                      เริ่มต้น {formatPrice(getMinVariantPrice(item))}
+                    </span>
+                  </span>
+                  <span className="flex min-h-11 shrink-0 items-center rounded-lg bg-accent px-3 text-sm font-bold text-white">
+                    เลือก
+                  </span>
+                </button>
+
                             <div
-                                key={item.id}
-                                // ✅ add ที่การ์ด (เหมือนเดิม)
                                 onClick={() => addToCart(item)}
-                                className="flex min-w-0 cursor-pointer flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60"
+                  className="hidden min-w-0 cursor-pointer flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60 md:flex"
                                 title="คลิกเพื่อเพิ่ม"
                             >
                                 <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/15 pb-3">
@@ -1311,82 +1483,83 @@ export default function POSClient() {
                                             เริ่มต้น {formatPrice(getMinVariantPrice(item))}
                                         </div>
                                     </div>
-
                                     <button
                                         type="button"
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             addToCart(item);
                                         }}
-                                        className="min-h-11 shrink-0 rounded-xl border border-accent bg-accent px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface active:scale-[0.98]"
+                      className="min-h-11 shrink-0 rounded-xl border border-accent bg-accent px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                         aria-label={`เพิ่ม ${item.name} ตัวเลือกปัจจุบันลงตะกร้า`}
                                     >
                                         + เพิ่ม
                                     </button>
                                 </div>
-
                                 <div className="mt-4">
-                                    <div className="mb-2 text-sm font-bold text-text-primary">อุณหภูมิ</div>
+                    <div className="mb-2 text-sm font-bold text-text-primary">
+                      อุณหภูมิ
+                    </div>
                                     <div className="grid grid-cols-2 gap-2">
                                     {variants.length === 0 ? (
-                                        <span className="col-span-full text-sm text-text-muted">ไม่มีตัวเลือกอุณหภูมิ</span>
+                        <span className="col-span-full text-sm text-text-muted">
+                          ไม่มีตัวเลือกอุณหภูมิ
+                        </span>
                                     ) : (
-                                        variants.map((v) => {
-                                            const active = (selectedVariant?.id ?? "") === v.id;
-
+                        variants.map((variant) => {
+                          const active = selectedVariant?.id === variant.id;
                                             return (
                                                 <button
-                                                    key={v.id}
+                              key={variant.id}
                                                     type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
+                              onClick={(event) => {
+                                event.stopPropagation();
                                                         setVariantPick((prev) => ({
                                                             ...prev,
-                                                            [item.id]: v.id,
+                                  [item.id]: variant.id,
                                                         }));
-                                                        addVariantToCart(item, v.id);
+                                addVariantToCart(item, variant.id);
                                                     }}
                                                         className={[
-                                                            "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                                "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                                                             active
                                                                 ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
                                                                 : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
                                                         ].join(" ")}
-                                                    title={`${serveLabel(v)} — ${formatPrice(
-                                                        toNumber(v.price, item.price)
-                                                    )}`}
                                                     aria-pressed={active}
-                                                    aria-label={`${serveLabel(v)} เลือกและเพิ่มลงตะกร้า`}
+                              aria-label={`${serveLabel(variant)} เลือกและเพิ่มลงตะกร้า`}
                                                 >
-                                                    {active ? <span aria-hidden="true">✓</span> : null}
-                                                    <span className="min-w-0 break-words">{serveLabel(v)}</span>
-                                                    <span className="sr-only"> เลือกและเพิ่มลงตะกร้า</span>
+                              {active ? (
+                                <span aria-hidden="true">✓</span>
+                              ) : null}
+                              <span className="min-w-0 break-words">
+                                {serveLabel(variant)}
+                              </span>
                                                 </button>
                                             );
                                         })
                                     )}
                                     </div>
                                 </div>
-
                                 <div className="mt-5">
-                                    <div className="mb-2 text-sm font-bold text-text-primary">ระดับความหวาน</div>
+                    <div className="mb-2 text-sm font-bold text-text-primary">
+                      ระดับความหวาน
+                    </div>
                                     <div className="grid grid-cols-3 gap-2">
                                         {SWEETNESS_OPTIONS.map((option) => {
                                             const active = selectedSweetness === option;
-
                                             return (
                                                 <button
                                                     key={option}
                                                     type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
+                            onClick={(event) => {
+                              event.stopPropagation();
                                                         setSweetnessPick((prev) => ({
                                                             ...prev,
                                                             [item.id]: option,
                                                         }));
                                                     }}
                                                     className={[
-                                                        "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                              "flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                                                         active
                                                             ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
                                                             : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
@@ -1395,35 +1568,212 @@ export default function POSClient() {
                                                     aria-label={`ความหวาน ${option}`}
                                                 >
                                                     {active ? <span aria-hidden="true">✓</span> : null}
-                                                    <span>{option}</span>
+                            {option}
                                                 </button>
                                             );
                                         })}
                                     </div>
                                 </div>
-
                                 <div className="mt-4 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
-                                    <div className="text-xs font-medium text-text-muted">ตัวเลือกปัจจุบัน</div>
-                                    <div className="mt-0.5 font-bold text-text-primary" aria-live="polite">
-                                        {selectedVariant ? normalizeServeLabel(serveLabel(selectedVariant)) : "ยังไม่เลือก"}
-                                        {selectedVariant ? ` • ${sweetnessLabel(selectedSweetness)}` : ""}
+                    <div className="text-xs font-medium text-text-muted">
+                      ตัวเลือกปัจจุบัน
+                    </div>
+                    <div
+                      className="mt-0.5 font-bold text-text-primary"
+                      aria-live="polite"
+                    >
+                      {selectedVariant
+                        ? normalizeServeLabel(serveLabel(selectedVariant))
+                        : "ยังไม่เลือก"}
+                      {selectedVariant
+                        ? ` • ${sweetnessLabel(selectedSweetness)}`
+                        : ""}
                                     </div>
                                 </div>
-
                                 <div className="mt-3 text-sm leading-relaxed text-text-muted">
-                                    ปุ่มอุณหภูมิจะเลือกและเพิ่มทันที หรือกด “+ เพิ่ม” เพื่อเพิ่มตัวเลือกปัจจุบัน
+                    ปุ่มอุณหภูมิจะเลือกและเพิ่มทันที หรือกด “+ เพิ่ม”
+                    เพื่อเพิ่มตัวเลือกปัจจุบัน
                                 </div>
                             </div>
+              </React.Fragment>
                         );
                     })}
                 </div>
             </div>
 
+      {configuredMenu ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/55 md:hidden"
+          onClick={() => setConfiguredMenuId(null)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-configurator-title"
+            className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--text-muted)]/20 bg-surface pb-3">
+              <div className="min-w-0">
+                <div className="text-xs text-text-muted">ตั้งค่ารายการ</div>
+                <h2
+                  id="mobile-configurator-title"
+                  className="break-words text-xl font-bold text-text-primary"
+                >
+                  {configuredMenu.name}
+                </h2>
+                <div className="font-semibold text-text-secondary">
+                  {formatPrice(
+                    toNumber(
+                      getSelectedVariant(configuredMenu)?.price,
+                      configuredMenu.price,
+                    ),
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfiguredMenuId(null)}
+                className="min-h-11 min-w-11 rounded-xl border border-[var(--text-muted)]/30 text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label="ปิดตัวเลือก"
+              >
+                ×
+              </button>
+            </header>
+            <div className="mt-4 space-y-5">
+              <fieldset>
+                <legend className="mb-2 font-bold text-text-primary">
+                  อุณหภูมิ
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {configuredMenu.variants.map((variant) => {
+                    const active =
+                      getSelectedVariant(configuredMenu)?.id === variant.id;
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() =>
+                          setVariantPick((prev) => ({
+                            ...prev,
+                            [configuredMenu.id]: variant.id,
+                          }))
+                        }
+                        aria-pressed={active}
+                        className={[
+                          "min-h-11 rounded-xl border px-3 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                          active
+                            ? "border-accent bg-accent text-white ring-2 ring-accent/30"
+                            : "border-[var(--text-muted)]/30 bg-background text-text-secondary",
+                        ].join(" ")}
+                      >
+                        {active ? <span aria-hidden="true">✓ </span> : null}
+                        {serveLabel(variant)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend className="mb-2 font-bold text-text-primary">
+                  ระดับความหวาน
+                </legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {SWEETNESS_OPTIONS.map((option) => {
+                    const active =
+                      getSelectedSweetness(configuredMenu.id) === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() =>
+                          setSweetnessPick((prev) => ({
+                            ...prev,
+                            [configuredMenu.id]: option,
+                          }))
+                        }
+                        aria-pressed={active}
+                        className={[
+                          "min-h-11 rounded-xl border px-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                          active
+                            ? "border-accent bg-accent text-white ring-2 ring-accent/30"
+                            : "border-[var(--text-muted)]/30 bg-background text-text-secondary",
+                        ].join(" ")}
+                      >
+                        {active ? <span aria-hidden="true">✓ </span> : null}
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              <div
+                className="rounded-xl border border-accent/30 bg-accent/10 p-3"
+                aria-live="polite"
+              >
+                <div className="text-xs text-text-muted">ตัวเลือกปัจจุบัน</div>
+                <div className="font-bold text-text-primary">
+                  {getSelectedVariant(configuredMenu)
+                    ? normalizeServeLabel(
+                        serveLabel(getSelectedVariant(configuredMenu)!),
+                      )
+                    : "ยังไม่เลือก"}{" "}
+                  • {sweetnessLabel(getSelectedSweetness(configuredMenu.id))}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={
+                  mobileAddLockRef.current ||
+                  !getSelectedVariant(configuredMenu)
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (mobileAddLockRef.current) return;
+                  mobileAddLockRef.current = true;
+                  addToCart(configuredMenu);
+                  setConfiguredMenuId(null);
+                  window.setTimeout(() => {
+                    mobileAddLockRef.current = false;
+                  }, 0);
+                }}
+                className="min-h-12 w-full rounded-xl bg-accent px-4 text-lg font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                เพิ่มลงตะกร้า
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
             {/* RIGHT: Cart */}
-            <div className="flex-none lg:flex-1 lg:min-h-0 lg:overflow-y-auto p-3 lg:p-4 flex flex-col lg:w-[42%] lg:flex-none">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 lg:gap-3 mb-3 lg:mb-4">
-                    <h2 className="text-xl lg:text-2xl font-bold text-text-primary">ตะกร้า</h2>
-                    <div className="text-xs text-text-muted">Enter = ปิดบิล • Esc = ล้างตะกร้า</div>
+      <div
+        className={`${mobileCartOpen ? "flex" : "hidden"} fixed inset-0 z-40 flex-col overflow-y-auto bg-background p-3 pb-28 md:static md:z-auto md:flex md:min-h-0 md:w-[42%] md:flex-none md:overflow-y-auto md:p-4`}
+        role={mobileCartOpen ? "dialog" : undefined}
+        aria-modal={mobileCartOpen ? "true" : undefined}
+        aria-labelledby="cart-title"
+      >
+        <div className="flex flex-row items-center justify-between gap-2 lg:gap-3 mb-3 lg:mb-4">
+          <button
+            type="button"
+            onClick={() => setMobileCartOpen(false)}
+            className="min-h-11 min-w-11 rounded-xl border border-[var(--text-muted)]/30 md:hidden"
+            aria-label="ปิดตะกร้า"
+          >
+            ←
+          </button>
+          <h2
+            id="cart-title"
+            className="text-xl lg:text-2xl font-bold text-text-primary"
+          >
+            ตะกร้า
+          </h2>
+          <span className="text-sm text-text-muted md:hidden">
+            {cartItemCount} ชิ้น
+          </span>
+          <div className="hidden text-xs text-text-muted md:block">
+            Enter = ปิดบิล • Esc = ล้างตะกร้า
+          </div>
                 </div>
 
                 {dailyCloseLoading && (
@@ -1444,8 +1794,15 @@ export default function POSClient() {
 
                 <div className="space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:space-y-3">
                     {groupedCart.length === 0 ? (
-                        <div className="p-3 lg:p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
-                            ยังไม่มีรายการ
+            <div className="space-y-3 p-4 rounded-xl border border-[var(--text-muted)]/20 bg-surface text-text-muted">
+              <p>ยังไม่มีรายการในตะกร้า</p>
+              <button
+                type="button"
+                onClick={() => setMobileCartOpen(false)}
+                className="min-h-11 w-full rounded-xl border border-accent px-3 font-semibold text-accent md:hidden"
+              >
+                กลับไปเลือกเมนู
+              </button>
                         </div>
                     ) : (
                         groupedCart.map((g) => (
@@ -1463,13 +1820,19 @@ export default function POSClient() {
                                         </div>
                                     </div>
 
-                                    <div className="font-bold text-text-primary">{formatPrice(g.groupTotal)}</div>
+                  <div className="font-bold text-text-primary">
+                    {formatPrice(g.groupTotal)}
+                  </div>
                                 </div>
 
                                 <div className="mt-2 lg:mt-3 space-y-2 lg:space-y-2">
                                     {g.lines
                                         .slice()
-                                        .sort((a, b) => getCartVariantLabel(a).localeCompare(getCartVariantLabel(b)))
+                    .sort((a, b) =>
+                      getCartVariantLabel(a).localeCompare(
+                        getCartVariantLabel(b),
+                      ),
+                    )
                                         .map((it) => (
                                             <div
                                                 key={it.id}
@@ -1584,7 +1947,9 @@ export default function POSClient() {
                             })()}
 
                             <div className="space-y-1.5 lg:space-y-2 pt-1">
-                                <div className="text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div>
+                <div className="text-xs text-text-muted">
+                  รับเงินอย่างรวดเร็ว
+                </div>
                                 <div className="flex flex-wrap gap-1.5 lg:gap-2">
                                     <button
                                         type="button"
@@ -1593,7 +1958,8 @@ export default function POSClient() {
                                     >
                                         พอดี ฿{total}
                                     </button>
-                                    {CASH_PRESET_AMOUNTS.filter((a) => a >= total).map((amount) => (
+                  {CASH_PRESET_AMOUNTS.filter((a) => a >= total).map(
+                    (amount) => (
                                         <button
                                             key={amount}
                                             type="button"
@@ -1602,12 +1968,15 @@ export default function POSClient() {
                                         >
                                             ฿{amount}
                                         </button>
-                                    ))}
+                    ),
+                  )}
                                 </div>
                             </div>
 
                             <div className="space-y-1.5 lg:space-y-2">
-                                <div className="text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div>
+                <div className="text-xs text-text-muted">
+                  เพิ่มจำนวนเงินที่รับ
+                </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 lg:gap-2">
                                     {CASH_ADD_AMOUNTS.map((amount) => (
                                         <button
@@ -1647,13 +2016,34 @@ export default function POSClient() {
 
                     <button
                         onClick={() => void checkout()}
-                        disabled={loading || cart.length === 0 || !canCashCheckout || isBusinessDayClosed}
-                        className="mt-4 w-full py-3.5 rounded-xl text-xl font-bold bg-accent text-white hover:bg-accent-dark active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={
+              loading ||
+              cart.length === 0 ||
+              !canCashCheckout ||
+              isBusinessDayClosed
+            }
+            className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-10 flex min-h-14 items-center justify-between rounded-xl bg-accent px-4 text-lg font-bold text-white shadow-2xl transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 md:static md:mt-4 md:block md:w-full md:py-3.5 md:text-xl md:shadow-none"
                     >
-                        {loading ? "กำลังปิดบิล..." : "ปิดบิล"}
+            <span className="md:hidden">ยอดรวม {formatPrice(total)}</span>
+            <span>{loading ? "กำลังปิดบิล..." : "ปิดบิล"}</span>
                     </button>
                 </div>
             </div>
+
+      {cart.length > 0 && !configuredMenu && !mobileCartOpen ? (
+        <button
+          type="button"
+          onClick={() => setMobileCartOpen(true)}
+          className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex min-h-14 items-center justify-between rounded-2xl bg-accent px-4 text-left text-white shadow-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 md:hidden"
+          aria-label={`ดูตะกร้า ${cartItemCount} ชิ้น ยอดรวม ${formatPrice(total)}`}
+        >
+          <span>
+            <span className="block font-bold">ตะกร้า {cartItemCount} ชิ้น</span>
+            <span className="text-sm">{formatPrice(total)}</span>
+          </span>
+          <span className="font-bold">ดูตะกร้า →</span>
+        </button>
+      ) : null}
 
             {receiptData ? (
                 <div
@@ -1662,10 +2052,17 @@ export default function POSClient() {
                     aria-modal="true"
                     aria-labelledby="receipt-modal-title"
                 >
-                    <div className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] lg:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 lg:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[80mm] print:max-w-[80mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}>
+          <div
+            className={`w-full max-w-xl max-h-[calc(100vh-2.5rem)] lg:max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-[var(--text-muted)]/20 bg-surface shadow-2xl p-4 lg:p-5 ${receiptPrintMode === "a4" ? "print:w-[150mm] print:max-w-[150mm]" : "print:w-[80mm] print:max-w-[80mm]"} print:mx-auto print:bg-white print:shadow-none print:rounded-none print:border-0 print:px-4 print:py-3 print:my-4 print:min-h-0 print:overflow-visible`}
+          >
                         <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/20 print:border-b print:pb-2 print:mb-2">
                             <div>
-                                <h2 id="receipt-modal-title" className="text-xl lg:text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight">ใบเสร็จรับเงิน</h2>
+                <h2
+                  id="receipt-modal-title"
+                  className="text-xl lg:text-2xl font-bold text-text-primary print:text-black print:text-base print:font-bold print:m-0 print:leading-tight"
+                >
+                  ใบเสร็จรับเงิน
+                </h2>
                                 <div className="text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0 print:leading-tight">
                                     <div>
                                         {receiptShopName}
@@ -1678,11 +2075,16 @@ export default function POSClient() {
                                         <div className="break-words">โทร: {receiptBranchPhone}</div>
                                     ) : null}
                                     {receiptTaxId ? (
-                                        <div className="break-words">เลขผู้เสียภาษี: {receiptTaxId}</div>
+                    <div className="break-words">
+                      เลขผู้เสียภาษี: {receiptTaxId}
+                    </div>
                                     ) : null}
                                 </div>
                                 <p className="mt-1 text-sm text-text-muted print:text-gray-700 print:text-xs print:font-normal print:m-0">
-                                    เลขที่ใบเสร็จ #{receiptData.orderId ? receiptData.orderId.slice(-8) : "XXXXXX"}
+                  เลขที่ใบเสร็จ #
+                  {receiptData.orderId
+                    ? receiptData.orderId.slice(-8)
+                    : "XXXXXX"}
                                 </p>
                             </div>
                             <button
@@ -1704,7 +2106,9 @@ export default function POSClient() {
                             </div>
 
                             <div className="space-y-2">
-                                <div className="text-base font-semibold text-text-primary print:text-black print:text-sm print:font-bold print:pb-1">รายการสินค้า</div>
+                <div className="text-base font-semibold text-text-primary print:text-black print:text-sm print:font-bold print:pb-1">
+                  รายการสินค้า
+                </div>
                                 <div className="space-y-1">
                                     {receiptData.items.map((item, index) => (
                                         <div
@@ -1712,13 +2116,18 @@ export default function POSClient() {
                                             className="grid grid-cols-[1fr_auto] gap-1 text-sm print:border-0 print:bg-white print:text-black print:p-0 print:m-0"
                                         >
                                             <div className="min-w-0">
-                                                <div className="font-medium text-text-primary print:text-black print:text-sm print:font-normal print:leading-tight">{item.name}</div>
+                        <div className="font-medium text-text-primary print:text-black print:text-sm print:font-normal print:leading-tight">
+                          {item.name}
+                        </div>
                                                 <div className="text-xs text-text-muted print:text-gray-700 print:text-xs print:leading-tight">
-                                                    {item.variantLabel} · {item.qty} × {formatPrice(item.unitPrice)}
+                          {item.variantLabel} · {item.qty} ×{" "}
+                          {formatPrice(item.unitPrice)}
                                                 </div>
                                             </div>
 
-                                            <div className="text-right text-text-primary print:text-black print:text-sm">{formatPrice(item.lineTotal)}</div>
+                      <div className="text-right text-text-primary print:text-black print:text-sm">
+                        {formatPrice(item.lineTotal)}
+                      </div>
                                         </div>
                                     ))}
                                 </div>
@@ -1727,7 +2136,9 @@ export default function POSClient() {
                             <div className="mt-3 space-y-1 rounded-xl border border-[var(--text-muted)]/20 bg-background/30 p-4 text-sm print:border-0 print:border-t print:border-dashed print:pt-1 print:mt-2 print:p-0 print:bg-white print:text-black">
                                 <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>ยอดรวม</span>
-                                    <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">{formatPrice(receiptData.total)}</span>
+                  <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">
+                    {formatPrice(receiptData.total)}
+                  </span>
                                 </div>
                                 <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>วิธีจ่าย</span>
@@ -1737,7 +2148,9 @@ export default function POSClient() {
                                 </div>
                                 <div className="flex justify-between text-text-secondary print:text-black print:text-sm">
                                     <span>รับเงิน</span>
-                                    <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">{formatPrice(receiptData.paidAmount)}</span>
+                  <span className="font-semibold text-text-primary print:text-black print:text-sm print:font-bold">
+                    {formatPrice(receiptData.paidAmount)}
+                  </span>
                                 </div>
                                 <div className="flex justify-between border-t border-[var(--text-muted)]/20 pt-2 text-base font-bold text-text-primary print:text-black print:text-sm print:font-bold print:border-dashed print:pt-1">
                                     <span>เงินทอน</span>
