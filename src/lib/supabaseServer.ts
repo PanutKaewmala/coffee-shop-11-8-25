@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Database } from "@/lib/database.types";
+import { parseAppRole } from "@/lib/accessPolicy.mjs";
 
 const SHOP_COOKIE = "current_shop_id";
 const BRANCH_COOKIE = "current_branch_id";
@@ -46,13 +47,14 @@ export async function getCurrentContextFromCookies(): Promise<{
 /**
  * ✅ identity + current context (ใช้ใน admin layouts)
  */
-export type CurrentShopRole = "owner" | "staff" | string;
+export type CurrentShopRole = "owner" | "staff";
 
 export async function getServerIdentity(): Promise<{
     user: { id: string; email: string | null } | null;
     currentShopId: string | null;
     currentBranchId: string | null;
     currentShopRole: CurrentShopRole | null;
+    hasAnyShopMembership: boolean;
 }> {
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
@@ -65,6 +67,7 @@ export async function getServerIdentity(): Promise<{
     let effectiveShopId: string | null = currentShopId;
     let effectiveBranchId: string | null = currentBranchId;
     let currentShopRole: CurrentShopRole | null = null;
+    let hasAnyShopMembership = false;
 
     // Validate context cookies against current user membership.
     if (u && effectiveShopId) {
@@ -79,8 +82,19 @@ export async function getServerIdentity(): Promise<{
             effectiveShopId = null;
             effectiveBranchId = null;
         } else {
-            currentShopRole = member.role;
+            hasAnyShopMembership = true;
+            currentShopRole = parseAppRole(member.role);
         }
+    }
+
+    if (u && !hasAnyShopMembership) {
+        const { data: anyMembership } = await admin
+            .from("shop_members")
+            .select("shop_id")
+            .eq("user_id", u.id)
+            .limit(1)
+            .maybeSingle();
+        hasAnyShopMembership = Boolean(anyMembership);
     }
 
     if (u && effectiveShopId && effectiveBranchId) {
@@ -100,5 +114,6 @@ export async function getServerIdentity(): Promise<{
         currentShopId: effectiveShopId,
         currentBranchId: effectiveBranchId,
         currentShopRole,
+        hasAnyShopMembership,
     };
 }

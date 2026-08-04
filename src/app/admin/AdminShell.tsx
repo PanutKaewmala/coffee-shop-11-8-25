@@ -10,11 +10,13 @@ export default function AdminShell({
     currentShopId,
     currentBranchId,
     currentShopRole,
+    contentVariant = "admin",
 }: {
     children: ReactNode;
     currentShopId: string;
     currentBranchId: string | null;
     currentShopRole: string | null;
+    contentVariant?: "admin" | "pos";
 }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [contextNames, setContextNames] = useState<{ shopName: string | null; branchName: string | null }>({
@@ -45,8 +47,8 @@ export default function AdminShell({
                     onContextLoaded={handleContextLoaded}
                 />
 
-                <main className="flex-1 min-w-0 p-4 md:p-8 overflow-auto">
-                    <div className="max-w-6xl mx-auto space-y-6">{children}</div>
+                <main className={`flex-1 min-w-0 overflow-auto ${contentVariant === "admin" ? "p-4 md:p-8" : ""}`}>
+                    <div className={contentVariant === "admin" ? "max-w-6xl mx-auto space-y-6" : "min-h-full"}>{children}</div>
                 </main>
             </div>
         </div>

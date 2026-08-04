@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeInternalPath } from "@/lib/accessPolicy.mjs";
 
 type Shop = { id: string; name: string };
 
 function safeNext(raw: string | null) {
-    if (!raw) return "/admin";
-    return raw.startsWith("/") ? raw : "/admin";
+    return safeInternalPath(raw, "/admin");
 }
 
 async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {

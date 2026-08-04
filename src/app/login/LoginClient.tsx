@@ -4,32 +4,28 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+import { contextSelectorPath, isOwnerOnlyPath, safeInternalPath } from "@/lib/accessPolicy.mjs";
 
 /* =========================
    Helpers
 ========================= */
 function safeNext(raw: string | null) {
-    if (!raw) return "/admin";
-    return raw.startsWith("/") ? raw : "/admin";
+    return safeInternalPath(raw, "/admin");
 }
 
-type AccessResponse = { role: string; home: string };
+type AccessResponse = { role: string | null; home: string };
 
-function isOwnerOnlyDestination(href: string) {
-    const pathname = href.split("?", 1)[0];
-    return pathname === "/admin" || pathname === "/admin/reports" || pathname.startsWith("/admin/reports/");
-}
-
-async function resolveDestination(nextHref: string) {
-    const access = await jsonFetch<AccessResponse>("/api/context/access");
-    if (access.role !== "owner" && isOwnerOnlyDestination(nextHref)) return access.home;
+function resolveDestination(access: AccessResponse, nextHref: string) {
+    if (access.role !== "owner" && access.role !== "staff") return access.home;
+    if (access.role !== "owner" && isOwnerOnlyPath(nextHref.split("?", 1)[0])) return access.home;
     return nextHref;
 }
 
 type EnsureResult =
     | { action: "go"; href: string }
-    | { action: "select-shop"; href: "/admin/select-shop" }
-    | { action: "select-branch"; href: "/select-branch" };
+    | { action: "select-shop"; href: string }
+    | { action: "select-branch"; href: string }
+    | { action: "no-access"; href: "/no-access" };
 
 async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
     const res = await fetch(input, {
@@ -77,12 +73,11 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
         >("/api/context/shop?mode=pick");
 
         if (pickShop.mode === "none") {
-            // user has no shop membership -> treat as must pick/create later
-            return { action: "select-shop", href: "/admin/select-shop" };
+            return { action: "no-access", href: "/no-access" };
         }
 
         if (pickShop.mode === "multiple") {
-            return { action: "select-shop", href: "/admin/select-shop" };
+            return { action: "select-shop", href: contextSelectorPath("shop", nextHref) };
         }
 
         // single
@@ -90,6 +85,13 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
             method: "POST",
             body: JSON.stringify({ shop_id: pickShop.shop_id }),
         });
+    }
+
+    // Resolve the canonical shop role before asking for a branch. Invalid roles
+    // must fail closed rather than entering an operational context flow.
+    const access = await jsonFetch<AccessResponse>("/api/context/access");
+    if (access.role !== "owner" && access.role !== "staff") {
+        return { action: "no-access", href: "/no-access" };
     }
 
     // 2) Now ensure branch
@@ -110,7 +112,7 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
         >("/api/context/branch?mode=pick");
 
         if (pickBranch.mode === "none" || pickBranch.mode === "multiple") {
-            return { action: "select-branch", href: "/select-branch" };
+            return { action: "select-branch", href: contextSelectorPath("branch", nextHref) };
         }
 
         await jsonFetch<{ ok: true }>("/api/context/branch", {
@@ -120,7 +122,7 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
     }
 
     // 3) All good; resolve the first usable page from the current shop role.
-    return { action: "go", href: await resolveDestination(nextHref) };
+    return { action: "go", href: resolveDestination(access, nextHref) };
 }
 
 export default function LoginClient() {

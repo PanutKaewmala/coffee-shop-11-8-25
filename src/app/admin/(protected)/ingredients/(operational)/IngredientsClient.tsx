@@ -15,6 +15,7 @@ import Pagination from "@/components/admin/Pagination";
 import AdjustStockForm from "@/components/admin/AdjustStockForm";
 
 import DaysLeftBadge from "@/components/admin/DaysLeftBadge";
+import { ingredientActionVisibility } from "@/lib/accessPolicy.mjs";
 
 import type { IngredientRow } from "@/lib/types";
 import { BASE_UNIT_LABEL, TYPE_LABEL, TYPE_TO_BASE, type IngredientType } from "@/lib/units";
@@ -150,7 +151,7 @@ function getRiskLevel(item: IngredientRow, a: AnalyticsRow | undefined): RiskLev
 
 /* ================= page ================= */
 
-export default function IngredientsAdminPage() {
+export default function IngredientsClient() {
     const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -158,6 +159,7 @@ export default function IngredientsAdminPage() {
     const [flashIngredientId, setFlashIngredientId] = useState<string | null>(null);
     const [canManageIngredients, setCanManageIngredients] = useState(false);
     const [permissionLoading, setPermissionLoading] = useState(true);
+    const actionVisibility = ingredientActionVisibility(canManageIngredients ? "owner" : "staff");
 
     // filters
     const [search, setSearch] = useState("");
@@ -194,7 +196,7 @@ export default function IngredientsAdminPage() {
     const stockActionsDisabled =
         loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading || isBusinessDayClosed;
     const renameDisabled = loading || saving || !!deletingId || isAnyModalOpen || !canManageIngredients || permissionLoading;
-    const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || permissionLoading || isBusinessDayClosed;
+    const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || !actionVisibility.canAdjust || permissionLoading || isBusinessDayClosed;
 
     useEffect(() => setInputPage(String(page)), [page]);
 
@@ -505,7 +507,7 @@ export default function IngredientsAdminPage() {
     };
 
     const openAdd = () => {
-        if (!canManageIngredients || permissionLoading) return;
+        if (!actionVisibility.canCreate || permissionLoading) return;
         if (isBusinessDayClosed) {
             setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
             return;
@@ -519,7 +521,7 @@ export default function IngredientsAdminPage() {
     };
 
     const openRename = (item: IngredientRow) => {
-        if (!canManageIngredients || permissionLoading) return;
+        if (!actionVisibility.canRename || permissionLoading) return;
         setAdjustItem(null);
         setEditingItem(item);
         setName(item.name ?? "");
@@ -622,7 +624,7 @@ export default function IngredientsAdminPage() {
     };
 
     const deleteIngredient = async (id: string) => {
-        if (!canManageIngredients || permissionLoading) return;
+        if (!actionVisibility.canArchive || permissionLoading) return;
         if (deletingId) return;
         if (isBusinessDayClosed) {
             setActionNotice("วันนี้ปิดยอดแล้ว ไม่สามารถเพิ่มวัตถุดิบหรือปรับสต็อกของวันนี้ได้");
@@ -685,7 +687,7 @@ export default function IngredientsAdminPage() {
                 ) : null}
                 {!permissionLoading && !canManageIngredients ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่เพิ่มหรือลบวัตถุดิบได้
+                        คุณปรับสต็อกได้ แต่เจ้าของร้านเท่านั้นที่เพิ่ม เปลี่ยนชื่อ หรือนำวัตถุดิบเข้าคลังเก่าได้
                     </div>
                 ) : null}
                 {/* Filters */}
@@ -744,11 +746,13 @@ export default function IngredientsAdminPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex justify-end mb-4 gap-2">
-                    <Button onClick={openAdd} disabled={stockActionsDisabled}>
-                        + เพิ่มวัตถุดิบ
-                    </Button>
-                </div>
+                {actionVisibility.canCreate ? (
+                    <div className="flex justify-end mb-4 gap-2">
+                        <Button onClick={openAdd} disabled={stockActionsDisabled}>
+                            + เพิ่มวัตถุดิบ
+                        </Button>
+                    </div>
+                ) : null}
 
                 {/* Summary cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
@@ -911,7 +915,7 @@ export default function IngredientsAdminPage() {
                                         ปรับสต็อก
                                     </Button>
 
-                                    {canManageIngredients && !permissionLoading ? (
+                                    {actionVisibility.canRename && actionVisibility.canArchive && !permissionLoading ? (
                                         <details className="relative">
                                             <summary className="list-none cursor-pointer px-3 py-2 rounded-lg border border-text-muted/25 hover:bg-surface text-sm text-text-secondary">
                                                 ⋯
