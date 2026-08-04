@@ -27,40 +27,11 @@ async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
     return (await res.json()) as T;
 }
 
-async function setShop(shopId: string) {
-    await jsonFetch<{ ok: true }>("/api/context/shop", {
+async function setShop(shopId: string, next: string) {
+    return jsonFetch<{ ok: true; href: string }>("/api/context/shop", {
         method: "POST",
-        body: JSON.stringify({ shop_id: shopId }),
+        body: JSON.stringify({ shop_id: shopId, next }),
     });
-}
-
-/**
- * After shop selected:
- * - try auto pick branch (primary / single)
- * - if single -> set branch and go next
- * - else -> go select-branch
- */
-async function resolveBranchOrGo(nextHref: string): Promise<string> {
-    // do we already have branch?
-    const ctx = await jsonFetch<{ branch_id: string | null }>("/api/context/branch");
-    if (ctx.branch_id) return nextHref;
-
-    const pick = await jsonFetch<
-        | { mode: "single"; branch_id: string }
-        | { mode: "multiple" }
-        | { mode: "none" }
-    >("/api/context/branch?mode=pick");
-
-    if (pick.mode === "single") {
-        await jsonFetch<{ ok: true }>("/api/context/branch", {
-            method: "POST",
-            body: JSON.stringify({ branch_id: pick.branch_id }),
-        });
-        return nextHref;
-    }
-
-    // must choose
-    return `/select-branch?next=${encodeURIComponent(nextHref)}`;
 }
 
 export default function SelectShopClient({
@@ -91,10 +62,7 @@ export default function SelectShopClient({
         setErr(null);
 
         try {
-            await setShop(shopId);
-
-            // after setting shop, branch cookie was cleared -> resolve branch next
-            const href = await resolveBranchOrGo(next);
+            const { href } = await setShop(shopId, next);
 
             router.replace(href);
             router.refresh();
@@ -156,7 +124,6 @@ export default function SelectShopClient({
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="font-semibold truncate">{s.name}</div>
-                                            <div className="text-xs text-[var(--text-muted)] truncate">{s.id}</div>
                                         </div>
                                         <div className="text-sm text-[var(--text-secondary)]">
                                             {busy === s.id ? "Selecting…" : "Enter →"}

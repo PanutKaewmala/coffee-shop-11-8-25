@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabaseServer, getCurrentContextFromCookies } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveBranchContext } from "@/lib/contextPolicy.mjs";
 
 type Body = { branch_id?: string | null };
 
@@ -77,6 +78,7 @@ export async function GET(req: Request) {
         if (bErr) return jsonError(bErr.message, 500);
 
         if (!br || br.shop_id !== currentShopId) {
+            await admin.from("profiles").update({ current_branch_id: null }).eq("id", user.id);
             const cookieStore = await cookies();
             cookieStore.set({
                 name: "current_branch_id",
@@ -93,51 +95,19 @@ export async function GET(req: Request) {
         return NextResponse.json({ branch_id: currentBranchId });
     }
 
-    // 2) auto-pick branch in current shop
-    // prefer primary first
-    const { data: primary, error: pErr } = await admin
-        .from("branch")
-        .select("id")
-        .eq("shop_id", currentShopId)
-        .eq("is_primary", true)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-    if (pErr) return jsonError(pErr.message, 500);
-    if (primary?.id) return NextResponse.json({ mode: "single", branch_id: primary.id });
-
-    // else check branches in current shop
     const { data: rows, error } = await admin
         .from("branch")
-        .select("id, name, address, created_at")
+        .select("id,is_primary,created_at")
         .eq("shop_id", currentShopId)
         .order("created_at", { ascending: true })
         .limit(50);
 
     if (error) return jsonError(error.message, 500);
 
-    if (!rows || rows.length === 0) {
-        // Do not auto-create branch in context/login flow.
-        // Branch bootstrap must happen at shop onboarding (DB trigger/migration)
-        // or explicit owner action in Branch management page.
-        return NextResponse.json({ mode: "none" });
-    }
-    if (rows.length === 1) return NextResponse.json({ mode: "single", branch_id: rows[0].id });
-
-    // Legacy-heal: if multiple rows are only duplicated auto-created Main Branch,
-    // pick the oldest row automatically to avoid blocking login flow.
-    const allAutoMainBranch = rows.every((r) => {
-        const name = (r.name ?? "").trim().toLowerCase();
-        const address = (r.address ?? "").trim().toLowerCase();
-        return name === "main branch" && address === "auto-created branch";
-    });
-
-    if (allAutoMainBranch) {
-        return NextResponse.json({ mode: "single", branch_id: rows[0].id });
-    }
-
-    return NextResponse.json({ mode: "multiple" });
+    const decision = resolveBranchContext((rows ?? []).map((row) => ({ id: row.id, isPrimary: row.is_primary })), null, null);
+    if (decision.action === "select") return NextResponse.json({ mode: "single", branch_id: decision.branchId });
+    if (decision.action === "select-branch") return NextResponse.json({ mode: "multiple" });
+    return NextResponse.json({ mode: "none" });
 }
 
 export async function POST(req: Request) {

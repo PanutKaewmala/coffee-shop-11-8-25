@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
 import { Menu, LogOut, Moon, Sun, Store, GitBranch } from "lucide-react";
 
@@ -12,6 +11,7 @@ export interface AdminNavbarProps {
 
     currentShopId?: string;
     currentBranchId?: string | null;
+    currentShopRole?: string | null;
 
     currentShopName?: string | null;
     currentBranchName?: string | null;
@@ -29,7 +29,7 @@ type NavbarResponse = {
 async function postJSON<T extends Record<string, unknown>>(
     url: string,
     body: T
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; href?: string; context_ready?: boolean }> {
     try {
         const res = await fetch(url, {
             method: "POST",
@@ -41,7 +41,7 @@ async function postJSON<T extends Record<string, unknown>>(
             const text = await res.text().catch(() => "");
             return { ok: false, error: text || "เชื่อมต่อระบบไม่สำเร็จ" };
         }
-        return { ok: true };
+        return await res.json();
     } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : "เกิดข้อผิดพลาด" };
     }
@@ -51,11 +51,14 @@ export default function AdminNavbar({
     onToggleSidebar,
     currentShopId,
     currentBranchId,
+    currentShopRole,
     currentShopName,
     currentBranchName,
     onContextLoaded,
 }: AdminNavbarProps) {
     const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const { toggleTheme } = useTheme();
 
     const [meLabel, setMeLabel] = useState<string>("");
@@ -75,8 +78,9 @@ export default function AdminNavbar({
     };
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.push("/login");
+        await fetch("/api/auth/logout", { method: "POST" });
+        router.replace("/login");
+        router.refresh();
     };
 
     const shopLabel = useMemo(() => {
@@ -149,17 +153,21 @@ export default function AdminNavbar({
         setSwitching(true);
         setErr(null);
 
-        const r1 = await postJSON("/api/context/shop", { shop_id: shopId });
+        const query = searchParams.toString();
+        const next = `${pathname}${query ? `?${query}` : ""}`;
+        const r1 = await postJSON("/api/context/shop", { shop_id: shopId, next });
         if (!r1.ok) {
             setErr(r1.error ?? "เปลี่ยนร้านไม่สำเร็จ");
             setSwitching(false);
             return;
         }
 
-        // เปลี่ยน shop -> เคลียร์ branch
-        await postJSON("/api/context/branch", { branch_id: null });
-
         setSwitching(false);
+        if (r1.href) {
+            router.replace(r1.href);
+            router.refresh();
+            return;
+        }
         reloadAfterContextChange();
     };
 
@@ -240,7 +248,7 @@ export default function AdminNavbar({
                                 </option>
                             ))}
                         </select> : branches.length === 1 ? <span className="max-w-60 truncate text-sm font-medium">{branchLabel}</span> : null}
-                        {noBranchInCurrentShop ? (
+                        {noBranchInCurrentShop && currentShopRole === "owner" ? (
                             <button
                                 type="button"
                                 onClick={() => router.push("/admin/branch")}
@@ -317,7 +325,7 @@ export default function AdminNavbar({
                     </select> : branches.length === 1 ? <div className="min-w-0 truncate rounded-lg border border-[var(--text-muted)]/20 bg-[var(--background)] px-3 py-2 text-sm">{branchLabel}</div> : null}
                 </div>
 
-                {noBranchInCurrentShop ? (
+                {noBranchInCurrentShop && currentShopRole === "owner" ? (
                     <button
                         type="button"
                         onClick={() => router.push("/admin/branch")}

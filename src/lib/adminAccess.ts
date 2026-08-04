@@ -20,8 +20,8 @@ function applyDecision(
 ) {
     if (decision.action === "allow") return;
     if (decision.action === "login") redirect(`/login?next=${encodeURIComponent(loginNext)}`);
-    if (decision.action === "select-shop") redirect(`/admin/select-shop?next=${encodeURIComponent(selectShopNext)}`);
-    if (decision.action === "select-branch") redirect(`/select-branch?next=${encodeURIComponent(selectBranchNext)}`);
+    if (decision.action === "select-shop") redirect(`/api/context/resolve?next=${encodeURIComponent(selectShopNext)}`);
+    if (decision.action === "select-branch") redirect(`/api/context/resolve?next=${encodeURIComponent(selectBranchNext)}`);
     if (decision.action === "staff-home") redirect(STAFF_HOME);
     redirect(NO_ACCESS);
 }
