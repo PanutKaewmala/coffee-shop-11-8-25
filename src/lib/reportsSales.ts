@@ -319,14 +319,10 @@ export function buildReportsSalesRange(
         granularity = inclusiveDays <= 31 ? "daily" : inclusiveDays <= 180 ? "weekly" : "monthly";
     }
 
-    // At exact Bangkok midnight a nominal today/year/all-time fallback starts at
-    // `now`. Keep a non-empty half-open interval without querying the future.
-    if (new Date(startInclusive).getTime() >= new Date(endExclusive).getTime()) {
-        startInclusive = new Date(new Date(endExclusive).getTime() - 1).toISOString();
-    }
-    if (comparisonStartInclusive && comparisonEndExclusive
-        && new Date(comparisonStartInclusive).getTime() >= new Date(comparisonEndExclusive).getTime()) {
-        comparisonStartInclusive = new Date(new Date(comparisonEndExclusive).getTime() - 1).toISOString();
+    // Exact midnight is a valid empty half-open period. Preserve its logical
+    // Bangkok boundary instead of borrowing time from the previous day.
+    if (new Date(startInclusive).getTime() === new Date(endExclusive).getTime()) {
+        endExclusive = startInclusive;
     }
 
     return {

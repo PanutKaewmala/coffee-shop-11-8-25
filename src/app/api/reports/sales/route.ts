@@ -159,6 +159,9 @@ async function fetchPaidOrders(
     shopId: string,
     branchId: string | null,
 ): Promise<ReportsSalesPaidOrder[]> {
+    const start = new Date(period.startInclusive).getTime();
+    const end = new Date(period.endExclusive).getTime();
+    if (Number.isFinite(start) && Number.isFinite(end) && start >= end) return [];
     const [paidAtOrders, legacyOrders] = await Promise.all([
         fetchPaidOrderStream(period, shopId, branchId, "paid_at"),
         fetchPaidOrderStream(period, shopId, branchId, "created_at"),
