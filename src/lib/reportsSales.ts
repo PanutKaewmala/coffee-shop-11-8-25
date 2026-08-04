@@ -319,6 +319,16 @@ export function buildReportsSalesRange(
         granularity = inclusiveDays <= 31 ? "daily" : inclusiveDays <= 180 ? "weekly" : "monthly";
     }
 
+    // At exact Bangkok midnight a nominal today/year/all-time fallback starts at
+    // `now`. Keep a non-empty half-open interval without querying the future.
+    if (new Date(startInclusive).getTime() >= new Date(endExclusive).getTime()) {
+        startInclusive = new Date(new Date(endExclusive).getTime() - 1).toISOString();
+    }
+    if (comparisonStartInclusive && comparisonEndExclusive
+        && new Date(comparisonStartInclusive).getTime() >= new Date(comparisonEndExclusive).getTime()) {
+        comparisonStartInclusive = new Date(new Date(comparisonEndExclusive).getTime() - 1).toISOString();
+    }
+
     return {
         key,
         timezone: REPORTS_SALES_TIME_ZONE,

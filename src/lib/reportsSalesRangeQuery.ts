@@ -29,21 +29,28 @@ export function getReportsBangkokDate(now = new Date()): string {
 }
 
 export function parseReportsSalesRangeQuery(params: URLSearchParams, now = new Date()): ReportsSalesRangeQueryResult {
+    const ownedParameters = ["range", "start", "end", "preset"] as const;
+    if (ownedParameters.some((parameter) => params.getAll(parameter).length > 1)) {
+        return { ok: false, error: "Duplicate range parameter" };
+    }
     const rawRange = params.get("range") ?? "7d";
     if (!isReportsSalesRangeKey(rawRange)) return { ok: false, error: "Invalid range" };
+    const hasStart = params.has("start");
+    const hasEnd = params.has("end");
+    const hasPreset = params.has("preset");
     const start = params.get("start");
     const end = params.get("end");
     const preset = params.get("preset");
     if (rawRange !== "custom") {
-        if (start || end || preset) return { ok: false, error: "Range parameters are only valid for custom range" };
+        if (hasStart || hasEnd || hasPreset) return { ok: false, error: "Range parameters are only valid for custom range" };
         return { ok: true, value: { key: rawRange, start: null, end: null, allTime: false } };
     }
-    if (preset !== null) {
+    if (hasPreset) {
         if (preset !== "all") return { ok: false, error: "Unknown preset" };
-        if (start || end) return { ok: false, error: "All-time cannot include start or end" };
+        if (hasStart || hasEnd) return { ok: false, error: "All-time cannot include start or end" };
         return { ok: true, value: { key: "custom", start: null, end: null, allTime: true } };
     }
-    if (!start || !end) return { ok: false, error: "Custom range requires start and end" };
+    if (!hasStart || !hasEnd || !start || !end) return { ok: false, error: "Custom range requires start and end" };
     const startDay = dayNumber(start);
     const endDay = dayNumber(end);
     if (startDay === null || endDay === null) return { ok: false, error: "Invalid date format" };

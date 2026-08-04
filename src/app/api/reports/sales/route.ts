@@ -28,6 +28,25 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 500;
 const ORDER_ITEM_ID_CHUNK_SIZE = 100;
+type ReportsErrorStage = "query_parse" | "identity" | "shop_lookup" | "branch_lookup" | "range_build"
+    | "current_orders" | "comparison_orders" | "order_items" | "aggregation" | "serialization";
+
+class ReportsStageError {
+    constructor(readonly stage: ReportsErrorStage, readonly cause: unknown) {}
+}
+
+async function atStage<T>(stage: ReportsErrorStage, operation: () => PromiseLike<T>): Promise<T> {
+    try { return await operation(); } catch (error: unknown) { throw new ReportsStageError(stage, error); }
+}
+
+function internalReportsError(requestId: string, stage: ReportsErrorStage, error: unknown) {
+    console.error("Owner sales report failed", { requestId, stage, error });
+    return NextResponse.json({
+        error: "โหลดรายงานยอดขายไม่สำเร็จ",
+        code: "REPORTS_INTERNAL_ERROR",
+        requestId,
+    }, { status: 500 });
+}
 
 type PaidOrderRow = {
     id: string;
@@ -185,16 +204,19 @@ async function fetchOrderItems(shopId: string, orderIds: string[]): Promise<Map<
 }
 
 export async function GET(request: Request) {
+    const requestId = crypto.randomUUID();
+    let stage: ReportsErrorStage = "query_parse";
     try {
         const parsedRange = parseReportsSalesRangeQuery(new URL(request.url).searchParams);
         if (!parsedRange.ok) return NextResponse.json({ error: parsedRange.error }, { status: 400 });
         const requestedRange = parsedRange.value;
 
-        const identity = await getServerIdentity();
+        stage = "identity";
+        const identity = await atStage("identity", getServerIdentity);
         const accessError = getReportsSalesAccessError(identity);
         if (accessError) return NextResponse.json({ error: accessError.error }, { status: accessError.status });
         const currentShopId = identity.currentShopId as string;
-        const { currentBranchId: rawCurrentBranchId } = await getCurrentContextFromCookies();
+        const { currentBranchId: rawCurrentBranchId } = await atStage("identity", getCurrentContextFromCookies);
         const requestedBranchId = normalizeReportsSalesRequestedBranchId(rawCurrentBranchId);
         const admin = getSupabaseAdmin();
 
@@ -202,10 +224,13 @@ export async function GET(request: Request) {
         const branchPromise = requestedBranchId
             ? admin.from("branch").select("id,name,shop_id").eq("id", requestedBranchId).eq("shop_id", currentShopId).maybeSingle()
             : Promise.resolve({ data: null, error: null });
-        const [shopResult, branchResult] = await Promise.all([shopPromise, branchPromise]);
-        if (shopResult.error) return NextResponse.json({ error: shopResult.error.message }, { status: 500 });
+        const [shopResult, branchResult] = await Promise.all([
+            atStage("shop_lookup", async () => await shopPromise),
+            atStage("branch_lookup", async () => await branchPromise),
+        ]);
+        if (shopResult.error) throw new ReportsStageError("shop_lookup", shopResult.error);
         if (!shopResult.data) return NextResponse.json({ error: "Current shop not found" }, { status: 404 });
-        if (branchResult.error) return NextResponse.json({ error: branchResult.error.message }, { status: 500 });
+        if (branchResult.error) throw new ReportsStageError("branch_lookup", branchResult.error);
         const branchScope = resolveReportsSalesBranchScope(
             requestedBranchId,
             branchResult.data ? { id: branchResult.data.id, name: branchResult.data.name } : null,
@@ -213,9 +238,10 @@ export async function GET(request: Request) {
         if (!branchScope.ok) return NextResponse.json({ error: branchScope.error }, { status: branchScope.status });
         const currentBranchId = branchScope.branchId;
 
+        stage = "range_build";
         const now = new Date();
         const firstPaidOrderAt = requestedRange.allTime
-            ? await findFirstPaidOrderAt(currentShopId, currentBranchId)
+            ? await atStage("range_build", () => findFirstPaidOrderAt(currentShopId, currentBranchId))
             : null;
         const range = buildReportsSalesRange(requestedRange, now, firstPaidOrderAt);
         const currentPeriod = { startInclusive: range.startInclusive, endExclusive: range.endExclusive };
@@ -225,12 +251,15 @@ export async function GET(request: Request) {
             : null;
 
         const [currentOrders, previousOrders] = await Promise.all([
-            fetchPaidOrders(currentPeriod, currentShopId, currentBranchId),
-            comparisonPeriod ? fetchPaidOrders(comparisonPeriod, currentShopId, currentBranchId) : Promise.resolve([]),
+            atStage("current_orders", () => fetchPaidOrders(currentPeriod, currentShopId, currentBranchId)),
+            atStage("comparison_orders", () => comparisonPeriod
+                ? fetchPaidOrders(comparisonPeriod, currentShopId, currentBranchId) : Promise.resolve([])),
         ]);
-        const itemsByOrderId = await fetchOrderItems(currentShopId, currentOrders.map((order) => order.id));
+        stage = "order_items";
+        const itemsByOrderId = await atStage("order_items", () => fetchOrderItems(currentShopId, currentOrders.map((order) => order.id)));
         for (const order of currentOrders) order.items = itemsByOrderId.get(order.id) ?? [];
 
+        stage = "aggregation";
         const summary = calculateReportsSalesMetrics(currentOrders);
         const previousMetrics = comparisonAvailable ? calculateReportsSalesMetrics(previousOrders) : null;
         const response: ReportsSalesResponse = {
@@ -248,11 +277,10 @@ export async function GET(request: Request) {
             menus: buildReportsSalesMenus(currentOrders),
             dataQuality: buildReportsSalesDataQuality(currentOrders),
         };
+        stage = "serialization";
         return NextResponse.json(response);
     } catch (error: unknown) {
-        return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Failed to load sales report" },
-            { status: 500 },
-        );
+        return internalReportsError(requestId, error instanceof ReportsStageError ? error.stage : stage,
+            error instanceof ReportsStageError ? error.cause : error);
     }
 }
