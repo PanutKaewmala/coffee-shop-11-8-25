@@ -1557,9 +1557,8 @@ export default function POSClient() {
                 </button>
 
                             <div
-                                onClick={() => addToCart(item)}
-                  className="hidden min-w-0 cursor-pointer flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60 md:flex"
-                                title="คลิกเพื่อเพิ่ม"
+                  className="hidden min-w-0 flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60 md:flex"
+                  title="เลือกอุณหภูมิและความหวาน แล้วกด + เพิ่ม"
                             >
                                 <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/15 pb-3">
                                     <div className="min-w-0 flex-1">
@@ -1604,7 +1603,6 @@ export default function POSClient() {
                                                             ...prev,
                                   [item.id]: variant.id,
                                                         }));
-                                addVariantToCart(item, variant.id);
                                                     }}
                                                         className={[
                                 "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -1613,7 +1611,7 @@ export default function POSClient() {
                                                                 : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
                                                         ].join(" ")}
                                                     aria-pressed={active}
-                              aria-label={`${serveLabel(variant)} เลือกและเพิ่มลงตะกร้า`}
+                              aria-label={`เลือกอุณหภูมิ${serveLabel(variant)}`}
                                                 >
                               {active ? (
                                 <span aria-hidden="true">✓</span>
@@ -1678,8 +1676,7 @@ export default function POSClient() {
                                     </div>
                                 </div>
                                 <div className="mt-3 text-sm leading-relaxed text-text-muted">
-                    ปุ่มอุณหภูมิจะเลือกและเพิ่มทันที หรือกด “+ เพิ่ม”
-                    เพื่อเพิ่มตัวเลือกปัจจุบัน
+                    เลือกอุณหภูมิและความหวาน แล้วกด “+ เพิ่ม” เพื่อนำลงตะกร้า
                                 </div>
                             </div>
               </React.Fragment>
@@ -1747,6 +1744,7 @@ export default function POSClient() {
                           }))
                         }
                         aria-pressed={active}
+                        aria-label={`เลือกอุณหภูมิ${serveLabel(variant)}`}
                         className={[
                           "min-h-11 rounded-xl border px-3 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                           active
@@ -1780,6 +1778,7 @@ export default function POSClient() {
                           }))
                         }
                         aria-pressed={active}
+                        aria-label={`เลือกความหวาน ${option}`}
                         className={[
                           "min-h-11 rounded-xl border px-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                           active
