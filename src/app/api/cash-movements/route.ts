@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkDailyClose } from "@/lib/dailyCloseGuard";
+import { parseAppRole } from "@/lib/accessPolicy.mjs";
+import { cashMovementNavigationIntent, validateCashMovementReason } from "@/lib/cashMovementPolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -45,16 +47,6 @@ function readNumber(v: unknown): number | null {
 ========================= */
 const CASH_MOVEMENT_TYPES: CashMovementType[] = ["cash_in", "cash_out"];
 
-const CASH_MOVEMENT_REASONS = [
-    "เติมเงินทอน",
-    "ซื้อของเข้าร้าน",
-    "เบิกเงินสด",
-    "ฝากธนาคาร",
-    "ปรับยอดเงินสด",
-] as const;
-
-type CashMovementReason = (typeof CASH_MOVEMENT_REASONS)[number];
-
 /* =========================
    Helpers
 ========================= */
@@ -69,12 +61,16 @@ function isValidDateKey(value: string | null | undefined): value is string {
     );
 }
 
-function toCashMovementReason(v: unknown): CashMovementReason | null {
-    const s = readString(v);
-    if (!s) return null;
-    return (CASH_MOVEMENT_REASONS as readonly string[]).includes(s)
-        ? (s as CashMovementReason)
-        : null;
+
+async function branchBelongsToShop(admin: ReturnType<typeof getSupabaseAdmin>, shopId: string, branchId: string): Promise<boolean> {
+    const { data, error } = await admin
+        .from("branch")
+        .select("id")
+        .eq("id", branchId)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+    if (error) throw new Error(error.message);
+    return Boolean(data);
 }
 
 function normalizeAmount(v: unknown): number | null {
@@ -231,7 +227,7 @@ export async function POST(req: NextRequest) {
 
         const { data: member, error: mErr } = await admin
             .from("shop_members")
-            .select("shop_id")
+            .select("shop_id, role")
             .eq("user_id", auth.user.id)
             .eq("shop_id", currentShopId)
             .maybeSingle();
@@ -239,6 +235,13 @@ export async function POST(req: NextRequest) {
         if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
         if (!member) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        }
+        const role = parseAppRole((member as { role?: unknown }).role);
+        if (!role) {
+            return NextResponse.json({ error: "Invalid member role" }, { status: 403 });
+        }
+        if (!(await branchBelongsToShop(admin, currentShopId, currentBranchId))) {
+            return NextResponse.json({ error: "Branch does not belong to the current shop" }, { status: 403 });
         }
 
         const body: unknown = await req.json().catch(() => null);
@@ -266,11 +269,13 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const reason = toCashMovementReason(body.reason);
-        if (!reason) {
+        const reason = readString(body.reason);
+        const note = readString(body.note);
+        const reasonValidation = validateCashMovementReason({ type, reason, role, note });
+        if (!reasonValidation.ok) {
             return NextResponse.json(
-                { error: "Invalid reason." },
-                { status: 400 }
+                { error: reasonValidation.error },
+                { status: reasonValidation.status }
             );
         }
 
@@ -281,8 +286,6 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
-
-        const note = readString(body.note);
 
         // Closed-day guard
         const guardResult = await checkDailyClose(currentShopId, currentBranchId, businessDate);
@@ -337,7 +340,7 @@ export async function POST(req: NextRequest) {
             created_at: inserted.created_at as string,
         };
 
-        return NextResponse.json({ movement }, { status: 201 });
+        return NextResponse.json({ movement, navigationIntent: cashMovementNavigationIntent(movement) }, { status: 201 });
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "server_error";
         return NextResponse.json({ error: message }, { status: 500 });

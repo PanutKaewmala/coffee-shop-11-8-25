@@ -1,7 +1,8 @@
 // src/app/admin/ingredients/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import Link from "next/link";
 
@@ -152,6 +153,11 @@ function getRiskLevel(item: IngredientRow, a: AnalyticsRow | undefined): RiskLev
 /* ================= page ================= */
 
 export default function IngredientsClient() {
+    const searchParams = useSearchParams();
+    const stockActionRef = useRef<HTMLDivElement | null>(null);
+    const [showRestockGuide, setShowRestockGuide] = useState(
+        () => searchParams.get("intent") === "restock" && searchParams.get("source") === "cash-movement"
+    );
     const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -199,6 +205,18 @@ export default function IngredientsClient() {
     const adjustDisabled = loading || saving || !!deletingId || isAnyModalOpen || !actionVisibility.canAdjust || permissionLoading || isBusinessDayClosed;
 
     useEffect(() => setInputPage(String(page)), [page]);
+
+    useEffect(() => {
+        const shouldGuide = searchParams.get("intent") === "restock" && searchParams.get("source") === "cash-movement";
+        setShowRestockGuide(shouldGuide);
+        if (!shouldGuide) return;
+        const t = window.setTimeout(() => {
+            stockActionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            const button = stockActionRef.current?.querySelector("button:not([disabled])") as HTMLButtonElement | null;
+            button?.focus();
+        }, 150);
+        return () => window.clearTimeout(t);
+    }, [searchParams]);
 
     const fetchIngredients = async () => {
         try {
@@ -680,6 +698,29 @@ export default function IngredientsClient() {
     return (
         <div className="p-6 space-y-6">
             <Card title="คลังวัตถุดิบ">
+                {showRestockGuide ? (
+                    <div className="mb-4 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-200" role="status">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="font-semibold">บันทึกเงินออกแล้ว — เพิ่มวัตถุดิบที่ซื้อเข้าสต็อกให้ครบ</div>
+                                <div className="mt-1 text-emerald-700 dark:text-emerald-100/90">
+                                    เลือกวัตถุดิบและระบุจำนวนที่รับเข้าจริง เงินที่จ่ายไม่ได้ใช้คำนวณจำนวนสต็อกอัตโนมัติ
+                                </div>
+                                <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-100/80">
+                                    ขั้นตอน: เลือกวัตถุดิบในตาราง แล้วกด “ปรับสต็อก” และเลือก “รับของเข้า”
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowRestockGuide(false)}
+                                className="rounded-lg border border-emerald-500/30 px-2 py-1 text-xs hover:bg-emerald-500/10"
+                                aria-label="ปิดคำแนะนำเพิ่มสต็อก"
+                            >
+                                ปิด
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
                 {isBusinessDayClosed ? (
                     <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
                         วันนี้ปิดยอดแล้ว — ไม่สามารถเพิ่มหรือปรับสต็อกของวันนี้ได้
@@ -747,7 +788,7 @@ export default function IngredientsClient() {
 
                 {/* Actions */}
                 {actionVisibility.canCreate ? (
-                    <div className="flex justify-end mb-4 gap-2">
+                    <div ref={stockActionRef} className="flex justify-end mb-4 gap-2">
                         <Button onClick={openAdd} disabled={stockActionsDisabled}>
                             + เพิ่มวัตถุดิบ
                         </Button>
@@ -839,6 +880,10 @@ export default function IngredientsClient() {
                     <div className="py-8 text-center text-sm text-text-muted">
                         กำลังคำนวณของใกล้หมดจากการใช้ 7 วันล่าสุด...
                     </div>
+                ) : null}
+
+                {!actionVisibility.canCreate ? (
+                    <div ref={stockActionRef} className="sr-only" aria-hidden="true" />
                 ) : null}
 
                 {/* Table */}
