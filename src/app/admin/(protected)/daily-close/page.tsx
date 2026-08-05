@@ -1122,7 +1122,12 @@ export default function DailyClosePage() {
                                             <label className="text-xs text-text-secondary block mb-1">เหตุผล</label>
                                             <select
                                                 value={cmReason}
-                                                onChange={(e) => setCmReason(e.target.value)}
+                                                onChange={(e) => {
+                                                    const nextReason = e.target.value;
+                                                    setCmReason(nextReason);
+                                                    setCmNote("");
+                                                    setCmError(null);
+                                                }}
                                                 className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40"
                                             >
                                                 {cmReasonOptions.map((reason) => (

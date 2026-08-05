@@ -30,6 +30,16 @@ const ingredientsClient = readFileSync(new URL("../src/app/admin/(protected)/ing
 const reportCode = readFileSync(new URL("../src/lib/dailyCloseReport.ts", import.meta.url), "utf8");
 
 assert.match(dailyClosePage, /router\.push\(href\)/, "ingredient restock intent navigates from daily close client");
+assert.match(
+  dailyClosePage,
+  /const nextReason = e\.target\.value;[\s\S]*setCmReason\(nextReason\);[\s\S]*setCmNote\(""\);[\s\S]*setCmError\(null\);/,
+  "changing cash movement reason resets the note and previous validation error"
+);
+assert.match(
+  dailyClosePage,
+  /disabled=\{cmLoading \|\| !cmAmount \|\| Number\(cmAmount\) <= 0 \|\| \(isCmNoteRequired && cmNote\.trim\(\) === ""\)\}/,
+  "required-note reasons cannot submit using a stale note after the reason change reset"
+);
 assert.match(ingredientsClient, /restockStartRef\.current\?\.scrollIntoView/, "guided restock scrolls to the visible ingredient search/list start");
 assert.match(ingredientsClient, /querySelector\("input:not\(\[disabled\]\)"\)/, "guided restock focuses the ingredient search input rather than create CTA");
 assert.doesNotMatch(ingredientsClient, /ref=\{[^}]*stockActionRef/, "guided restock does not rely on canCreate action section refs");
