@@ -154,7 +154,8 @@ function getRiskLevel(item: IngredientRow, a: AnalyticsRow | undefined): RiskLev
 
 export default function IngredientsClient() {
     const searchParams = useSearchParams();
-    const stockActionRef = useRef<HTMLDivElement | null>(null);
+    const restockGuideRef = useRef<HTMLDivElement | null>(null);
+    const restockStartRef = useRef<HTMLDivElement | null>(null);
     const [showRestockGuide, setShowRestockGuide] = useState(
         () => searchParams.get("intent") === "restock" && searchParams.get("source") === "cash-movement"
     );
@@ -211,12 +212,16 @@ export default function IngredientsClient() {
         setShowRestockGuide(shouldGuide);
         if (!shouldGuide) return;
         const t = window.setTimeout(() => {
-            stockActionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-            const button = stockActionRef.current?.querySelector("button:not([disabled])") as HTMLButtonElement | null;
-            button?.focus();
+            if (isBusinessDayClosed) {
+                restockGuideRef.current?.focus();
+                return;
+            }
+            restockStartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            const searchInput = restockStartRef.current?.querySelector("input:not([disabled])") as HTMLInputElement | null;
+            searchInput?.focus();
         }, 150);
         return () => window.clearTimeout(t);
-    }, [searchParams]);
+    }, [searchParams, isBusinessDayClosed]);
 
     const fetchIngredients = async () => {
         try {
@@ -699,7 +704,7 @@ export default function IngredientsClient() {
         <div className="p-6 space-y-6">
             <Card title="คลังวัตถุดิบ">
                 {showRestockGuide ? (
-                    <div className="mb-4 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-200" role="status">
+                    <div ref={restockGuideRef} tabIndex={-1} className="mb-4 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:text-emerald-200" role="status">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="font-semibold">บันทึกเงินออกแล้ว — เพิ่มวัตถุดิบที่ซื้อเข้าสต็อกให้ครบ</div>
@@ -707,7 +712,9 @@ export default function IngredientsClient() {
                                     เลือกวัตถุดิบและระบุจำนวนที่รับเข้าจริง เงินที่จ่ายไม่ได้ใช้คำนวณจำนวนสต็อกอัตโนมัติ
                                 </div>
                                 <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-100/80">
-                                    ขั้นตอน: เลือกวัตถุดิบในตาราง แล้วกด “ปรับสต็อก” และเลือก “รับของเข้า”
+                                    {isBusinessDayClosed
+                                        ? "บันทึกเงินออกสำเร็จแล้ว แต่วันนี้ปิดยอดแล้ว จึงไม่สามารถปรับสต็อกของวันนี้ได้"
+                                        : "ขั้นตอน: ค้นหาหรือเลือกวัตถุดิบในตาราง แล้วกด “ปรับสต็อก” และเลือก “รับของเข้า”"}
                                 </div>
                             </div>
                             <button
@@ -732,7 +739,7 @@ export default function IngredientsClient() {
                     </div>
                 ) : null}
                 {/* Filters */}
-                <div className="mb-4 space-y-3">
+                <div ref={restockStartRef} className="mb-4 space-y-3">
                     <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาวัตถุดิบ..." />
 
                     <div className="flex items-center gap-2 flex-wrap">
@@ -788,7 +795,7 @@ export default function IngredientsClient() {
 
                 {/* Actions */}
                 {actionVisibility.canCreate ? (
-                    <div ref={stockActionRef} className="flex justify-end mb-4 gap-2">
+                    <div className="flex justify-end mb-4 gap-2">
                         <Button onClick={openAdd} disabled={stockActionsDisabled}>
                             + เพิ่มวัตถุดิบ
                         </Button>
@@ -882,10 +889,6 @@ export default function IngredientsClient() {
                     </div>
                 ) : null}
 
-                {!actionVisibility.canCreate ? (
-                    <div ref={stockActionRef} className="sr-only" aria-hidden="true" />
-                ) : null}
-
                 {/* Table */}
                 {loadError ? (
                     <div className="mb-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -902,7 +905,9 @@ export default function IngredientsClient() {
                         <div className="mt-1 text-sm text-text-muted">
                             {hasActiveFilters
                                 ? "ลองล้างตัวกรองหรือค้นหาด้วยชื่ออื่น"
-                                : "เพิ่มวัตถุดิบหลักของร้าน เช่น นม กาแฟ น้ำเชื่อม หรือแก้ว"}
+                                : !permissionLoading && !canManageIngredients
+                                    ? "ยังไม่มีวัตถุดิบให้รับเข้า กรุณาแจ้งเจ้าของร้านให้เพิ่มวัตถุดิบก่อน"
+                                    : "เพิ่มวัตถุดิบหลักของร้าน เช่น นม กาแฟ น้ำเชื่อม หรือแก้ว"}
                         </div>
                     </div>
                 ) : (
