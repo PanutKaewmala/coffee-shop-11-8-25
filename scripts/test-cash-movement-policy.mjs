@@ -28,6 +28,7 @@ assert.equal(validateCashMovementReason({ type: "cash_out", reason: "เบิ�
 const dailyClosePage = readFileSync(new URL("../src/app/admin/(protected)/daily-close/page.tsx", import.meta.url), "utf8");
 const ingredientsClient = readFileSync(new URL("../src/app/admin/(protected)/ingredients/(operational)/IngredientsClient.tsx", import.meta.url), "utf8");
 const reportCode = readFileSync(new URL("../src/lib/dailyCloseReport.ts", import.meta.url), "utf8");
+const reasonConstraintMigration = readFileSync(new URL("../supabase/migrations/20260805083000_update_cash_movements_reason_check_for_categories.sql", import.meta.url), "utf8");
 
 assert.match(dailyClosePage, /router\.push\(href\)/, "ingredient restock intent navigates from daily close client");
 assert.match(
@@ -48,5 +49,9 @@ assert.match(ingredientsClient, /!permissionLoading && !canManageIngredients[\s\
 assert.match(ingredientsClient, /บันทึกเงินออกสำเร็จแล้ว แต่วันนี้ปิดยอดแล้ว จึงไม่สามารถปรับสต็อกของวันนี้ได้/, "closed business day restock intent shows no-adjustment banner copy");
 assert.match(ingredientsClient, /if \(isBusinessDayClosed\) \{[\s\S]*restockGuideRef\.current\?\.focus\(\);[\s\S]*return;[\s\S]*\}/, "closed business day focuses the banner, not a disabled action");
 assert.match(ingredientsClient, /actionVisibility\.canCreate \? \([\s\S]*\+ เพิ่มวัตถุดิบ/, "owner create CTA remains available when permissions allow it");
+for (const reason of ["เงินคืน / รับเงินสดอื่น", "ซื้อวัตถุดิบเข้าร้าน", "ซื้อบรรจุภัณฑ์ / ของใช้ร้าน", "ค่าใช้จ่ายร้าน", "เจ้าของถอนเงิน"]) {
+  assert.match(reasonConstraintMigration, new RegExp(reason.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `database reason constraint allows ${reason}`);
+}
+assert.match(reasonConstraintMigration, /ซื้อของเข้าร้าน[\s\S]*เบิกเงินสด/, "database reason constraint keeps legacy reasons valid for historical rows");
 assert.match(reportCode, /reason: row\.reason/, "historical cash movement reason renders from stored row text");
 console.log("cash movement policy behavioral assertions passed");
