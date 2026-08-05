@@ -123,6 +123,14 @@ function cashAdmin(admin: ReturnType<typeof getSupabaseAdmin>) {
     return admin as unknown as CashMovementFrom;
 }
 
+function unexpectedServerErrorResponse(scope: string, error: unknown) {
+    console.error(scope, error);
+    return NextResponse.json(
+        { error: "Unexpected server error", code: "UNEXPECTED_SERVER_ERROR" },
+        { status: 500 }
+    );
+}
+
 /* =========================
    GET /api/cash-movements
 ========================= */
@@ -131,7 +139,7 @@ export async function GET(req: NextRequest) {
         const supabase = await getSupabaseServer();
         const admin = getSupabaseAdmin();
         const { data: auth, error: authErr } = await supabase.auth.getUser();
-        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (authErr) return unexpectedServerErrorResponse("cash_movements_get_auth_error", authErr);
         if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
@@ -149,7 +157,7 @@ export async function GET(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (mErr) return unexpectedServerErrorResponse("cash_movements_get_membership_error", mErr);
         if (!member) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
@@ -179,7 +187,7 @@ export async function GET(req: NextRequest) {
             };
 
         if (qErr) {
-            return NextResponse.json({ error: qErr.message }, { status: 500 });
+            return unexpectedServerErrorResponse("cash_movements_get_query_error", qErr);
         }
 
         const movements: CashMovement[] = (rows ?? []).map((row) => ({
@@ -201,8 +209,7 @@ export async function GET(req: NextRequest) {
             movements,
         });
     } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : "server_error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        return unexpectedServerErrorResponse("cash_movements_get_unexpected", e);
     }
 }
 
@@ -214,7 +221,7 @@ export async function POST(req: NextRequest) {
         const supabase = await getSupabaseServer();
         const admin = getSupabaseAdmin();
         const { data: auth, error: authErr } = await supabase.auth.getUser();
-        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (authErr) return unexpectedServerErrorResponse("cash_movements_post_auth_error", authErr);
         if (!auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
@@ -232,7 +239,7 @@ export async function POST(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (mErr) return unexpectedServerErrorResponse("cash_movements_post_membership_error", mErr);
         if (!member) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
@@ -351,7 +358,6 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ movement, navigationIntent: cashMovementNavigationIntent(movement) }, { status: 201 });
     } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : "server_error";
-        return NextResponse.json({ error: message }, { status: 500 });
+        return unexpectedServerErrorResponse("cash_movements_post_unexpected", e);
     }
 }

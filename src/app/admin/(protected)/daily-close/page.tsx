@@ -254,6 +254,7 @@ function ownerFacingError(message: string) {
         case "Can only prepare a draft daily close":
             return "บันทึกยอดนับได้เฉพาะรายการที่ยังไม่ปิดยอด";
         case "Failed to create cash movement":
+        case "Unexpected server error":
         case "server_error":
             return "บันทึกรายการเงินสดไม่สำเร็จ";
         default:
