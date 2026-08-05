@@ -28,9 +28,15 @@ assert.equal(validateCashMovementReason({ type: "cash_out", reason: "เบิ�
 const dailyClosePage = readFileSync(new URL("../src/app/admin/(protected)/daily-close/page.tsx", import.meta.url), "utf8");
 const ingredientsClient = readFileSync(new URL("../src/app/admin/(protected)/ingredients/(operational)/IngredientsClient.tsx", import.meta.url), "utf8");
 const reportCode = readFileSync(new URL("../src/lib/dailyCloseReport.ts", import.meta.url), "utf8");
+const cashMovementRoute = readFileSync(new URL("../src/app/api/cash-movements/route.ts", import.meta.url), "utf8");
 const reasonConstraintMigration = readFileSync(new URL("../supabase/migrations/20260805083000_update_cash_movements_reason_check_for_categories.sql", import.meta.url), "utf8");
 
 assert.match(dailyClosePage, /router\.push\(href\)/, "ingredient restock intent navigates from daily close client");
+assert.match(cashMovementRoute, /console\.error\("cash_movement_insert_failed"/, "server logs raw insert failures for debugging");
+assert.match(cashMovementRoute, /\{ error: "Failed to create cash movement", code: "CASH_MOVEMENT_INSERT_FAILED" \}/, "API returns sanitized insert failure without leaking Supabase details");
+assert.doesNotMatch(cashMovementRoute, /\{ error: insErr\?\.message/, "API does not return raw Supabase insert errors to clients");
+assert.match(cashMovementRoute, /\{ error: reasonValidation\.error \}/, "normal policy validation errors still return before insert");
+assert.match(cashMovementRoute, /code: "BUSINESS_DAY_CLOSED"/, "closed-day guard response is still preserved");
 assert.match(
   dailyClosePage,
   /const nextReason = e\.target\.value;[\s\S]*setCmReason\(nextReason\);[\s\S]*setCmNote\(""\);[\s\S]*setCmError\(null\);/,

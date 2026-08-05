@@ -321,8 +321,17 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (insErr || !inserted) {
+            console.error("cash_movement_insert_failed", {
+                error: insErr,
+                shop_id: currentShopId,
+                branch_id: currentBranchId,
+                business_date: businessDate,
+                type,
+                reason,
+                created_by: auth.user.id,
+            });
             return NextResponse.json(
-                { error: insErr?.message ?? "Failed to create cash movement" },
+                { error: "Failed to create cash movement", code: "CASH_MOVEMENT_INSERT_FAILED" },
                 { status: 500 }
             );
         }
