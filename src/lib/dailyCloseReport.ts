@@ -34,6 +34,12 @@ export type CancelledTransaction = {
 };
 
 export type DailyCloseReport = {
+    basis?: {
+        summary: "live" | "stored_snapshot";
+        paymentTotals: "live" | "stored_snapshot";
+        paymentOrderCounts: "live" | "current_not_snapshot";
+        transactions: "live" | "current_not_snapshot";
+    };
     date: string;
     boundaries: { start: string; end: string; timeZone: string };
     context: {
@@ -431,6 +437,12 @@ export async function computeDailyCloseReport(
     const paidOrderCount = paidTransactions.length;
 
     const report: DailyCloseReport = {
+        basis: {
+            summary: "live",
+            paymentTotals: "live",
+            paymentOrderCounts: "live",
+            transactions: "live",
+        },
         date: businessDate,
         boundaries: { start, end, timeZone: TIME_ZONE },
         context: {
@@ -495,5 +507,38 @@ export function computeSnapshotFromReport(report: DailyCloseReport, openingCash:
         void_order_count: 0,
         expected_cash: expectedCash,
         cash_difference: null,
+    };
+}
+
+export function applyFinalizedDailyCloseSnapshot(
+    report: DailyCloseReport,
+    snapshot: Pick<DailyCloseSnapshot,
+        "net_sales" | "cash_sales" | "promptpay_sales" | "unknown_payment_sales" | "paid_order_count"
+    >
+): DailyCloseReport {
+    const paidTotal = roundMoney(snapshot.net_sales);
+    const paidOrderCount = snapshot.paid_order_count;
+    return {
+        ...report,
+        basis: {
+            summary: "stored_snapshot",
+            paymentTotals: "stored_snapshot",
+            paymentOrderCounts: "current_not_snapshot",
+            transactions: "current_not_snapshot",
+        },
+        summary: {
+            paidTotal,
+            paidOrderCount,
+            averageOrderValue: paidOrderCount > 0 ? paidTotal / paidOrderCount : 0,
+        },
+        payments: {
+            cash: { ...report.payments.cash, sales: roundMoney(snapshot.cash_sales) },
+            promptPay: { ...report.payments.promptPay, sales: roundMoney(snapshot.promptpay_sales) },
+            unknown: { ...report.payments.unknown, sales: roundMoney(snapshot.unknown_payment_sales) },
+            reconciled: Math.abs(
+                paidTotal - roundMoney(snapshot.cash_sales) - roundMoney(snapshot.promptpay_sales) - roundMoney(snapshot.unknown_payment_sales)
+            ) <= 0.001,
+        },
+        cash: { ...report.cash, sales: roundMoney(snapshot.cash_sales) },
     };
 }
