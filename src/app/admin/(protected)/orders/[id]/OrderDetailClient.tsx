@@ -944,12 +944,10 @@ export default function OrderDetailClient() {
         try {
             const body: {
                 reason: CancelReason;
-                cancelledBy: "staff";
                 restock: boolean;
                 cancelNote?: string;
             } = {
                 reason: reasonFromRestock(cancelRestock),
-                cancelledBy: "staff",
                 restock: cancelRestock,
             };
             if (noteTrimmed) body.cancelNote = noteTrimmed;
@@ -966,9 +964,7 @@ export default function OrderDetailClient() {
                 const msg =
                     isRecord(data) && typeof data.error === "string"
                         ? data.error
-                        : isRecord(data) && typeof data.detail === "string"
-                            ? data.detail
-                            : "ยกเลิกออเดอร์ไม่สำเร็จ";
+                        : "ยกเลิกออเดอร์ไม่สำเร็จ";
                 setCancelError(msg);
                 setCancelLoading(false);
                 return;
