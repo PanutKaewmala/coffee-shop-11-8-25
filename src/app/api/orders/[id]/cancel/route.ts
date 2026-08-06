@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkDailyClose, toBangkokBusinessDate } from "@/lib/dailyCloseGuard";
+import { parseAppRole } from "@/lib/accessPolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -54,25 +55,12 @@ function normalizeNote(v: unknown): string | null {
     return t.length > 200 ? t.slice(0, 200) : t;
 }
 
-function readErrDetail(err: unknown): { message: string; code: string | null; hint: string | null } {
-    if (!isRecord(err)) return { message: "unknown_error", code: null, hint: null };
-
-    const message = readString(err.message) ?? "error";
-    const code = readString(err.code);
-    const hint = readString(err.hint);
-
-    return { message, code, hint };
-}
-
-/* =========================
-   Fallback: read id from URL
-   /api/orders/<id>/cancel
-========================= */
-function readOrderIdFromPath(pathname: string): string | null {
-    const m = pathname.match(/^\/api\/orders\/([^/]+)\/cancel\/?$/);
-    if (!m) return null;
-    const id = (m[1] ?? "").trim();
-    return id || null;
+function serverError(scope: string, error: unknown) {
+    console.error(`[order-cancel] ${scope}`, error);
+    return NextResponse.json(
+        { error: "Unable to cancel order", code: "ORDER_CANCELLATION_FAILED" },
+        { status: 500 }
+    );
 }
 
 /* =========================
@@ -113,37 +101,38 @@ export async function POST(
         const supabase = await getSupabaseServer();
         const admin = getSupabaseAdmin();
         const { data: auth, error: authErr } = await supabase.auth.getUser();
-        if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+        if (authErr) return serverError("auth_lookup_failed", authErr);
         const user = auth.user;
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { currentShopId } = await getCurrentContextFromCookies();
+        const { currentShopId, currentBranchId } = await getCurrentContextFromCookies();
         if (!currentShopId) {
             return NextResponse.json({ error: "No current shop selected" }, { status: 409 });
+        }
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "No current branch selected" }, { status: 409 });
         }
 
         const { data: member, error: mErr } = await admin
             .from("shop_members")
-            .select("shop_id")
+            .select("shop_id, role")
             .eq("user_id", user.id)
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
+        if (mErr) return serverError("membership_lookup_failed", mErr);
         if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        const actorRole = parseAppRole(member.role);
+        if (!actorRole) {
+            return NextResponse.json({ error: "Owner or staff role required", code: "CANCEL_ROLE_REQUIRED" }, { status: 403 });
+        }
 
         const { id } = await params;
-
-        const fromParams = (id ?? "").trim();
-        const fromPath = readOrderIdFromPath(req.nextUrl.pathname) ?? "";
-        const rawId = (fromParams || fromPath).trim();
+        const rawId = (id ?? "").trim();
 
         if (!rawId || !isUuid(rawId)) {
             return NextResponse.json(
-                {
-                    error: "Invalid order id",
-                    debug: { rawId, params: { id }, pathname: req.nextUrl.pathname, fromParams, fromPath },
-                },
+                { error: "Invalid order id", code: "INVALID_ORDER_ID" },
                 { status: 400 }
             );
         }
@@ -153,11 +142,15 @@ export async function POST(
             .select("id, shop_id, branch_id, status, paid_at, created_at")
             .eq("id", rawId)
             .eq("shop_id", currentShopId)
+            .eq("branch_id", currentBranchId)
             .maybeSingle();
 
-        if (orderErr) return NextResponse.json({ error: orderErr.message }, { status: 500 });
+        if (orderErr) return serverError("order_lookup_failed", orderErr);
         if (!orderRow) {
-            return NextResponse.json({ error: "Order not found in current shop" }, { status: 404 });
+            return NextResponse.json(
+                { error: "Order not found in current shop and branch", code: "ORDER_NOT_FOUND" },
+                { status: 404 }
+            );
         }
 
         if ((orderRow as Record<string, unknown>).status === "paid") {
@@ -202,16 +195,13 @@ export async function POST(
 
         const reason = readReason(body.reason);
         const cancelNote = normalizeNote(body.cancelNote);
-        const cancelledByRaw = normalizeNote(body.cancelledBy);
-        const cancelledBy: "owner" | "staff" = cancelledByRaw === "owner" ? "owner" : "staff";
-
         // ✅ NEW: restock flag (default true)
         const restockRaw = readBoolean(body.restock);
         const restock = restockRaw ?? true;
 
         if (!reason) {
             return NextResponse.json(
-                { error: "Invalid reason", debug: { got: readString(body.reason) ?? null } },
+                { error: "Invalid reason", code: "INVALID_CANCEL_REASON" },
                 { status: 400 }
             );
         }
@@ -226,16 +216,14 @@ export async function POST(
             p_order_id: rawId,
             p_reason: reason,
             p_note: noteForRpc,
-            p_cancelled_by: cancelledBy,
+            // Audit actor is derived exclusively from the authenticated user's
+            // current-shop membership. Client-supplied actor fields are ignored.
+            p_cancelled_by: actorRole,
             p_restock: restock, // ✅ NEW
         });
 
         if (error) {
-            const d = readErrDetail(error);
-            return NextResponse.json(
-                { error: "cancel_rpc_failed", detail: d.message, code: d.code, hint: d.hint },
-                { status: 500 }
-            );
+            return serverError("cancel_rpc_failed", { error, orderId: rawId, userId: user.id });
         }
 
         if (isCancelRpcOk(data)) {
@@ -251,15 +239,20 @@ export async function POST(
         }
 
         if (isCancelRpcFail(data)) {
-            return NextResponse.json({ ok: false, ...data }, { status: 400 });
+            console.warn("[order-cancel] cancel_rpc_rejected", {
+                orderId: rawId,
+                userId: user.id,
+                rpcStatus: data.status ?? null,
+                rpcError: data.error,
+            });
+            return NextResponse.json(
+                { error: "Order cancellation was rejected", code: "ORDER_CANCELLATION_REJECTED" },
+                { status: 409 }
+            );
         }
 
-        return NextResponse.json({ error: "unexpected_rpc_response", debug: { data } }, { status: 500 });
+        return serverError("unexpected_rpc_response", { data, orderId: rawId, userId: user.id });
     } catch (e: unknown) {
-        const d = readErrDetail(e);
-        return NextResponse.json(
-            { error: "server_error", detail: d.message, code: d.code, hint: d.hint },
-            { status: 500 }
-        );
+        return serverError("unexpected_error", e);
     }
 }
