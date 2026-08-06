@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import Card from "@/components/admin/Card";
 import { Button } from "@/components/ui/button";
 import { computeExpectedCash } from "@/lib/dailyCloseMoney";
+import {
+    cashMovementNavigationIntent,
+    cashMovementReasonsFor,
+    firstCashMovementReason,
+    findCashMovementReason,
+} from "@/lib/cashMovementPolicy.mjs";
 
 type DataQualityWarning = {
     code: string;
@@ -216,7 +223,12 @@ function ownerFacingError(message: string) {
         case "Invalid type. Use cash_in or cash_out.":
             return "ประเภทเงินสดเข้า/ออกไม่ถูกต้อง";
         case "Invalid reason.":
-            return "กรุณาเลือกเหตุผลให้ถูกต้อง";
+        case "Invalid reason for cash movement type.":
+            return "กรุณาเลือกเหตุผลให้ตรงกับประเภทเงินเข้า/เงินออก";
+        case "Owner role required for this cash movement reason.":
+            return "เหตุผลนี้ใช้ได้เฉพาะเจ้าของร้าน";
+        case "Note is required for this cash movement reason.":
+            return "กรุณากรอกหมายเหตุสำหรับเหตุผลนี้";
         case "Invalid amount. Must be a positive number.":
             return "จำนวนเงินต้องมากกว่า 0";
         case "Failed to load daily close report":
@@ -242,6 +254,7 @@ function ownerFacingError(message: string) {
         case "Can only prepare a draft daily close":
             return "บันทึกยอดนับได้เฉพาะรายการที่ยังไม่ปิดยอด";
         case "Failed to create cash movement":
+        case "Unexpected server error":
         case "server_error":
             return "บันทึกรายการเงินสดไม่สำเร็จ";
         default:
@@ -275,6 +288,7 @@ function MetricCard({
 }
 
 export default function DailyClosePage() {
+    const router = useRouter();
     const [date, setDate] = useState(() => bangkokDateKey());
     const [reloadKey, setReloadKey] = useState(0);
     const [report, setReport] = useState<DailyCloseReport | null>(null);
@@ -284,6 +298,7 @@ export default function DailyClosePage() {
     const [closeLoading, setCloseLoading] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
     const [permissions, setPermissions] = useState<DailyClosePermissions | null>(null);
+    const [role, setRole] = useState<"owner" | "staff">("staff");
     const [openingCashFloat, setOpeningCashFloat] = useState<number | string>("");
     const [countedCash, setCountedCash] = useState<number | string>("");
     const [notes, setNotes] = useState("");
@@ -355,6 +370,7 @@ export default function DailyClosePage() {
                     const loaded = parsed.close ?? null;
                     setClose(loaded);
                     setPermissions(parsed.permissions ?? null);
+                    if (parsed.role === "owner" || parsed.role === "staff") setRole(parsed.role);
                     if (loaded) {
                         setCountedCash(loaded.counted_cash != null ? String(loaded.counted_cash) : "");
                         setNotes(loaded.notes ?? "");
@@ -395,6 +411,7 @@ export default function DailyClosePage() {
                 const parsed = data as DailyCloseResponse;
                 setHistory(parsed.history ?? []);
                 if (parsed.permissions) setPermissions(parsed.permissions);
+                if (parsed.role === "owner" || parsed.role === "staff") setRole(parsed.role);
             } catch (loadError: unknown) {
                 if (!alive) return;
                 setHistory([]);
@@ -409,6 +426,19 @@ export default function DailyClosePage() {
             alive = false;
         };
     }, [reloadKey]);
+
+    const cmReasonOptions = useMemo(() => cashMovementReasonsFor(cmType, role), [cmType, role]);
+    const selectedCmReasonPolicy = useMemo(() => findCashMovementReason(cmType, cmReason), [cmType, cmReason]);
+    const isCmNoteRequired = Boolean(selectedCmReasonPolicy?.requiresNote);
+
+    useEffect(() => {
+        const first = firstCashMovementReason(cmType, role);
+        if (!first) return;
+        if (!cmReasonOptions.some((reason) => reason.value === cmReason)) {
+            setCmReason(first.value);
+            setCmNote("");
+        }
+    }, [cmType, role, cmReason, cmReasonOptions]);
 
     const isEmpty = useMemo(
         () =>
@@ -584,8 +614,14 @@ export default function DailyClosePage() {
                 throw new Error(message);
             }
 
+            const parsed = data as { movement?: { id?: string; type?: string; reason?: string }; navigationIntent?: { href?: string } | null };
             setCmAmount("");
             setCmNote("");
+            const href = parsed.navigationIntent?.href ?? cashMovementNavigationIntent(parsed.movement)?.href;
+            if (href) {
+                router.push(href);
+                return;
+            }
             setReloadKey((v) => v + 1);
         } catch (err) {
             setCmError(err instanceof Error ? ownerFacingError(err.message) : "เกิดข้อผิดพลาด");
@@ -1070,7 +1106,13 @@ export default function DailyClosePage() {
                                             <label className="text-xs text-text-secondary block mb-1">ประเภท</label>
                                             <select
                                                 value={cmType}
-                                                onChange={(e) => setCmType(e.target.value as "cash_in" | "cash_out")}
+                                                onChange={(e) => {
+                                                    const nextType = e.target.value as "cash_in" | "cash_out";
+                                                    setCmType(nextType);
+                                                    const first = firstCashMovementReason(nextType, role);
+                                                    if (first) setCmReason(first.value);
+                                                    setCmNote("");
+                                                }}
                                                 className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40"
                                             >
                                                 <option className="dark:bg-surface dark:text-text-primary" value="cash_in">เงินเข้า</option>
@@ -1081,14 +1123,19 @@ export default function DailyClosePage() {
                                             <label className="text-xs text-text-secondary block mb-1">เหตุผล</label>
                                             <select
                                                 value={cmReason}
-                                                onChange={(e) => setCmReason(e.target.value)}
+                                                onChange={(e) => {
+                                                    const nextReason = e.target.value;
+                                                    setCmReason(nextReason);
+                                                    setCmNote("");
+                                                    setCmError(null);
+                                                }}
                                                 className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40"
                                             >
-                                                <option className="dark:bg-surface dark:text-text-primary" value="เติมเงินทอน">เติมเงินทอน</option>
-                                                <option className="dark:bg-surface dark:text-text-primary" value="ซื้อของเข้าร้าน">ซื้อของเข้าร้าน</option>
-                                                <option className="dark:bg-surface dark:text-text-primary" value="เบิกเงินสด">เบิกเงินสด</option>
-                                                <option className="dark:bg-surface dark:text-text-primary" value="ฝากธนาคาร">ฝากธนาคาร</option>
-                                                <option className="dark:bg-surface dark:text-text-primary" value="ปรับยอดเงินสด">ปรับยอดเงินสด</option>
+                                                {cmReasonOptions.map((reason) => (
+                                                    <option key={`${reason.type}-${reason.value}`} className="dark:bg-surface dark:text-text-primary" value={reason.value}>
+                                                        {reason.label}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
                                         <div>
@@ -1105,12 +1152,12 @@ export default function DailyClosePage() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-xs text-text-secondary block mb-1">หมายเหตุ (ไม่บังคับ)</label>
+                                            <label className="text-xs text-text-secondary block mb-1">{isCmNoteRequired ? "หมายเหตุ (จำเป็น)" : "หมายเหตุ (ไม่บังคับ)"}</label>
                                             <input
                                                 type="text"
                                                 value={cmNote}
                                                 onChange={(e) => setCmNote(e.target.value)}
-                                                placeholder="เช่น เติมจากธนาคาร"
+                                                placeholder={selectedCmReasonPolicy?.notePlaceholder ?? "เช่น เติมจากธนาคาร"}
                                                 className="w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-[var(--text-muted)]/40 placeholder:text-text-muted"
                                                 disabled={cmLoading}
                                             />
@@ -1118,13 +1165,16 @@ export default function DailyClosePage() {
                                         <div className="flex items-end">
                                             <Button
                                                 type="submit"
-                                                disabled={cmLoading || !cmAmount || Number(cmAmount) <= 0}
+                                                disabled={cmLoading || !cmAmount || Number(cmAmount) <= 0 || (isCmNoteRequired && cmNote.trim() === "")}
                                                 className="w-full"
                                             >
                                                 {cmLoading ? "กำลังบันทึก..." : "บันทึกรายการ"}
                                             </Button>
                                         </div>
                                     </div>
+                                    {selectedCmReasonPolicy?.notePlaceholder ? (
+                                        <div className="text-xs text-text-secondary">{selectedCmReasonPolicy.notePlaceholder}</div>
+                                    ) : null}
                                     {cmError ? (
                                         <div className="rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-200">
                                             {cmError}
