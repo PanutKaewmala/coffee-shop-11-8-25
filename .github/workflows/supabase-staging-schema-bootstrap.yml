@@ -58,14 +58,11 @@ jobs:
           import re
           from urllib.parse import urlparse, unquote
 
-          production_ref = "udgxrvtbhytqncmymhiv"
           staging_ref = os.environ["STAGING_PROJECT_REF"].strip()
           if not re.fullmatch(r"[a-z0-9]{20}", staging_ref):
               raise SystemExit("Staging project ref must be the 20-character ref from the staging Supabase URL")
-          if staging_ref == production_ref:
-              raise SystemExit("Staging project ref matches production; refusing to continue")
 
-          def inspect(label: str, value: str, expected_ref: str):
+          def inspect(label: str, value: str, expected_ref: str | None = None):
               parsed = urlparse(value)
               username = unquote(parsed.username or "")
               hostname = parsed.hostname or ""
@@ -74,7 +71,13 @@ jobs:
 
               if parsed.scheme not in {"postgres", "postgresql"}:
                   raise SystemExit(f"{label} URL is not PostgreSQL")
-              if username != f"postgres.{expected_ref}":
+
+              match = re.fullmatch(r"postgres\.([a-z0-9]{20})", username)
+              if not match:
+                  raise SystemExit(f"{label} pooler username must be postgres.<20-character-project-ref>")
+              project_ref = match.group(1)
+
+              if expected_ref is not None and project_ref != expected_ref:
                   raise SystemExit(f"{label} pooler username does not match the expected project ref")
               if not hostname.endswith(".pooler.supabase.com"):
                   raise SystemExit(f"{label} must use a Supabase pooler host")
@@ -83,14 +86,19 @@ jobs:
               if database != "postgres":
                   raise SystemExit(f"{label} database must be postgres")
 
-              return hostname, port, username, database
+              return project_ref, (hostname, port, username, database)
 
-          production = inspect("Production", os.environ["PRODUCTION_DATABASE_URL"], production_ref)
-          staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"], staging_ref)
+          production_ref, production = inspect("Production", os.environ["PRODUCTION_DATABASE_URL"])
+          staging_url_ref, staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"], staging_ref)
+
+          if staging_url_ref != staging_ref:
+              raise SystemExit("Staging URL project ref does not match workflow input")
+          if production_ref == staging_ref:
+              raise SystemExit("Production secret resolves to the staging project; refusing to continue")
           if production == staging:
               raise SystemExit("Production and staging resolve to the same endpoint; refusing to continue")
 
-          print(f"Production identity: {production_ref} (validated)")
+          print(f"Production identity: {production_ref} (derived and validated)")
           print(f"Staging identity: {staging_ref} (validated)")
           print("Production/staging target separation: OK")
           PY
