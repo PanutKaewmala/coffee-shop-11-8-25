@@ -2,12 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import type { Database } from "@/lib/database.types";
 import {
     isMenuEnabledInBranch,
     loadBranchMenuAvailabilityMap,
 } from "@/lib/branchMenuAvailability";
-import { checkDailyClose } from "@/lib/dailyCloseGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -56,20 +54,7 @@ type PosMenuFeedItem = {
 
 type PosFeedResponse = { menu: PosMenuFeedItem[] };
 type RecipeItemRow = { variant_id: string; ingredient_id: string | null };
-type RecipeItemForCheckRow = { id: string; variant_id: string; ingredient_id: string | null };
 type IngredientIdRow = { id: string };
-type RecipeItemDeductRow = { variant_id: string; ingredient_id: string | null; quantity: number };
-type IngredientStockRow = { id: string; stock: number; name: string };
-type FallbackDeductRow = {
-    ingredient_id: string;
-    deduct: number;
-    before_stock: number;
-
-
-
-    after_stock: number;
-};
-
 /* -------------------- Checkout types -------------------- */
 type IncomingItem = {
     variant_id?: unknown;
@@ -108,16 +93,6 @@ type CheckoutMenuRow = {
 type CheckoutServeTypeRow = {
     id: string;
     name: string;
-};
-
-type CreatedOrderRow = {
-    id: string;
-    total: number;
-    created_at: string;
-    status: string;
-    payment_method: string;
-    paid_at: string | null;
-    note: string | null;
 };
 
 /* -------------------- Json -------------------- */
@@ -302,154 +277,6 @@ async function resolveBranchId(
     if (anyB?.id) return { ok: true, id: anyB.id as string };
 
     return { ok: false, error: "No branch found. Please create a branch first.", code: "NO_BRANCH" };
-}
-
-async function deductStockFallbackFromRecipeItems(params: {
-    admin: ReturnType<typeof getSupabaseAdmin>;
-    currentShopId: string;
-    currentBranchId: string;
-    orderId: string;
-    items: RpcItem[];
-    variantIds: string[];
-}): Promise<{ ok: true; data: FallbackDeductRow[] } | { ok: false; error: string }> {
-    const { admin, currentShopId, currentBranchId, orderId, items, variantIds } = params;
-
-    const qtyByVariant = new Map<string, number>();
-    for (const it of items) {
-        qtyByVariant.set(it.variant_id, (qtyByVariant.get(it.variant_id) ?? 0) + it.qty);
-    }
-
-    const { data: recipeRowsRaw, error: recipeErr } = await admin
-        .from("recipe_items")
-        .select("variant_id,ingredient_id,quantity")
-        .eq("shop_id", currentShopId)
-        .in("variant_id", variantIds)
-        .returns<RecipeItemDeductRow[]>();
-
-    if (recipeErr) return { ok: false, error: recipeErr.message };
-    const recipeRows = recipeRowsRaw ?? [];
-
-    const ingredientIds = Array.from(
-        new Set(
-            recipeRows
-                .map((r) => r.ingredient_id)
-                .filter((v): v is string => typeof v === "string" && v.length > 0)
-        )
-    );
-
-    if (ingredientIds.length === 0) {
-        return { ok: false, error: "No recipe rows found for checkout variants" };
-    }
-
-    const { data: ingredientRowsRaw, error: ingredientErr } = await admin
-        .from("ingredients")
-        .select("id,stock,name")
-        .eq("shop_id", currentShopId)
-        .filter("branch_id", "eq", currentBranchId)
-        .in("id", ingredientIds)
-        .returns<IngredientStockRow[]>();
-
-    if (ingredientErr) return { ok: false, error: ingredientErr.message };
-    const ingredientRows = ingredientRowsRaw ?? [];
-    const ingredientById = new Map(ingredientRows.map((r) => [r.id, r]));
-
-    const deductByIngredient = new Map<string, number>();
-    const recipeVariantHasValidIngredient = new Set<string>();
-
-    for (const row of recipeRows) {
-        if (!row.ingredient_id) continue;
-        if (!ingredientById.has(row.ingredient_id)) continue;
-
-        const lineQty = toNumber(row.quantity, 0);
-        const orderQty = qtyByVariant.get(row.variant_id) ?? 0;
-        if (lineQty <= 0 || orderQty <= 0) continue;
-
-        recipeVariantHasValidIngredient.add(row.variant_id);
-        const deduct = lineQty * orderQty;
-        deductByIngredient.set(
-            row.ingredient_id,
-            (deductByIngredient.get(row.ingredient_id) ?? 0) + deduct
-        );
-    }
-
-    for (const variantId of variantIds) {
-        if (!recipeVariantHasValidIngredient.has(variantId)) {
-            return { ok: false, error: `No recipe for variant: ${variantId}` };
-        }
-    }
-
-    const beforeStockByIngredient = new Map<string, number>();
-    for (const [ingredientId, deduct] of deductByIngredient) {
-        const ing = ingredientById.get(ingredientId);
-        if (!ing) return { ok: false, error: `Ingredient not found: ${ingredientId}` };
-
-        const before = toNumber(ing.stock, 0);
-        if (before < deduct) {
-            return {
-                ok: false,
-                error: `Not enough stock: ${ing.name} (need ${deduct}, have ${before})`,
-            };
-        }
-        beforeStockByIngredient.set(ingredientId, before);
-    }
-
-    const applied: Array<{ ingredient_id: string; deduct: number }> = [];
-    for (const [ingredientId, deduct] of deductByIngredient) {
-        const { error } = await admin.rpc("increment_stock", {
-            ing_id: ingredientId,
-            diff: -deduct,
-        });
-        if (error) {
-            // best-effort rollback
-            for (const a of applied) {
-                await admin.rpc("increment_stock", {
-                    ing_id: a.ingredient_id,
-                    diff: a.deduct,
-                });
-            }
-            return { ok: false, error: error.message };
-        }
-        applied.push({ ingredient_id: ingredientId, deduct });
-    }
-
-    const out: FallbackDeductRow[] = applied.map((a) => {
-        const before = beforeStockByIngredient.get(a.ingredient_id) ?? 0;
-        return {
-            ingredient_id: a.ingredient_id,
-            deduct: a.deduct,
-            before_stock: before,
-            after_stock: before - a.deduct,
-        };
-    });
-
-    const logRowsBase = out.map((r) => ({
-        ingredient_id: r.ingredient_id,
-        order_id: orderId,
-        amount: r.deduct,
-        type: "deduct",
-        note: "",
-        before_stock: r.before_stock,
-        after_stock: r.after_stock,
-        shop_id: currentShopId,
-    }));
-
-    const logRows = logRowsBase.map((r) => ({
-        ...r,
-        branch_id: currentBranchId,
-    })) as unknown as Database["public"]["Tables"]["stock_logs"]["Insert"][];
-
-    const { error: logErr } = await admin.from("stock_logs").insert(logRows);
-    if (logErr) {
-        for (const a of applied) {
-            await admin.rpc("increment_stock", {
-                ing_id: a.ingredient_id,
-                diff: a.deduct,
-            });
-        }
-        return { ok: false, error: logErr.message };
-    }
-
-    return { ok: true, data: out };
 }
 
 /* =========================================================
@@ -725,48 +552,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: branchRes.error, code: branchRes.code }, { status: 400 });
         }
 
-        // Keep profile context aligned with current checkout context.
-        // Do this as best-effort only; missing legacy profile must not block checkout.
-        const { data: profileCtx, error: profileCtxErr } = await admin
-            .from("profiles")
-            .update({
-                current_shop_id: currentShopId,
-                current_branch_id: branchRes.id,
-            })
-            .eq("id", auth.user.id)
-            .select("id")
-            .maybeSingle();
-
-        if (profileCtxErr) {
-            console.warn("[pos] profile context update failed:", profileCtxErr.message);
-        } else if (!profileCtx?.id) {
-            const { error: insertProfileErr } = await admin.from("profiles").insert([
-                {
-                    id: auth.user.id,
-                    email: auth.user.email ?? null,
-                    role: typeof member.role === "string" ? member.role : "staff",
-                    current_shop_id: currentShopId,
-                    current_branch_id: branchRes.id,
-                },
-            ]);
-            if (insertProfileErr) {
-                console.warn("[pos] profile bootstrap failed:", insertProfileErr.message);
-            }
-        }
-
-        // Gate: block checkout if daily close is closed/approved for this branch/date
-        const closeGuard = await checkDailyClose(currentShopId, branchRes.id);
-        if (closeGuard.blocked) {
-            return NextResponse.json(
-                {
-                    error: "ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้ กรุณาเลือกวันขายถัดไปหรือให้ผู้ดูแลตรวจสอบ",
-                    code: "BUSINESS_DAY_CLOSED",
-                    business_date: closeGuard.businessDate,
-                    close_status: closeGuard.closeStatus,
-                },
-                { status: 409 }
-            );
-        }
+        // Checkout state changes begin only inside process_pos_checkout_atomic.
 
         // 3) Build checkout in API directly (avoid legacy RPC that may miss shop_id).
         const variantIds = Array.from(new Set(items.map((i) => i.variant_id)));
@@ -857,8 +643,6 @@ export async function POST(req: NextRequest) {
         });
 
         const total = itemsToInsert.reduce((sum, i) => sum + i.price * i.qty, 0);
-        const paidAt = new Date().toISOString();
-
         const paidAmountRaw = toNumber(raw?.paid_amount);
         const paidAmount =
             paymentMethod === "promptpay"
@@ -873,11 +657,6 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
-
-        const changeAmount =
-            paymentMethod === "cash" && paidAmount != null
-                ? Math.max(0, paidAmount - total)
-                : 0;
 
         if (paymentMethod === "cash" && paidAmount != null && paidAmount < total) {
             return NextResponse.json(

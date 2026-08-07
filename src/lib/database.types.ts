@@ -923,18 +923,21 @@ export type Database = {
         Row: {
           created_at: string
           key: string
+          request_hash: string | null
           response: Json
           shop_id: string
         }
         Insert: {
           created_at?: string
           key: string
+          request_hash?: string | null
           response: Json
           shop_id?: string
         }
         Update: {
           created_at?: string
           key?: string
+          request_hash?: string | null
           response?: Json
           shop_id?: string
         }
@@ -1642,7 +1645,7 @@ export type Database = {
         Returns: Json
       }
       finalize_daily_close_atomic: {
-        Args: { p_branch_id: string; p_business_date: string; p_cash_difference: number; p_close_id: string; p_counted_cash: number; p_notes: string | null; p_shop_id: string; p_snapshot: Json }
+        Args: { p_branch_id: string; p_business_date: string; p_close_id: string; p_counted_cash: number; p_notes: string | null; p_shop_id: string }
         Returns: Json
       }
       process_pos_checkout_atomic: {

@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { computeDailyCloseReport, computeSnapshotFromReport } from "@/lib/dailyCloseReport";
 import { roundMoney } from "@/lib/dailyCloseMoney";
-import { cashDifferenceRequiresReason, parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
+import { parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -433,29 +433,21 @@ return NextResponse.json(
 
         await assertBranchBelongsToShop(admin, currentShopId, currentBranchId);
 
-        const openingCashFloat = Number(existingRecord.opening_cash_float) || 0;
-        const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
-        const snapshot = computeSnapshotFromReport(report, openingCashFloat);
-        const expectedCash = snapshot.expected_cash;
-        const cashDifference = roundMoney(countedCash - expectedCash);
-        if (cashDifferenceRequiresReason(cashDifference) && !notes) {
-            return NextResponse.json(
-                { error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" },
-                { status: 400 }
-            );
-        }
-
          const { data: updated, error: updateError } = await supabase.rpc("finalize_daily_close_atomic", {
              p_shop_id: currentShopId,
              p_branch_id: currentBranchId,
              p_business_date: businessDate,
              p_close_id: existingRecord.id as string,
-             p_snapshot: snapshot,
              p_counted_cash: countedCash,
-             p_cash_difference: cashDifference,
              p_notes: notes,
          });
 
+         if (updateError?.message.includes("CASH_DIFFERENCE_REASON_REQUIRED")) {
+             return NextResponse.json({ error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" }, { status: 400 });
+         }
+         if (updateError?.message.includes("DAILY_CLOSE_NOT_DRAFT")) {
+             return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });
+         }
          if (updateError) return unexpectedServerError("patch_update_failed", updateError);
          if (!updated) {
              return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });

@@ -31,8 +31,8 @@ assert.match(route, /code: "DAILY_CLOSE_ALREADY_EXISTS"/);
 assert.match(route, /parseDailyCloseRole\(membership\.role\)/);
 assert.match(route, /if \(role !== "owner"\)/, "staff cannot call finalization PATCH");
 assert.match(route, /countedCash = validateCountedCash\(body\.counted_cash\)/, "owner finalization requires counted cash");
-assert.match(route, /computeSnapshotFromReport\(report, openingCashFloat\)/, "server recomputes the canonical snapshot");
-assert.match(route, /roundMoney\(countedCash - expectedCash\)/);
+assert.match(route, /finalize_daily_close_atomic/, "finalization delegates snapshot computation to the locked database transaction");
+assert.doesNotMatch(route, /p_snapshot:|p_cash_difference:/, "finalization does not send caller-computed financial results");
 assert.match(route, /code: "CASH_DIFFERENCE_REASON_REQUIRED"/);
 assert.match(route, /existingRecord\.status !== "draft"/, "closed rows cannot be finalized again");
 
