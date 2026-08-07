@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync("supabase/migrations/20260807090000_atomic_pos_checkout.sql", "utf8");
+const posRoute = readFileSync("src/app/api/pos/route.ts", "utf8");
+const posPost = posRoute.slice(posRoute.indexOf("export async function POST"));
 const checkout = migration.slice(migration.indexOf("create or replace function public.process_pos_checkout_atomic"), migration.indexOf("create or replace function public.create_cash_movement_atomic"));
 const cash = migration.slice(migration.indexOf("create or replace function public.create_cash_movement_atomic"), migration.indexOf("alter function public.cancel_order"));
 const cancellation = migration.slice(migration.indexOf("alter function public.cancel_order"), migration.indexOf("create or replace function public.finalize_daily_close_atomic"));
 const close = migration.slice(migration.indexOf("create or replace function public.finalize_daily_close_atomic"));
 
+assert.ok(checkout.indexOf("from public.shop_members") < checkout.indexOf("from public.pos_idempotency"), "membership is authenticated before replay");
+assert.ok(checkout.indexOf("from public.branch") < checkout.indexOf("from public.pos_idempotency"), "branch ownership is validated before replay");
 assert.ok(checkout.indexOf("pos-idempotency:") < checkout.indexOf("create temporary table"), "idempotency advisory lock precedes checkout side effects");
 assert.ok(checkout.indexOf("pos-idempotency:") < checkout.indexOf("insert into public.orders"), "idempotency lock precedes order insert");
 assert.match(checkout, /request_hash, response/);
@@ -14,6 +18,11 @@ assert.match(checkout, /IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST/);
 assert.match(checkout, /primary key \(variant_id, sweetness\)/, "sweetness participates in line identity");
 for (const sweetness of ["0%", "25%", "50%", "75%", "100%", "125%"])
   assert.match(checkout, new RegExp(`'${sweetness.replace("%", "\\%")}'`));
+assert.match(checkout, /r\.quantity is null or r\.quantity <= 0/);
+assert.ok(checkout.indexOf("INVALID_RECIPE_QUANTITY") < checkout.indexOf("insert into public.orders"), "invalid recipe quantities fail before mutation");
+assert.match(checkout, /i\.shop_id=p_shop_id and i\.branch_id=p_branch_id/);
+assert.match(checkout, /RECIPE_INGREDIENT_OUTSIDE_BRANCH/);
+assert.ok(checkout.indexOf("RECIPE_INGREDIENT_OUTSIDE_BRANCH") < checkout.indexOf("insert into public.orders"), "foreign ingredients fail before mutation");
 assert.match(checkout, /sum\(r\.quantity \* l\.qty\)/, "recipe use aggregates across sweetness lines");
 assert.match(checkout, /order by i\.id\s+for update of i/, "ingredient locks use stable UUID order");
 assert.ok(checkout.indexOf("NOT_ENOUGH_STOCK") < checkout.indexOf("insert into public.orders"), "all stock validates before mutation");
@@ -26,7 +35,13 @@ assert.doesNotMatch(close, /p_snapshot|p_cash_difference/, "daily close never tr
 assert.match(cash, /INVALID_CASH_MOVEMENT_REASON_FOR_TYPE/);
 assert.match(cash, /OWNER_REQUIRED_FOR_CASH_MOVEMENT_REASON/);
 assert.match(cash, /CASH_MOVEMENT_NOTE_REQUIRED/);
+assert.match(cancellation, /alter function public\.cancel_order[^;]+rename to cancel_order_without_business_day_guard/);
+assert.doesNotMatch(cancellation, /create or replace function public\.cancel_order_without_business_day_guard/, "legacy helper body remains authoritative");
 assert.match(cancellation, /cancel_order_without_business_day_guard\(p_order_id,p_reason,p_note,v_role,p_restock\)/);
 assert.match(cancellation, /revoke all on function public\.cancel_order_without_business_day_guard[^;]+service_role/i);
+for (const key of ["'id'", "'total'", "'created_at'", "'status'", "'payment_method'", "'paid_at'", "'note'", "'shop_id'", "'branch_id'", "'items'", "'menu_id'", "'variant_id'", "'variant_label'", "'name'", "'price'", "'qty'", "'deducted'", "'ingredient_id'", "'deduct'", "'before_stock'", "'after_stock'"]) assert.match(checkout, new RegExp(key), `response preserves ${key}`);
+assert.doesNotMatch(posPost, /error:\s*atomicError\.message|const msg = e instanceof Error/);
+assert.match(posRoute, /console\.error\("\[pos\] atomic_checkout_failed", atomicError\)/);
+assert.match(posRoute, /error: "Unable to complete checkout", code: "CHECKOUT_FAILED"/);
 assert.doesNotMatch(migration, /failpoint|production[_ -]?fail/i, "migration contains no production failpoints");
 console.log("POS atomic checkout static contract passed");

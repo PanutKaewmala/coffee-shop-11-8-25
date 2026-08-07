@@ -200,14 +200,30 @@ function buildOrderItemVariantLabel(variantLabel: string | null, sweetness: Swee
     return merged || sweetnessLabel;
 }
 
-function mapCheckoutErrorCode(message: string): string {
-    const msg = (message || "").toLowerCase();
-    if (msg.includes("not enough stock")) return "NOT_ENOUGH_STOCK";
-    if (msg.includes("no recipe")) return "NO_RECIPE";
-    if (msg.includes("variant not found")) return "VARIANT_NOT_FOUND";
-    if (msg.includes("invalid items")) return "INVALID_ITEMS";
-    if (msg.includes("p_items must be json array")) return "INVALID_ITEMS";
-    return "CHECKOUT_FAILED";
+type AtomicCheckoutError = { code: string; status: number; error: string };
+
+function mapAtomicCheckoutError(message: string): AtomicCheckoutError | null {
+    const normalized = message.toUpperCase().replace(/\s+/g, "_");
+    const definitions: Array<[string, number, string]> = [
+        ["BUSINESS_DAY_CLOSED", 409, "Business day is closed"],
+        ["IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST", 409, "Idempotency key was already used for a different request"],
+        ["OWNER_OR_STAFF_REQUIRED", 403, "Owner or staff role required"],
+        ["INVALID_BRANCH", 400, "Invalid branch"],
+        ["INVALID_IDEMPOTENCY_KEY", 400, "Invalid idempotency key"],
+        ["INVALID_ITEMS", 400, "Invalid checkout items"],
+        ["INVALID_VARIANT_SWEETNESS_OR_QUANTITY", 400, "Invalid variant, sweetness, or quantity"],
+        ["INVALID_PAYMENT_METHOD", 400, "Invalid payment method"],
+        ["INVALID_RECIPE_QUANTITY", 400, "Invalid recipe quantity"],
+        ["RECIPE_INGREDIENT_OUTSIDE_BRANCH", 400, "Recipe ingredient is unavailable for this branch"],
+        ["INGREDIENT_NOT_FOUND_FOR_BRANCH", 400, "Recipe ingredient is unavailable for this branch"],
+        ["NO_RECIPE", 400, "Recipe is required"],
+        ["NOT_ENOUGH_STOCK", 400, "Not enough stock"],
+        ["INSUFFICIENT_PAYMENT", 400, "Insufficient payment"],
+    ];
+    for (const [code, status, error] of definitions) {
+        if (normalized.includes(code)) return { code, status, error };
+    }
+    return null;
 }
 
 function getIdempotencyKey(req: NextRequest): string | null {
@@ -686,15 +702,26 @@ export async function POST(req: NextRequest) {
             }
         );
         if (atomicError) {
-            const code = atomicError.message.includes("BUSINESS_DAY_CLOSED")
-                ? "BUSINESS_DAY_CLOSED"
-                : mapCheckoutErrorCode(atomicError.message);
-            return NextResponse.json({ error: atomicError.message, code }, { status: code === "BUSINESS_DAY_CLOSED" ? 409 : 400 });
+            const mapped = mapAtomicCheckoutError(atomicError.message);
+            if (mapped) {
+                return NextResponse.json(
+                    { error: mapped.error, code: mapped.code },
+                    { status: mapped.status }
+                );
+            }
+            console.error("[pos] atomic_checkout_failed", atomicError);
+            return NextResponse.json(
+                { error: "Unable to complete checkout", code: "CHECKOUT_FAILED" },
+                { status: 500 }
+            );
         }
         return NextResponse.json(atomicCheckout);
 
-    } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Server error while checkout";
-        return NextResponse.json({ error: msg, code: "SERVER_ERROR" }, { status: 500 });
+    } catch (error: unknown) {
+        console.error("[pos] checkout_unexpected", error);
+        return NextResponse.json(
+            { error: "Unable to complete checkout", code: "CHECKOUT_FAILED" },
+            { status: 500 }
+        );
     }
 }

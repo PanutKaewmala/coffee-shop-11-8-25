@@ -62,6 +62,8 @@ declare
   v_existing_hash text;
   v_response jsonb;
   v_order_id uuid;
+  v_created_at timestamptz;
+  v_paid_at timestamptz;
   v_total numeric;
   v_change numeric;
   v_ing record;
@@ -71,6 +73,16 @@ begin
   end if;
   if p_items is null or pg_catalog.jsonb_typeof(p_items) <> 'array' or pg_catalog.jsonb_array_length(p_items) = 0 then
     raise exception 'INVALID_ITEMS' using errcode = '22023';
+  end if;
+
+  select sm.role into v_role
+  from public.shop_members sm
+  where sm.shop_id = p_shop_id and sm.user_id = v_actor;
+  if v_actor is null or v_role not in ('owner', 'staff') then
+    raise exception 'OWNER_OR_STAFF_REQUIRED' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.branch b where b.id = p_branch_id and b.shop_id = p_shop_id) then
+    raise exception 'INVALID_BRANCH' using errcode = '22023';
   end if;
 
   v_request_hash := pg_catalog.encode(extensions.digest(
@@ -95,15 +107,6 @@ begin
     return v_response;
   end if;
 
-  select sm.role into v_role
-  from public.shop_members sm
-  where sm.shop_id = p_shop_id and sm.user_id = v_actor;
-  if v_actor is null or v_role not in ('owner', 'staff') then
-    raise exception 'OWNER_OR_STAFF_REQUIRED' using errcode = '42501';
-  end if;
-  if not exists (select 1 from public.branch b where b.id = p_branch_id and b.shop_id = p_shop_id) then
-    raise exception 'INVALID_BRANCH' using errcode = '22023';
-  end if;
   if p_payment_method not in ('cash', 'promptpay') then
     raise exception 'INVALID_PAYMENT_METHOD' using errcode = '22023';
   end if;
@@ -142,6 +145,18 @@ begin
       select 1 from public.recipe_items r where r.shop_id=p_shop_id and r.variant_id=l.variant_id
     )
   ) then raise exception 'NO_RECIPE' using errcode='P0001'; end if;
+  if exists (
+    select 1 from pg_temp.pos_lines l
+    join public.recipe_items r on r.shop_id=p_shop_id and r.variant_id=l.variant_id
+    where r.quantity is null or r.quantity <= 0
+  ) then raise exception 'INVALID_RECIPE_QUANTITY' using errcode='P0001'; end if;
+  if exists (
+    select 1 from pg_temp.pos_lines l
+    join public.recipe_items r on r.shop_id=p_shop_id and r.variant_id=l.variant_id
+    left join public.ingredients i on i.id=r.ingredient_id
+      and i.shop_id=p_shop_id and i.branch_id=p_branch_id
+    where i.id is null
+  ) then raise exception 'RECIPE_INGREDIENT_OUTSIDE_BRANCH' using errcode='P0001'; end if;
 
   create temporary table if not exists pg_temp.pos_deductions(
     ingredient_id uuid primary key, required_qty numeric, before_stock numeric
@@ -176,10 +191,11 @@ begin
   end if;
   v_change := case when p_payment_method='cash' then p_paid_amount-v_total else 0 end;
 
+  v_paid_at := pg_catalog.now();
   insert into public.orders(shop_id,branch_id,total,status,payment_method,paid_amount,change_amount,paid_at)
   values(p_shop_id,p_branch_id,v_total,'paid',p_payment_method,
-         case when p_payment_method='promptpay' then v_total else p_paid_amount end,v_change,pg_catalog.now())
-  returning id into v_order_id;
+         case when p_payment_method='promptpay' then v_total else p_paid_amount end,v_change,v_paid_at)
+  returning id,created_at into v_order_id,v_created_at;
 
   insert into public.order_items(order_id,menu_id,variant_id,variant_label,name,price,qty,shop_id)
   select v_order_id,menu_id,variant_id,variant_label,item_name,unit_price,qty,p_shop_id
@@ -195,12 +211,18 @@ begin
 
   v_response := pg_catalog.jsonb_build_object(
     'success',true,'order',pg_catalog.jsonb_build_object(
-      'id',v_order_id,'total',v_total,'status','paid','payment_method',p_payment_method,
-      'paid_amount',case when p_payment_method='promptpay' then v_total else p_paid_amount end,
-      'change_amount',v_change,'shop_id',p_shop_id,'branch_id',p_branch_id,
-      'items',(select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(l) order by variant_id,sweetness) from pg_temp.pos_lines l)
+      'id',v_order_id,'total',v_total,'created_at',v_created_at,'status','paid',
+      'payment_method',p_payment_method,'paid_at',v_paid_at,'note',null,
+      'shop_id',p_shop_id,'branch_id',p_branch_id,
+      'items',(select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'menu_id',l.menu_id,'variant_id',l.variant_id,'variant_label',l.variant_label,
+        'name',l.item_name,'price',l.unit_price,'qty',l.qty
+      ) order by l.variant_id,l.sweetness) from pg_temp.pos_lines l)
     ),
-    'deducted',(select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(d) order by ingredient_id) from pg_temp.pos_deductions d)
+    'deducted',(select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+      'ingredient_id',d.ingredient_id,'deduct',d.required_qty,
+      'before_stock',d.before_stock,'after_stock',d.before_stock-d.required_qty
+    ) order by d.ingredient_id) from pg_temp.pos_deductions d)
   );
   insert into public.pos_idempotency(key,shop_id,request_hash,response)
   values(p_idempotency_key,p_shop_id,v_request_hash,v_response);
@@ -239,28 +261,6 @@ grant execute on function public.create_cash_movement_atomic(uuid,uuid,date,text
 
 -- Preserve the existing stock-restoration implementation as a private primitive.
 alter function public.cancel_order(uuid,text,text,text,boolean) rename to cancel_order_without_business_day_guard;
-create or replace function public.cancel_order_without_business_day_guard(
- p_order_id uuid,p_reason text,p_note text,p_cancelled_by text,p_restock boolean
-) returns jsonb language plpgsql security definer set search_path=pg_catalog,pg_temp as $$
-declare v_order public.orders; v_log record;
-begin
- select * into v_order from public.orders o where o.id=p_order_id for update;
- if not found then return pg_catalog.jsonb_build_object('success',false,'error','ORDER_NOT_FOUND'); end if;
- if v_order.status='cancelled' then
-  return pg_catalog.jsonb_build_object('success',true,'order_id',p_order_id,'status','cancelled','already_cancelled',true,'already_refunded',v_order.stock_refunded,'stock_refunded',v_order.stock_refunded);
- end if;
- if v_order.status<>'paid' then return pg_catalog.jsonb_build_object('success',false,'error','ORDER_NOT_PAID','status',v_order.status); end if;
- if p_restock and not v_order.stock_refunded then
-  perform i.id from public.ingredients i join (select sl.ingredient_id,sum(sl.amount) amount from public.stock_logs sl where sl.order_id=p_order_id and sl.type='deduct' group by sl.ingredient_id) d on d.ingredient_id=i.id order by i.id for update of i;
-  for v_log in select sl.ingredient_id,sum(sl.amount) amount from public.stock_logs sl where sl.order_id=p_order_id and sl.type='deduct' group by sl.ingredient_id order by sl.ingredient_id loop
-   update public.ingredients set stock=stock+v_log.amount where id=v_log.ingredient_id and shop_id=v_order.shop_id and branch_id=v_order.branch_id;
-   insert into public.stock_logs(ingredient_id,order_id,amount,type,note,before_stock,after_stock,shop_id,branch_id)
-   select i.id,p_order_id,v_log.amount,'refund','cancel order',i.stock-v_log.amount,i.stock,v_order.shop_id,v_order.branch_id from public.ingredients i where i.id=v_log.ingredient_id;
-  end loop;
- end if;
- update public.orders set status='cancelled',cancel_reason=p_reason,cancel_note=p_note,cancelled_by=p_cancelled_by,cancelled_at=pg_catalog.now(),stock_refunded=(stock_refunded or p_restock),stock_refunded_at=case when p_restock then pg_catalog.now() else stock_refunded_at end where id=p_order_id returning * into v_order;
- return pg_catalog.jsonb_build_object('success',true,'order_id',p_order_id,'status','cancelled','already_cancelled',false,'already_refunded',false,'stock_refunded',v_order.stock_refunded);
-end; $$;
 revoke all on function public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean) from public,anon,authenticated,service_role;
 
 create or replace function public.cancel_order(p_order_id uuid,p_reason text,p_note text,p_cancelled_by text,p_restock boolean)
