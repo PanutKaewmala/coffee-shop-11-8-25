@@ -183,6 +183,7 @@ jobs:
           workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
 
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
             -e PGOPTIONS="-c default_transaction_read_only=on" \
             -v "$workdir:/work" \
@@ -197,6 +198,7 @@ jobs:
           path = Path(os.environ["RUNNER_TEMP"]) / "coffee-saas-staging-bootstrap" / "production-public-schema.sql"
           text = path.read_text()
           text = re.sub(r"(?m)^CREATE SCHEMA public(?: AUTHORIZATION [^;]+)?;\n?", "", text)
+          text = re.sub(r"(?ms)^ALTER DEFAULT PRIVILEGES\b.*?;\n?", "", text)
           path.write_text(text)
           PY
 
@@ -208,6 +210,11 @@ jobs:
 
           if grep -Eq '^(COPY|INSERT INTO) ' "$file"; then
             echo "Unexpected row-data statement found in schema-only dump"
+            exit 1
+          fi
+
+          if grep -Eq '^ALTER DEFAULT PRIVILEGES([[:space:]]|$)' "$file"; then
+            echo "Unexpected role-scoped default privileges found in sanitized dump"
             exit 1
           fi
 
