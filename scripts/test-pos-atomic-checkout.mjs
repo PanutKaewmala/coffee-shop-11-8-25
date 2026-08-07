@@ -50,7 +50,22 @@ assert.match(cashRoute, /supabase\.rpc\("create_cash_movement_guarded"/);
 assert.match(migration, /create or replace function public\.create_cash_movement_guarded/);
 assert.match(migration, /insert into public\.cash_movements/);
 assert.match(migration, /rename to cancel_order_without_business_day_guard/);
+assert.match(
+  migration,
+  /revoke all privileges\s+on function public\.cancel_order_without_business_day_guard\(\s*uuid, text, text, text, boolean\s*\)\s+from public, anon, authenticated, service_role;/i,
+  "the renamed helper explicitly loses every client-role ACL inherited during rename",
+);
+assert.doesNotMatch(
+  migration,
+  /grant\s+execute\s+on function public\.cancel_order_without_business_day_guard/i,
+  "the private cancellation helper is never granted back to a client role",
+);
 assert.match(migration, /create function public\.cancel_order/);
+assert.match(
+  migration,
+  /revoke all on function public\.cancel_order\([^;]+\) from public;\s+grant execute on function public\.cancel_order\([^;]+\)\s+to authenticated, service_role;/i,
+  "the wrapper is unavailable to anon but executable by authenticated and service_role",
+);
 assert.match(migration, /coalesce\(v_order\.paid_at, v_order\.created_at\)[\s\S]*Asia\/Bangkok/);
 assert.match(migration, /return public\.cancel_order_without_business_day_guard/);
 assert.match(cancelRoute, /error\.message\.toLowerCase\(\)\.includes\("business_day_closed"\)/);

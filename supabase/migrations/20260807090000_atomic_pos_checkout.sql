@@ -372,7 +372,11 @@ grant execute on function public.create_cash_movement_guarded(uuid, uuid, date, 
 -- entry point owns tenant validation and the business-day transaction lock.
 alter function public.cancel_order(uuid, text, text, text, boolean)
   rename to cancel_order_without_business_day_guard;
-revoke all on function public.cancel_order_without_business_day_guard(uuid, text, text, text, boolean) from public;
+revoke all privileges
+on function public.cancel_order_without_business_day_guard(
+  uuid, text, text, text, boolean
+)
+from public, anon, authenticated, service_role;
 
 create function public.cancel_order(
   p_order_id uuid,

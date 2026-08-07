@@ -71,3 +71,20 @@ all cases again against a staging Supabase project after review, before producti
 
 Ingredient adjustment is intentionally excluded: it does not affect the Daily Close
 financial snapshot and remains a separate follow-up.
+
+## Cancellation function ACL assertions
+
+After applying the migration in the isolated/staging environment, verify privileges
+using authenticated JWTs and an anon JWT rather than relying only on catalog inspection:
+
+* An authenticated owner and an authenticated staff member can call
+  `public.cancel_order(...)`; the wrapper derives the membership role server-side,
+  acquires the canonical business-day advisory lock, rechecks `daily_closes`, and calls
+  its private helper inside the same transaction.
+* The same owner and staff identities receive `permission denied` when directly calling
+  `public.cancel_order_without_business_day_guard(...)`.
+* An anon identity receives `permission denied` for both `public.cancel_order(...)` and
+  `public.cancel_order_without_business_day_guard(...)`.
+* Confirm `has_function_privilege` is false for `PUBLIC`, `anon`, `authenticated`, and
+  `service_role` on the private helper; confirm it is true only for `authenticated` and
+  `service_role` on the public wrapper. Do not grant the helper back to any client role.
