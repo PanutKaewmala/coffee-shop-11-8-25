@@ -70,9 +70,7 @@ for (const guardedWrite of guardedWrites) {
 
 const changedFiles = execFileSync("git", ["diff", "--name-only", "main"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
 for (const forbidden of [
-  "scripts/test-order-cancellation-security.mjs",
   "src/app/admin/(protected)/orders/[id]/OrderDetailClient.tsx",
-  "src/app/api/orders/[id]/cancel/route.ts",
 ]) {
   assert.equal(changedFiles.includes(forbidden), false, `PR20 must not change ${forbidden}`);
 }

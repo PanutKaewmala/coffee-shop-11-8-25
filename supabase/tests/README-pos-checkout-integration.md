@@ -55,3 +55,19 @@ all cases again against a staging Supabase project after review, before producti
    advisory-lock waits, stock invariants, and close snapshots.
 6. Roll back the API deployment first if needed; retain the new RPC until callers are
    confirmed migrated. Do not recreate the non-atomic fallback.
+
+## Additional business-day mutation races
+
+10. **Cash movement vs finalization:** release `create_cash_movement_guarded` and
+    `finalize_daily_close` together for the same shop/branch/date. Accept only movement
+    first with `expected_cash` including it, or close first with
+    `BUSINESS_DAY_CLOSED`. Reject any movement committed after the closed snapshot.
+11. **Cancellation vs finalization:** create a paid order whose Bangkok business date
+    matches the draft close, then release `cancel_order` and finalization together.
+    Accept only cancellation first with the finalized report observing cancelled state,
+    or close first with cancellation returning `BUSINESS_DAY_CLOSED`. Verify the order,
+    cancellation audit, stock restoration, and restoration logs all commit or roll back
+    together. Also cover `paid_at is null` to verify the `created_at` fallback date.
+
+Ingredient adjustment is intentionally excluded: it does not affect the Daily Close
+financial snapshot and remains a separate follow-up.

@@ -308,26 +308,28 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const cmAdmin = cashAdmin(admin);
+        const { data: inserted, error: insErr } = await supabase.rpc("create_cash_movement_guarded", {
+            p_shop_id: currentShopId,
+            p_branch_id: currentBranchId,
+            p_business_date: businessDate,
+            p_type: type,
+            p_reason: reason as string,
+            p_amount: amount,
+            p_note: note,
+        });
 
-        const { data: inserted, error: insErr } = await cmAdmin
-            .from("cash_movements")
-            .insert({
-                shop_id: currentShopId,
-                branch_id: currentBranchId,
-                business_date: businessDate,
-                type,
-                reason,
-                amount,
-                note,
-                created_by: auth.user.id,
-            })
-            .select(
-                "id, shop_id, branch_id, business_date, type, reason, amount, note, created_by, created_at"
-            )
-            .single();
-
-        if (insErr || !inserted) {
+        if (insErr) {
+            if (insErr.message.toLowerCase().includes("business_day_closed")) {
+                return NextResponse.json(
+                    {
+                        error: "ปิดยอดของวันนี้แล้ว ไม่สามารถบันทึกรายการเงินสดได้",
+                        code: "BUSINESS_DAY_CLOSED",
+                        business_date: businessDate,
+                        close_status: "closed",
+                    },
+                    { status: 409 }
+                );
+            }
             console.error("cash_movement_insert_failed", {
                 error: insErr,
                 shop_id: currentShopId,
@@ -341,6 +343,10 @@ export async function POST(req: NextRequest) {
                 { error: "Failed to create cash movement", code: "CASH_MOVEMENT_INSERT_FAILED" },
                 { status: 500 }
             );
+        }
+
+        if (!isRecord(inserted)) {
+            return unexpectedServerErrorResponse("cash_movement_invalid_rpc_response", inserted);
         }
 
         const movement: CashMovement = {

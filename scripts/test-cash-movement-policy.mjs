@@ -37,6 +37,7 @@ assert.match(cashMovementRoute, /\{ error: "Failed to create cash movement", cod
 assert.doesNotMatch(cashMovementRoute, /\{ error: insErr\?\.message/, "API does not return raw Supabase insert errors to clients");
 assert.match(cashMovementRoute, /\{ error: reasonValidation\.error \}/, "normal policy validation errors still return before insert");
 assert.match(cashMovementRoute, /code: "BUSINESS_DAY_CLOSED"/, "closed-day guard response is still preserved");
+assert.match(cashMovementRoute, /supabase\.rpc\("create_cash_movement_guarded"/, "cash movement insert uses the authoritative locked RPC");
 assert.doesNotMatch(cashMovementRoute, /error: [a-zA-Z]+Err\.message|error: [a-zA-Z]+\.message|const message = e instanceof Error/, "unexpected route errors are not returned as raw messages");
 assert.match(dailyClosePage, /case "Unexpected server error":[\s\S]*return "บันทึกรายการเงินสดไม่สำเร็จ";/, "generic unexpected server errors map to a Thai user-facing cash movement message");
 assert.match(

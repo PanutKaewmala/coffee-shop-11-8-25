@@ -1558,6 +1558,18 @@ export type Database = {
         }
         Returns: Json
       }
+      create_cash_movement_guarded: {
+        Args: {
+          p_amount: number
+          p_branch_id: string
+          p_business_date: string
+          p_note: string | null
+          p_reason: string
+          p_shop_id: string
+          p_type: string
+        }
+        Returns: Json
+      }
       current_branch_id: { Args: never; Returns: string }
       current_shop_id: { Args: never; Returns: string }
       deduct_stock_atomic: {

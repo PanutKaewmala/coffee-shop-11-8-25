@@ -26,6 +26,7 @@ assert.match(route, /\.eq\("shop_id", currentShopId\)[\s\S]*\.eq\("branch_id", c
 assert.match(route, /code: "ORDER_NOT_FOUND"/, "cross-shop and cross-branch misses use a stable response");
 assert.match(route, /checkDailyClose\(shopId, branchId, businessDate\)/, "the closed-business-day guard remains active");
 assert.match(route, /code: "BUSINESS_DAY_CLOSED"/, "closed days retain their stable error code");
+assert.match(route, /error\.message\.toLowerCase\(\)\.includes\("business_day_closed"\)/, "the authoritative cancellation RPC closed-day error stays a 409");
 
 assert.match(route, /p_restock: restock/, "the validated restock flag is forwarded unchanged");
 assert.match(route, /already_refunded: data\.already_refunded/, "RPC retry/restock idempotency state remains in the success contract");

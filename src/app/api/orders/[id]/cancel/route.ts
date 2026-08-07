@@ -223,6 +223,16 @@ export async function POST(
         });
 
         if (error) {
+            if (error.message.toLowerCase().includes("business_day_closed")) {
+                const paidAt = (orderRow as Record<string, unknown>).paid_at as string | null;
+                const createdAt = (orderRow as Record<string, unknown>).created_at as string;
+                return NextResponse.json({
+                    error: "ปิดยอดของวันนี้แล้ว ไม่สามารถยกเลิกออเดอร์นี้ได้",
+                    code: "BUSINESS_DAY_CLOSED",
+                    business_date: toBangkokBusinessDate(paidAt ?? createdAt),
+                    close_status: "closed",
+                }, { status: 409 });
+            }
             return serverError("cancel_rpc_failed", { error, orderId: rawId, userId: user.id });
         }
 

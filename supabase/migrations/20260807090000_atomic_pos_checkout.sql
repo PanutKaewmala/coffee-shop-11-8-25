@@ -282,6 +282,155 @@ begin
 end;
 $$;
 
+-- Cash movements affect expected_cash, so their insert uses the same lock and
+-- rechecks the finalized state inside the insert transaction.
+create or replace function public.create_cash_movement_guarded(
+  p_shop_id uuid,
+  p_branch_id uuid,
+  p_business_date date,
+  p_type text,
+  p_reason text,
+  p_amount numeric,
+  p_note text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_role text;
+  v_movement public.cash_movements%rowtype;
+  v_requires_note boolean;
+begin
+  if v_user_id is null then
+    raise exception using message = 'Unauthorized', errcode = '42501';
+  end if;
+  select sm.role into v_role from public.shop_members sm
+  where sm.user_id = v_user_id and sm.shop_id = p_shop_id
+    and sm.role in ('owner', 'staff');
+  if not found then
+    raise exception using message = 'Shop access denied', errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.branch b
+    where b.id = p_branch_id and b.shop_id = p_shop_id
+  ) then
+    raise exception using message = 'Invalid branch', errcode = '42501';
+  end if;
+  if p_type not in ('cash_in', 'cash_out') or p_amount is null or p_amount <= 0 then
+    raise exception 'Invalid cash movement';
+  end if;
+
+  if not (
+    (p_type = 'cash_in' and p_reason in ('เติมเงินทอน', 'เงินคืน / รับเงินสดอื่น', 'ปรับยอดเงินสด'))
+    or (p_type = 'cash_out' and p_reason in (
+      'ซื้อวัตถุดิบเข้าร้าน', 'ซื้อบรรจุภัณฑ์ / ของใช้ร้าน', 'ค่าใช้จ่ายร้าน',
+      'ฝากธนาคาร', 'เจ้าของถอนเงิน', 'ปรับยอดเงินสด'
+    ))
+  ) then
+    raise exception 'Invalid reason for cash movement type';
+  end if;
+  if p_reason in ('เจ้าของถอนเงิน', 'ปรับยอดเงินสด') and v_role <> 'owner' then
+    raise exception using message = 'Owner role required for this cash movement reason', errcode = '42501';
+  end if;
+  v_requires_note := p_reason in (
+    'เงินคืน / รับเงินสดอื่น', 'ปรับยอดเงินสด', 'ซื้อบรรจุภัณฑ์ / ของใช้ร้าน',
+    'ค่าใช้จ่ายร้าน', 'เจ้าของถอนเงิน'
+  );
+  if v_requires_note and nullif(btrim(p_note), '') is null then
+    raise exception 'Note is required for this cash movement reason';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(
+    p_shop_id::text || ':' || p_branch_id::text || ':' || p_business_date::text, 0
+  ));
+  if exists (
+    select 1 from public.daily_closes dc
+    where dc.shop_id = p_shop_id and dc.branch_id = p_branch_id
+      and dc.business_date = p_business_date and dc.status in ('closed', 'approved')
+  ) then
+    raise exception 'BUSINESS_DAY_CLOSED';
+  end if;
+
+  insert into public.cash_movements (
+    shop_id, branch_id, business_date, type, reason, amount, note, created_by
+  ) values (
+    p_shop_id, p_branch_id, p_business_date, p_type, p_reason,
+    round(p_amount, 2), nullif(btrim(p_note), ''), v_user_id
+  ) returning * into v_movement;
+  return to_jsonb(v_movement);
+end;
+$$;
+
+revoke all on function public.create_cash_movement_guarded(uuid, uuid, date, text, text, numeric, text) from public;
+grant execute on function public.create_cash_movement_guarded(uuid, uuid, date, text, text, numeric, text)
+  to authenticated, service_role;
+
+-- Keep the existing cancellation implementation narrowly wrapped: the renamed
+-- function still performs status/audit/restock/log mutations, while this public
+-- entry point owns tenant validation and the business-day transaction lock.
+alter function public.cancel_order(uuid, text, text, text, boolean)
+  rename to cancel_order_without_business_day_guard;
+revoke all on function public.cancel_order_without_business_day_guard(uuid, text, text, text, boolean) from public;
+
+create function public.cancel_order(
+  p_order_id uuid,
+  p_reason text,
+  p_note text default null,
+  p_cancelled_by text default null,
+  p_restock boolean default true
+) returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_order public.orders%rowtype;
+  v_business_date date;
+  v_role text;
+begin
+  if v_user_id is null then
+    raise exception using message = 'Unauthorized', errcode = '42501';
+  end if;
+  select o, sm.role into v_order, v_role
+  from public.orders o
+  join public.shop_members sm
+    on sm.shop_id = o.shop_id and sm.user_id = v_user_id
+   and sm.role in ('owner', 'staff')
+  where o.id = p_order_id;
+  if not found or v_order.branch_id is null then
+    raise exception using message = 'Order access denied', errcode = '42501';
+  end if;
+
+  v_business_date := (coalesce(v_order.paid_at, v_order.created_at)
+    at time zone 'Asia/Bangkok')::date;
+  perform pg_advisory_xact_lock(hashtextextended(
+    v_order.shop_id::text || ':' || v_order.branch_id::text || ':' || v_business_date::text, 0
+  ));
+
+  -- Re-read under the canonical lock before checking the finalized state and
+  -- entering the existing cancellation transaction body.
+  select * into v_order from public.orders o where o.id = p_order_id for update;
+  if exists (
+    select 1 from public.daily_closes dc
+    where dc.shop_id = v_order.shop_id and dc.branch_id = v_order.branch_id
+      and dc.business_date = v_business_date and dc.status in ('closed', 'approved')
+  ) then
+    raise exception 'BUSINESS_DAY_CLOSED';
+  end if;
+
+  return public.cancel_order_without_business_day_guard(
+    p_order_id, p_reason, p_note, v_role, p_restock
+  );
+end;
+$$;
+
+revoke all on function public.cancel_order(uuid, text, text, text, boolean) from public;
+grant execute on function public.cancel_order(uuid, text, text, text, boolean)
+  to authenticated, service_role;
+
 -- Owner-only finalization shares the exact business-day advisory lock with POS.
 -- Its report calculation and closed snapshot update are therefore one transaction.
 create or replace function public.finalize_daily_close(
