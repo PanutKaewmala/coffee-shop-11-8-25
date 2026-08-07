@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { computeDailyCloseReport, computeSnapshotFromReport } from "@/lib/dailyCloseReport";
 import { roundMoney } from "@/lib/dailyCloseMoney";
-import { cashDifferenceRequiresReason, parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
+import { parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -77,25 +77,6 @@ function validateCountedCash(value: unknown): number {
         throw new Error("counted_cash cannot be negative");
     }
     return roundMoney(value);
-}
-
-async function assertBranchBelongsToShop(
-    admin: ReturnType<typeof getSupabaseAdmin>,
-    shopId: string,
-    branchId: string
-): Promise<void> {
-    const { data, error } = await admin
-        .from("branch")
-        .select("id")
-        .eq("id", branchId)
-        .eq("shop_id", shopId)
-        .maybeSingle();
-    if (error) {
-        throw new Error(error.message);
-    }
-    if (!data) {
-        throw new Error("Branch does not belong to the current shop");
-    }
 }
 
 export async function GET(req: NextRequest) {
@@ -347,7 +328,6 @@ return NextResponse.json(
      try {
          const supabase = await getSupabaseServer();
          const admin = getSupabaseAdmin();
-         const dcAdmin = admin as unknown as DailyCloseFrom;
          const { data: auth, error: authError } = await supabase.auth.getUser();
 
          if (authError) return unexpectedServerError("patch_auth_failed", authError);
@@ -408,76 +388,32 @@ return NextResponse.json(
 
         const notes = typeof body.notes === "string" ? body.notes.trim() : null;
 
-         const { data: existing, error: existingError } = await dcAdmin
-             .from("daily_closes")
-             .select("*")
-             .eq("shop_id", currentShopId)
-             .eq("branch_id", currentBranchId)
-             .eq("business_date", businessDate)
-             .maybeSingle();
+         const { data: updated, error: finalizeError } = await supabase.rpc("finalize_daily_close", {
+             p_shop_id: currentShopId,
+             p_branch_id: currentBranchId,
+             p_business_date: businessDate,
+             p_counted_cash: countedCash,
+             p_notes: notes,
+         });
 
-         if (existingError) {
-             return unexpectedServerError("patch_existing_lookup_failed", existingError);
-         }
-         if (!existing) {
-             return NextResponse.json({ error: "Daily close not found" }, { status: 404 });
-         }
-
-        const existingRecord = existing as Record<string, unknown>;
-        if (existingRecord.status !== "draft") {
-            return NextResponse.json(
-                { error: "Can only close a draft daily close" },
-                { status: 409 }
-            );
-        }
-
-        await assertBranchBelongsToShop(admin, currentShopId, currentBranchId);
-
-        const openingCashFloat = Number(existingRecord.opening_cash_float) || 0;
-        const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
-        const snapshot = computeSnapshotFromReport(report, openingCashFloat);
-        const expectedCash = snapshot.expected_cash;
-        const cashDifference = roundMoney(countedCash - expectedCash);
-        if (cashDifferenceRequiresReason(cashDifference) && !notes) {
-            return NextResponse.json(
-                { error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" },
-                { status: 400 }
-            );
-        }
-
-         const updatePayload = {
-             status: "closed",
-             counted_cash: countedCash,
-             expected_cash: expectedCash,
-             cash_difference: cashDifference,
-             closed_by: auth.user.id,
-             closed_at: new Date().toISOString(),
-             notes,
-             gross_sales: snapshot.gross_sales,
-             net_sales: snapshot.net_sales,
-             cash_sales: snapshot.cash_sales,
-             promptpay_sales: snapshot.promptpay_sales,
-             unknown_payment_sales: snapshot.unknown_payment_sales,
-             paid_order_count: snapshot.paid_order_count,
-             cancelled_order_count: snapshot.cancelled_order_count,
-             refunded_order_count: snapshot.refunded_order_count,
-             void_order_count: snapshot.void_order_count,
-         };
-
-         const { data: updated, error: updateError } = await dcAdmin
-             .from("daily_closes")
-             .update(updatePayload)
-             .eq("id", existingRecord.id as string)
-             .eq("shop_id", currentShopId)
-             .eq("branch_id", currentBranchId)
-             .eq("business_date", businessDate)
-             .eq("status", "draft")
-             .select("*")
-             .maybeSingle();
-
-         if (updateError) return unexpectedServerError("patch_update_failed", updateError);
-         if (!updated) {
-             return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });
+         if (finalizeError) {
+             const message = finalizeError.message.toLowerCase();
+             if (message.includes("cash difference reason")) {
+                 return NextResponse.json(
+                     { error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" },
+                     { status: 400 }
+                 );
+             }
+             if (message.includes("not draft")) {
+                 return NextResponse.json(
+                     { error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" },
+                     { status: 409 }
+                 );
+             }
+             if (message.includes("not found")) {
+                 return NextResponse.json({ error: "Daily close not found" }, { status: 404 });
+             }
+             return unexpectedServerError("patch_finalize_failed", finalizeError);
          }
 
          return NextResponse.json({

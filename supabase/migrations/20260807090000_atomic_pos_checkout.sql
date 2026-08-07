@@ -1,6 +1,7 @@
 -- Atomic POS checkout: idempotency, order, items, stock, and logs commit together.
 -- The function deliberately replaces the legacy two-argument checkout RPC.
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 alter table public.pos_idempotency
   add column if not exists request_hash text,
@@ -28,7 +29,7 @@ create or replace function public.process_pos_checkout(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = pg_catalog, pg_temp
 as $$
 declare
   v_user_id uuid := auth.uid();
@@ -42,7 +43,6 @@ declare
   v_business_date date := (clock_timestamp() at time zone 'Asia/Bangkok')::date;
   v_row record;
   v_before numeric;
-  v_failpoint text := coalesce(current_setting('app.pos_checkout_test_failpoint', true), '');
 begin
   if v_user_id is null then
     raise exception using message = 'Unauthorized', errcode = '42501';
@@ -50,6 +50,7 @@ begin
   if not exists (
     select 1 from public.shop_members sm
     where sm.user_id = v_user_id and sm.shop_id = p_shop_id
+      and sm.role in ('owner', 'staff')
   ) then
     raise exception using message = 'Shop access denied', errcode = '42501';
   end if;
@@ -71,7 +72,7 @@ begin
     hashtextextended(p_shop_id::text || ':' || p_idempotency_key, 0)
   );
 
-  v_request_hash := encode(digest(
+  v_request_hash := encode(extensions.digest(
     jsonb_build_object(
       'shop_id', p_shop_id,
       'branch_id', p_branch_id,
@@ -93,6 +94,11 @@ begin
     return v_existing.response;
   end if;
 
+  -- Serialize all activity that can finalize or add sales to this business day.
+  perform pg_advisory_xact_lock(hashtextextended(
+    p_shop_id::text || ':' || p_branch_id::text || ':' || v_business_date::text, 0
+  ));
+
   -- Lock the branch while validating tenant ownership. Ingredient rows are
   -- locked later in stable UUID order to avoid deadlocks between baskets.
   perform 1 from public.branch b
@@ -111,9 +117,10 @@ begin
   end if;
 
   create temporary table if not exists pg_temp.pos_checkout_lines (
-    variant_id uuid primary key,
+    variant_id uuid not null,
     qty integer not null,
     sweetness text not null,
+    primary key (variant_id, sweetness),
     menu_id uuid,
     item_name text,
     price numeric,
@@ -121,23 +128,21 @@ begin
   ) on commit drop;
   truncate pg_temp.pos_checkout_lines;
 
-  insert into pg_temp.pos_checkout_lines (variant_id, qty, sweetness)
-  select x.variant_id, sum(x.qty)::integer, min(x.sweetness)
-  from (
-    select
-      nullif(item->>'variant_id', '')::uuid variant_id,
-      (item->>'qty')::integer qty,
-      coalesce(nullif(item->>'sweetness', ''), '100%') sweetness
-    from jsonb_array_elements(p_items) item
-  ) x
-  where x.variant_id is not null and x.qty > 0
-  group by x.variant_id;
-
-  if (select coalesce(sum(qty), 0) from pg_temp.pos_checkout_lines) < 1
-     or (select count(*) from pg_temp.pos_checkout_lines) <>
-        (select count(distinct item->>'variant_id') from jsonb_array_elements(p_items) item) then
+  if exists (
+    select 1 from jsonb_array_elements(p_items) item
+    where jsonb_typeof(item) <> 'object'
+       or coalesce(item->>'variant_id', '') !~
+          '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+       or coalesce(item->>'qty', '') !~ '^[1-9][0-9]*$'
+       or item->>'sweetness' not in ('0%', '25%', '50%', '75%', '100%', '125%')
+  ) then
     raise exception 'Invalid items';
   end if;
+
+  insert into pg_temp.pos_checkout_lines (variant_id, qty, sweetness)
+  select (item->>'variant_id')::uuid, sum((item->>'qty')::integer), item->>'sweetness'
+  from jsonb_array_elements(p_items) item
+  group by (item->>'variant_id')::uuid, item->>'sweetness';
 
   update pg_temp.pos_checkout_lines l
   set menu_id = mv.menu_id,
@@ -223,8 +228,6 @@ begin
     null, p_shop_id, p_branch_id
   ) returning * into v_order;
 
-  if v_failpoint = 'after_order' then raise exception 'POS_TEST_FAILURE_AFTER_ORDER'; end if;
-
   insert into public.order_items (
     order_id, menu_id, variant_id, variant_label, name, price, qty, shop_id
   )
@@ -236,10 +239,6 @@ begin
     update public.ingredients
     set stock = v_row.after_stock
     where id = v_row.ingredient_id and shop_id = p_shop_id and branch_id = p_branch_id;
-
-    if v_failpoint = 'during_stock_log' then
-      raise exception 'POS_TEST_FAILURE_DURING_STOCK_LOG';
-    end if;
 
     insert into public.stock_logs (
       ingredient_id, order_id, amount, type, note, before_stock,
@@ -266,7 +265,7 @@ begin
         'menu_id', menu_id, 'variant_id', variant_id,
         'variant_label', variant_label, 'name', item_name,
         'price', price, 'qty', qty
-      ) order by variant_id) from pg_temp.pos_checkout_lines)
+      ) order by variant_id, sweetness) from pg_temp.pos_checkout_lines)
     ),
     'deducted', (select coalesce(jsonb_agg(jsonb_build_object(
       'ingredient_id', ingredient_id, 'deduct', deduct,
@@ -282,6 +281,136 @@ begin
   return v_result;
 end;
 $$;
+
+-- Owner-only finalization shares the exact business-day advisory lock with POS.
+-- Its report calculation and closed snapshot update are therefore one transaction.
+create or replace function public.finalize_daily_close(
+  p_shop_id uuid,
+  p_branch_id uuid,
+  p_business_date date,
+  p_counted_cash numeric,
+  p_notes text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, pg_temp
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_close public.daily_closes%rowtype;
+  v_start timestamptz := p_business_date::timestamp at time zone 'Asia/Bangkok';
+  v_end timestamptz := (p_business_date + 1)::timestamp at time zone 'Asia/Bangkok';
+  v_gross numeric := 0;
+  v_cash numeric := 0;
+  v_promptpay numeric := 0;
+  v_unknown numeric := 0;
+  v_paid_count integer := 0;
+  v_cancelled_count integer := 0;
+  v_cash_in numeric := 0;
+  v_cash_out numeric := 0;
+  v_expected numeric;
+  v_difference numeric;
+begin
+  if v_user_id is null then
+    raise exception using message = 'Unauthorized', errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.shop_members sm
+    where sm.user_id = v_user_id and sm.shop_id = p_shop_id and sm.role = 'owner'
+  ) then
+    raise exception using message = 'Owner role required', errcode = '42501';
+  end if;
+  if p_counted_cash is null or p_counted_cash < 0 then
+    raise exception 'Invalid counted cash';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(
+    p_shop_id::text || ':' || p_branch_id::text || ':' || p_business_date::text, 0
+  ));
+
+  if not exists (
+    select 1 from public.branch b
+    where b.id = p_branch_id and b.shop_id = p_shop_id
+  ) then
+    raise exception 'Invalid branch';
+  end if;
+
+  select * into v_close
+  from public.daily_closes dc
+  where dc.shop_id = p_shop_id
+    and dc.branch_id = p_branch_id
+    and dc.business_date = p_business_date
+  for update;
+
+  if not found then raise exception 'Daily close not found'; end if;
+  if v_close.status <> 'draft' then raise exception 'Daily close is not draft'; end if;
+
+  select
+    coalesce(sum(o.total), 0),
+    coalesce(sum(o.total) filter (where lower(o.payment_method) = 'cash'), 0),
+    coalesce(sum(o.total) filter (where lower(o.payment_method) = 'promptpay'), 0),
+    coalesce(sum(o.total) filter (where lower(coalesce(o.payment_method, '')) not in ('cash', 'promptpay')), 0),
+    count(*)::integer
+  into v_gross, v_cash, v_promptpay, v_unknown, v_paid_count
+  from public.orders o
+  where o.shop_id = p_shop_id and o.branch_id = p_branch_id and o.status = 'paid'
+    and (
+      (o.paid_at is not null and o.paid_at >= v_start and o.paid_at < v_end)
+      or (o.paid_at is null and o.created_at >= v_start and o.created_at < v_end)
+    );
+
+  select count(*)::integer into v_cancelled_count
+  from public.orders o
+  where o.shop_id = p_shop_id and o.branch_id = p_branch_id and o.status = 'cancelled'
+    and o.cancelled_at >= v_start and o.cancelled_at < v_end;
+
+  select
+    coalesce(sum(cm.amount) filter (where cm.type = 'cash_in'), 0),
+    coalesce(sum(cm.amount) filter (where cm.type = 'cash_out'), 0)
+  into v_cash_in, v_cash_out
+  from public.cash_movements cm
+  where cm.shop_id = p_shop_id and cm.branch_id = p_branch_id
+    and cm.business_date = p_business_date;
+
+  v_gross := round(v_gross, 2);
+  v_cash := round(v_cash, 2);
+  v_promptpay := round(v_promptpay, 2);
+  v_unknown := round(v_unknown, 2);
+  v_expected := round(v_close.opening_cash_float + v_cash + v_cash_in - v_cash_out, 2);
+  v_difference := round(p_counted_cash - v_expected, 2);
+
+  if v_difference <> 0 and nullif(btrim(p_notes), '') is null then
+    raise exception 'Cash difference reason is required';
+  end if;
+
+  update public.daily_closes
+  set status = 'closed',
+      counted_cash = round(p_counted_cash, 2),
+      expected_cash = v_expected,
+      cash_difference = v_difference,
+      closed_by = v_user_id,
+      closed_at = now(),
+      notes = nullif(btrim(p_notes), ''),
+      gross_sales = v_gross,
+      net_sales = v_gross,
+      cash_sales = v_cash,
+      promptpay_sales = v_promptpay,
+      unknown_payment_sales = v_unknown,
+      paid_order_count = v_paid_count,
+      cancelled_order_count = v_cancelled_count,
+      refunded_order_count = 0,
+      void_order_count = 0,
+      updated_at = now()
+  where id = v_close.id
+  returning * into v_close;
+
+  return to_jsonb(v_close);
+end;
+$$;
+
+revoke all on function public.finalize_daily_close(uuid, uuid, date, numeric, text) from public;
+grant execute on function public.finalize_daily_close(uuid, uuid, date, numeric, text)
+  to authenticated, service_role;
 
 revoke all on function public.process_pos_checkout(uuid, uuid, jsonb, text, numeric, text) from public;
 grant execute on function public.process_pos_checkout(uuid, uuid, jsonb, text, numeric, text)

@@ -33,9 +33,9 @@ assert.match(route, /parseDailyCloseRole\(membership\.role\)/);
 assert.match(route, /if \(role !== "owner"\)/, "staff cannot call finalization PATCH");
 assert.match(route, /countedCash = validateCountedCash\(body\.counted_cash\)/, "owner finalization requires counted cash");
 assert.match(route, /computeSnapshotFromReport\(report, openingCashFloat\)/, "server recomputes the canonical snapshot");
-assert.match(route, /roundMoney\(countedCash - expectedCash\)/);
+assert.match(route, /supabase\.rpc\("finalize_daily_close"/, "finalization report and close commit through one DB transaction");
 assert.match(route, /code: "CASH_DIFFERENCE_REASON_REQUIRED"/);
-assert.match(route, /existingRecord\.status !== "draft"/, "closed rows cannot be finalized again");
+assert.match(route, /message\.includes\("not draft"\)/, "closed rows cannot be finalized again");
 
 assert.match(prep, /countedCash = validateCountedCash\(body\.counted_cash\)/, "staff preparation requires counted cash");
 assert.match(prep, /existingRecord\.status !== "draft"/, "staff cannot edit a finalized row");

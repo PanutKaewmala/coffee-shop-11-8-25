@@ -1582,6 +1582,16 @@ export type Database = {
         Args: { p_shop_id: string }
         Returns: undefined
       }
+      finalize_daily_close: {
+        Args: {
+          p_branch_id: string
+          p_business_date: string
+          p_counted_cash: number
+          p_notes: string | null
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       get_expiry_alert_summary: {
         Args: { p_branch_id?: string; p_shop_id: string }
         Returns: {
