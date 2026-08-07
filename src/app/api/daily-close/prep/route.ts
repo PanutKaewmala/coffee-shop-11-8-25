@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { roundMoney } from "@/lib/dailyCloseMoney";
+import { parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -12,18 +13,27 @@ type DailyCloseQuery = {
     select: (cols: string) => DailyCloseQuery;
     eq: (col: string, val: string | undefined) => DailyCloseQuery;
     maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-    update: (payload: unknown) => {
-        eq: (col: string, val: string) => {
-            select: (cols: string) => {
-                single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-            };
-        };
+    update: (payload: unknown) => DailyCloseUpdateQuery;
+};
+
+type DailyCloseUpdateQuery = {
+    eq: (col: string, val: string) => DailyCloseUpdateQuery;
+    select: (cols: string) => {
+        maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
     };
 };
 
 type DailyCloseFrom = {
     from: (table: "daily_closes") => DailyCloseQuery;
 };
+
+function unexpectedServerError(scope: string, error: unknown) {
+    console.error(`[daily-close-prep] ${scope}`, error);
+    return NextResponse.json(
+        { error: "Unexpected server error", code: "DAILY_CLOSE_PREP_SERVER_ERROR" },
+        { status: 500 }
+    );
+}
 
 function isValidDateKey(value: string | null | undefined): value is string {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -62,9 +72,7 @@ export async function POST(req: NextRequest) {
         const dcAdmin = admin as unknown as DailyCloseFrom;
         const { data: auth, error: authError } = await supabase.auth.getUser();
 
-        if (authError) {
-            return NextResponse.json({ error: authError.message }, { status: 500 });
-        }
+        if (authError) return unexpectedServerError("auth_failed", authError);
         if (!auth.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -84,12 +92,12 @@ export async function POST(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (membershipError) {
-            return NextResponse.json({ error: membershipError.message }, { status: 500 });
-        }
+        if (membershipError) return unexpectedServerError("membership_failed", membershipError);
         if (!membership) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
+        const role = parseDailyCloseRole(membership.role);
+        if (!role) return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
 
         const body = (await req.json().catch(() => null)) as {
             business_date?: string;
@@ -109,14 +117,12 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        let countedCash: number | undefined;
-        if (body.counted_cash !== undefined) {
-            try {
-                countedCash = validateCountedCash(body.counted_cash);
-            } catch (validationError) {
-                const message = validationError instanceof Error ? validationError.message : "Invalid counted_cash";
-                return NextResponse.json({ error: message }, { status: 400 });
-            }
+        let countedCash: number;
+        try {
+            countedCash = validateCountedCash(body.counted_cash);
+        } catch (validationError) {
+            const message = validationError instanceof Error ? validationError.message : "Invalid counted_cash";
+            return NextResponse.json({ error: message, code: "INVALID_COUNTED_CASH" }, { status: 400 });
         }
         const notes = typeof body.notes === "string" ? body.notes.trim() : undefined;
 
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         if (existingError) {
-            return NextResponse.json({ error: (existingError as { message: string }).message }, { status: 500 });
+            return unexpectedServerError("existing_lookup_failed", existingError);
         }
         if (!existing) {
             return NextResponse.json({ error: "Daily close not found" }, { status: 404 });
@@ -146,18 +152,23 @@ export async function POST(req: NextRequest) {
         const updatePayload: Record<string, unknown> = {
             updated_at: new Date().toISOString(),
         };
-        if (countedCash !== undefined) updatePayload.counted_cash = countedCash;
+        updatePayload.counted_cash = countedCash;
         if (notes !== undefined) updatePayload.notes = notes;
 
         const { data: updated, error: updateError } = await dcAdmin
             .from("daily_closes")
             .update(updatePayload)
             .eq("id", existingRecord.id as string)
+            .eq("shop_id", currentShopId)
+            .eq("branch_id", currentBranchId)
+            .eq("business_date", businessDate)
+            .eq("status", "draft")
             .select("*")
-            .single();
+            .maybeSingle();
 
-        if (updateError) {
-            return NextResponse.json({ error: (updateError as { message: string }).message }, { status: 500 });
+        if (updateError) return unexpectedServerError("update_failed", updateError);
+        if (!updated) {
+            return NextResponse.json({ error: "Can only prepare a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });
         }
 
         const row = updated as Record<string, unknown>;
@@ -176,7 +187,6 @@ export async function POST(req: NextRequest) {
             },
         });
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Failed to prepare daily close";
-        return NextResponse.json({ error: message }, { status: 500 });
+        return unexpectedServerError("unexpected", error);
     }
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import Card from "@/components/admin/Card";
 import { Button } from "@/components/ui/button";
-import { computeExpectedCash } from "@/lib/dailyCloseMoney";
+import { computeExpectedCash, roundMoney } from "@/lib/dailyCloseMoney";
 import {
     cashMovementNavigationIntent,
     cashMovementReasonsFor,
@@ -41,6 +41,12 @@ type CancelledTransaction = {
 };
 
 type DailyCloseReport = {
+    basis?: {
+        summary: "live" | "stored_snapshot";
+        paymentTotals: "live" | "stored_snapshot";
+        paymentOrderCounts: "live" | "current_not_snapshot";
+        transactions: "live" | "current_not_snapshot";
+    };
     date: string;
     boundaries: { start: string; end: string; timeZone: string };
     context: {
@@ -249,6 +255,12 @@ function ownerFacingError(message: string) {
             return "เงินสดที่นับได้จริงต้องเป็นตัวเลขที่ถูกต้อง";
         case "counted_cash cannot be negative":
             return "เงินสดที่นับได้จริงต้องไม่ติดลบ";
+        case "Cash difference reason is required":
+            return "กรุณาระบุสาเหตุเมื่อเงินสดขาดหรือเกิน";
+        case "opening_cash_float is required":
+            return "กรุณากรอกเงินสดตั้งต้น";
+        case "opening_cash_float must be a non-negative number":
+            return "เงินสดตั้งต้นต้องเป็นตัวเลขที่ไม่ติดลบ";
         case "Branch does not belong to the current shop":
             return "สาขาไม่ได้อยู่ในร้านที่เลือก";
         case "Can only prepare a draft daily close":
@@ -453,12 +465,17 @@ export default function DailyClosePage() {
         setCloseError(null);
 
         try {
+            const openingRaw = String(openingCashFloat).trim();
+            const openingAmount = Number(openingRaw);
+            if (openingRaw === "" || !Number.isFinite(openingAmount) || openingAmount < 0) {
+                throw new Error("กรุณากรอกเงินสดตั้งต้นเป็นตัวเลขที่ไม่ติดลบ");
+            }
             const res = await fetch("/api/daily-close", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     business_date: date,
-                    opening_cash_float: Number(openingCashFloat) || 0,
+                    opening_cash_float: openingAmount,
                 }),
             });
             const data: unknown = await res.json().catch(() => null);
@@ -543,6 +560,9 @@ export default function DailyClosePage() {
             if (!trimmed) {
                 throw new Error("กรุณากรอกเงินสดที่นับได้จริงให้ถูกต้อง");
             }
+            if (trimmed.counted_cash === undefined) {
+                throw new Error("กรุณากรอกเงินสดที่นับได้จริง");
+            }
 
             const res = await fetch("/api/daily-close/prep", {
                 method: "POST",
@@ -589,6 +609,16 @@ export default function DailyClosePage() {
         }
         return close?.expected_cash ?? 0;
     })();
+    const countedCashNumber = String(countedCash).trim() === "" ? null : Number(countedCash);
+    const countedCashIsValid = countedCashNumber !== null && Number.isFinite(countedCashNumber) && countedCashNumber >= 0;
+    const liveCashDifference = countedCashIsValid
+        ? roundMoney(countedCashNumber - expectedDrawerCashDisplay)
+        : null;
+    const cashDifferenceNeedsReason = liveCashDifference !== null && liveCashDifference !== 0;
+    const closeReasonIsValid = !cashDifferenceNeedsReason || notes.trim() !== "";
+    const openingCashIsValid = String(openingCashFloat).trim() !== ""
+        && Number.isFinite(Number(openingCashFloat))
+        && Number(openingCashFloat) >= 0;
 
     const handleAddCashMovement = async () => {
         setCmLoading(true);
@@ -707,6 +737,11 @@ export default function DailyClosePage() {
 </head>
 <body>
     <h1>รายงานปิดยอดวัน</h1>
+    <div class="box" style="margin-bottom:12px;">
+        ${isCloseFinalized
+            ? "Snapshot ณ เวลาปิดยอด: ยอดสรุปและยอดวิธีชำระเงินเป็น stored snapshot; จำนวนรายการและรายละเอียดธุรกรรมเป็นข้อมูลปัจจุบันและไม่ใช่ snapshot"
+            : "รายงานสด: ยังไม่ปิดยอดและตัวเลขอาจเปลี่ยนแปลงได้"}
+    </div>
     <div class="meta">
         <div><strong>ร้าน:</strong> ${shopName} • ${branchName}</div>
         <div><strong>วันที่ขาย:</strong> ${selectedDate}</div>
@@ -770,9 +805,9 @@ export default function DailyClosePage() {
 
     <h2>วิธีชำระเงิน</h2>
     <div class="grid-3" style="margin-bottom:8px;">
-        <div class="box"><div class="label">เงินสด</div><div class="value">${safeText(report.payments.cash.sales)}</div><div class="label">${report.payments.cash.orderCount} รายการ</div></div>
-        <div class="box"><div class="label">พร้อมเพย์</div><div class="value">${safeText(report.payments.promptPay.sales)}</div><div class="label">${report.payments.promptPay.orderCount} รายการ</div></div>
-        <div class="box"><div class="label">ไม่พบวิธีชำระเงิน</div><div class="value">${safeText(report.payments.unknown.sales)}</div><div class="label">${report.payments.unknown.orderCount} รายการ</div></div>
+        <div class="box"><div class="label">เงินสด</div><div class="value">${safeText(report.payments.cash.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.cash.orderCount} รายการ`}</div></div>
+        <div class="box"><div class="label">พร้อมเพย์</div><div class="value">${safeText(report.payments.promptPay.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.promptPay.orderCount} รายการ`}</div></div>
+        <div class="box"><div class="label">ไม่พบวิธีชำระเงิน</div><div class="value">${safeText(report.payments.unknown.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.unknown.orderCount} รายการ`}</div></div>
     </div>
 
     ${report.paidTransactions.length ? `
@@ -894,9 +929,16 @@ export default function DailyClosePage() {
                     </div>
                 </div>
 
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
-                    รายงานสด: ยังไม่ใช่การปิดยอดและยังไม่ล็อกยอด หากมีการแก้ไขออเดอร์ ตัวเลขอาจเปลี่ยนได้
-                </div>
+                {isCloseFinalized ? (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-text-primary">
+                        Snapshot ณ เวลาปิดยอด: ยอดสรุปและยอดแยกตามวิธีชำระเงินเป็นข้อมูลที่จัดเก็บตอนปิดยอดและเป็น read-only
+                        ส่วนจำนวนรายการและรายละเอียดธุรกรรมด้านล่างเป็นข้อมูลปัจจุบัน ไม่ใช่ส่วนหนึ่งของ snapshot
+                    </div>
+                ) : (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-text-primary">
+                        รายงานสด: ยังไม่ปิดยอดและยังไม่ล็อกยอด หากมีการแก้ไขออเดอร์ ตัวเลขอาจเปลี่ยนได้
+                    </div>
+                )}
 
                 {error ? (
                     <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-100">
@@ -933,7 +975,7 @@ export default function DailyClosePage() {
                                             disabled={closeLoading}
                                         />
                                     </div>
-                                    <Button onClick={handleCreateDraft} disabled={closeLoading || loading}>
+                                    <Button onClick={handleCreateDraft} disabled={closeLoading || loading || !openingCashIsValid}>
                                         {closeLoading ? "กำลังเริ่มวันขาย..." : "เริ่มวันขาย"}
                                     </Button>
                                 </div>
@@ -946,6 +988,11 @@ export default function DailyClosePage() {
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                     <MetricCard label="เงินสดตั้งต้น" value={formatMoney(close.opening_cash_float)} />
                                     <MetricCard label="เงินสดที่ควรอยู่ในลิ้นชัก" value={formatMoney(expectedDrawerCashDisplay)} />
+                                    <MetricCard
+                                        label="ขาด / เกิน (คำนวณสด)"
+                                        value={liveCashDifference !== null ? formatMoney(liveCashDifference) : "-"}
+                                        detail="เงินสดที่นับได้จริง − เงินสดที่ควรอยู่ในลิ้นชัก"
+                                    />
                                 </div>
                                 <div className="space-y-3">
                                     <div>
@@ -965,7 +1012,7 @@ export default function DailyClosePage() {
                                     </div>
                                     <div>
                                         <label className="text-xs text-text-secondary block mb-1">
-                                            หมายเหตุ (ไม่บังคับ)
+                                            หมายเหตุ / สาเหตุ {cashDifferenceNeedsReason ? "(จำเป็น)" : "(ไม่บังคับ)"}
                                         </label>
                                         <textarea
                                             value={notes}
@@ -975,18 +1022,25 @@ export default function DailyClosePage() {
                                             rows={2}
                                             disabled={closeLoading}
                                         />
+                                        {cashDifferenceNeedsReason && !closeReasonIsValid ? (
+                                            <div className="mt-1 text-xs text-amber-300">
+                                                เงินสดขาดหรือเกิน กรุณาระบุสาเหตุก่อนปิดยอด
+                                            </div>
+                                        ) : null}
                                     </div>
                                     {permissions?.canFinalize ? (
-                                        <Button onClick={handleClose} disabled={closeLoading || loading}>
+                                        <Button onClick={handleClose} disabled={closeLoading || loading || !countedCashIsValid || !closeReasonIsValid}>
                                             {closeLoading ? "กำลังปิดยอด..." : "ปิดยอดวันนี้"}
                                         </Button>
                                     ) : (
                                         <>
-                                            <Button onClick={handlePrepareDraft} disabled={closeLoading || loading}>
+                                            <Button onClick={handlePrepareDraft} disabled={closeLoading || loading || !countedCashIsValid || !closeReasonIsValid}>
                                                 {closeLoading ? "กำลังบันทึก..." : "บันทึกยอดนับ"}
                                             </Button>
                                             <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-text-secondary">
-                                                รอเจ้าของตรวจและปิดยอด
+                                                {close.counted_cash != null
+                                                    ? "บันทึกยอดนับแล้ว รอเจ้าของตรวจและปิดยอด"
+                                                    : "กรอกและบันทึกยอดนับ จากนั้นรอเจ้าของตรวจและปิดยอด"}
                                             </div>
                                         </>
                                     )}
@@ -1047,21 +1101,23 @@ export default function DailyClosePage() {
                             <MetricCard
                                 label="ยอดขายเงินสด"
                                 value={formatMoney(report.payments.cash.sales)}
-                                detail={`${report.payments.cash.orderCount} รายการ`}
+                                detail={isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.cash.orderCount} รายการ`}
                             />
                             <MetricCard
                                 label="ยอดขายพร้อมเพย์"
                                 value={formatMoney(report.payments.promptPay.sales)}
-                                detail={`${report.payments.promptPay.orderCount} รายการ`}
+                                detail={isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.promptPay.orderCount} รายการ`}
                             />
-                            <MetricCard
-                                label="ออเดอร์ที่ยกเลิก"
-                                value={`${report.cancellations.count} รายการ`}
-                                detail={`ยอดก่อนยกเลิก ${formatMoney(report.cancellations.originalValue)}`}
-                            />
+                            {!isCloseFinalized ? (
+                                <MetricCard
+                                    label="ออเดอร์ที่ยกเลิก"
+                                    value={`${report.cancellations.count} รายการ`}
+                                    detail={`ยอดก่อนยกเลิก ${formatMoney(report.cancellations.originalValue)}`}
+                                />
+                            ) : null}
                         </div>
 
-                        {report.payments.unknown.orderCount > 0 ? (
+                        {!isCloseFinalized && report.payments.unknown.orderCount > 0 ? (
                             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
                                 ไม่พบวิธีชำระเงิน: {report.payments.unknown.orderCount} รายการ • {formatMoney(report.payments.unknown.sales)}
                             </div>

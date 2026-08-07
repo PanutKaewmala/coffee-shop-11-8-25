@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { computeDailyCloseReport, computeSnapshotFromReport } from "@/lib/dailyCloseReport";
 import { roundMoney } from "@/lib/dailyCloseMoney";
+import { cashDifferenceRequiresReason, parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -21,18 +22,27 @@ type DailyCloseQuery = {
              single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
          };
      };
-     update: (payload: unknown) => {
-         eq: (col: string, val: string | undefined) => {
-             select: (cols: string) => {
-                 single: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
-             };
-         };
-     };
+     update: (payload: unknown) => DailyCloseUpdateQuery;
  };
+
+type DailyCloseUpdateQuery = {
+    eq: (col: string, val: string | undefined) => DailyCloseUpdateQuery;
+    select: (cols: string) => {
+        maybeSingle: () => Promise<{ data: unknown | null; error: { message: string } | null }>;
+    };
+};
 
 type DailyCloseFrom = {
     from: (table: "daily_closes") => DailyCloseQuery;
 };
+
+function unexpectedServerError(scope: string, error: unknown) {
+    console.error(`[daily-close] ${scope}`, error);
+    return NextResponse.json(
+        { error: "Unexpected server error", code: "DAILY_CLOSE_SERVER_ERROR" },
+        { status: 500 }
+    );
+}
 
 function isValidDateKey(value: string | null | undefined): value is string {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -46,7 +56,7 @@ function isValidDateKey(value: string | null | undefined): value is string {
 }
 
 function toMoney(value: unknown): number {
-    const n = typeof value === "number" ? value : Number(value);
+    const n = typeof value === "number" ? value : Number.NaN;
     if (!Number.isFinite(n) || n < 0) {
         throw new Error("Must be a non-negative finite number");
     }
@@ -99,9 +109,7 @@ export async function GET(req: NextRequest) {
         const dcAdmin = admin as unknown as DailyCloseFrom;
         const { data: auth, error: authError } = await supabase.auth.getUser();
 
-        if (authError) {
-            return NextResponse.json({ error: authError.message }, { status: 500 });
-        }
+        if (authError) return unexpectedServerError("get_auth_failed", authError);
         if (!auth.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -121,12 +129,12 @@ export async function GET(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (membershipError) {
-            return NextResponse.json({ error: membershipError.message }, { status: 500 });
-        }
+        if (membershipError) return unexpectedServerError("get_membership_failed", membershipError);
         if (!membership) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
+        const role = parseDailyCloseRole(membership.role);
+        if (!role) return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
 
         if (historyParam === "1") {
             const parsedLimit = limitParam ? parseInt(limitParam, 10) : 14;
@@ -146,7 +154,7 @@ export async function GET(req: NextRequest) {
             const { data: history, error: historyError } = historyResult;
 
             if (historyError) {
-                return NextResponse.json({ error: (historyError as { message: string }).message }, { status: 500 });
+                return unexpectedServerError("get_history_failed", historyError);
             }
 
             const rows = (history ?? []).map((row) => ({
@@ -162,8 +170,8 @@ export async function GET(req: NextRequest) {
 
             return NextResponse.json({
                 context: { shopId: currentShopId, branchId: currentBranchId },
-                role: membership.role,
-                permissions: { canFinalize: membership.role === "owner" },
+                role,
+                permissions: { canFinalize: role === "owner" },
                 history: rows,
             });
         }
@@ -184,14 +192,14 @@ export async function GET(req: NextRequest) {
             .maybeSingle();
 
         if (closeError) {
-            return NextResponse.json({ error: (closeError as { message: string }).message }, { status: 500 });
+            return unexpectedServerError("get_close_failed", closeError);
         }
 
         return NextResponse.json({
             date,
             context: { shopId: currentShopId, branchId: currentBranchId },
-            role: membership.role,
-            permissions: { canFinalize: membership.role === "owner" },
+            role,
+            permissions: { canFinalize: role === "owner" },
             close: close
                 ? {
                       ...close,
@@ -206,8 +214,7 @@ export async function GET(req: NextRequest) {
                 : null,
         });
     } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Failed to load daily close";
-        return NextResponse.json({ error: message }, { status: 500 });
+        return unexpectedServerError("get_unexpected", error);
     }
 }
 
@@ -218,9 +225,7 @@ export async function POST(req: NextRequest) {
         const dcAdmin = admin as unknown as DailyCloseFrom;
         const { data: auth, error: authError } = await supabase.auth.getUser();
 
-        if (authError) {
-            return NextResponse.json({ error: authError.message }, { status: 500 });
-        }
+        if (authError) return unexpectedServerError("post_auth_failed", authError);
         if (!auth.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -240,12 +245,12 @@ export async function POST(req: NextRequest) {
             .eq("shop_id", currentShopId)
             .maybeSingle();
 
-        if (membershipError) {
-            return NextResponse.json({ error: membershipError.message }, { status: 500 });
-        }
+        if (membershipError) return unexpectedServerError("post_membership_failed", membershipError);
         if (!membership) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
+        const role = parseDailyCloseRole(membership.role);
+        if (!role) return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
 
         const body = (await req.json().catch(() => null)) as {
             business_date?: string;
@@ -266,9 +271,15 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const openingCashFloat = toMoney(body.opening_cash_float ?? 0);
-        const countedCash = body.counted_cash !== undefined ? toMoney(body.counted_cash) : null;
-        const notes = typeof body.notes === "string" ? body.notes.trim() : null;
+        if (body.opening_cash_float === undefined) {
+            return NextResponse.json({ error: "opening_cash_float is required", code: "OPENING_CASH_REQUIRED" }, { status: 400 });
+        }
+        let openingCashFloat: number;
+        try {
+            openingCashFloat = toMoney(body.opening_cash_float);
+        } catch {
+            return NextResponse.json({ error: "opening_cash_float must be a non-negative number", code: "INVALID_OPENING_CASH" }, { status: 400 });
+        }
 
         const { data: existing, error: existingError } = await dcAdmin
             .from("daily_closes")
@@ -279,7 +290,7 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         if (existingError) {
-            return NextResponse.json({ error: (existingError as { message: string }).message }, { status: 500 });
+            return unexpectedServerError("post_existing_lookup_failed", existingError);
         }
         if (existing) {
             return NextResponse.json(
@@ -296,10 +307,10 @@ export async function POST(req: NextRequest) {
             branch_id: currentBranchId,
             business_date: businessDate,
             opening_cash_float: openingCashFloat,
-            counted_cash: countedCash,
+            counted_cash: null,
             ...snapshot,
-            cash_difference: countedCash !== null ? countedCash - snapshot.expected_cash : null,
-            notes,
+            cash_difference: null,
+            notes: null,
             status: "draft",
             closed_by: null,
             closed_at: null,
@@ -314,7 +325,9 @@ export async function POST(req: NextRequest) {
             .single();
 
         if (insertError) {
-            return NextResponse.json({ error: (insertError as { message: string }).message }, { status: 500 });
+            const code = (insertError as { code?: string }).code;
+            if (code === "23505") return NextResponse.json({ error: "Daily close already exists for this branch and date. Fetch it instead.", code: "DAILY_CLOSE_ALREADY_EXISTS" }, { status: 409 });
+            return unexpectedServerError("post_insert_failed", insertError);
         }
 
 return NextResponse.json(
@@ -326,8 +339,7 @@ return NextResponse.json(
              { status: 201 }
          );
      } catch (error: unknown) {
-         const message = error instanceof Error ? error.message : "Failed to create daily close";
-         return NextResponse.json({ error: message }, { status: 500 });
+         return unexpectedServerError("post_unexpected", error);
      }
  }
 
@@ -338,9 +350,7 @@ return NextResponse.json(
          const dcAdmin = admin as unknown as DailyCloseFrom;
          const { data: auth, error: authError } = await supabase.auth.getUser();
 
-         if (authError) {
-             return NextResponse.json({ error: authError.message }, { status: 500 });
-         }
+         if (authError) return unexpectedServerError("patch_auth_failed", authError);
          if (!auth.user) {
              return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
          }
@@ -360,13 +370,13 @@ return NextResponse.json(
              .eq("shop_id", currentShopId)
              .maybeSingle();
 
-         if (membershipError) {
-             return NextResponse.json({ error: membershipError.message }, { status: 500 });
-         }
+         if (membershipError) return unexpectedServerError("patch_membership_failed", membershipError);
          if (!membership) {
              return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
          }
-         if (membership.role !== "owner") {
+         const role = parseDailyCloseRole(membership.role);
+         if (!role) return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
+         if (role !== "owner") {
              return NextResponse.json({ error: "Only owners can close daily close" }, { status: 403 });
          }
 
@@ -407,7 +417,7 @@ return NextResponse.json(
              .maybeSingle();
 
          if (existingError) {
-             return NextResponse.json({ error: (existingError as { message: string }).message }, { status: 500 });
+             return unexpectedServerError("patch_existing_lookup_failed", existingError);
          }
          if (!existing) {
              return NextResponse.json({ error: "Daily close not found" }, { status: 404 });
@@ -427,7 +437,13 @@ return NextResponse.json(
         const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
         const snapshot = computeSnapshotFromReport(report, openingCashFloat);
         const expectedCash = snapshot.expected_cash;
-        const cashDifference = countedCash - expectedCash;
+        const cashDifference = roundMoney(countedCash - expectedCash);
+        if (cashDifferenceRequiresReason(cashDifference) && !notes) {
+            return NextResponse.json(
+                { error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" },
+                { status: 400 }
+            );
+        }
 
          const updatePayload = {
              status: "closed",
@@ -452,11 +468,16 @@ return NextResponse.json(
              .from("daily_closes")
              .update(updatePayload)
              .eq("id", existingRecord.id as string)
+             .eq("shop_id", currentShopId)
+             .eq("branch_id", currentBranchId)
+             .eq("business_date", businessDate)
+             .eq("status", "draft")
              .select("*")
-             .single();
+             .maybeSingle();
 
-         if (updateError) {
-             return NextResponse.json({ error: (updateError as { message: string }).message }, { status: 500 });
+         if (updateError) return unexpectedServerError("patch_update_failed", updateError);
+         if (!updated) {
+             return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });
          }
 
          return NextResponse.json({
@@ -465,8 +486,6 @@ return NextResponse.json(
              close: updated,
          });
      } catch (error: unknown) {
-         const message = error instanceof Error ? error.message : "Failed to close daily close";
-         return NextResponse.json({ error: message }, { status: 500 });
+         return unexpectedServerError("patch_unexpected", error);
      }
  }
-
