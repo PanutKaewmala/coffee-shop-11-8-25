@@ -68,7 +68,7 @@ for (const guardedWrite of guardedWrites) {
   assert.match(guardedWrite, /BUSINESS_DAY_CLOSED/, "post-close operational guard keeps its stable block code");
 }
 
-const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+const changedFiles = execFileSync("git", ["diff", "--name-only", "main"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
 for (const forbidden of [
   "scripts/test-order-cancellation-security.mjs",
   "src/app/admin/(protected)/orders/[id]/OrderDetailClient.tsx",
