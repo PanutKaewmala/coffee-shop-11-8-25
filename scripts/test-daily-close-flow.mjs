@@ -58,13 +58,17 @@ assert.match(report, /paymentTotals: "stored_snapshot"/);
 assert.match(report, /paymentOrderCounts: "current_not_snapshot"/);
 assert.match(page, /Snapshot ณ เวลาปิดยอด/);
 assert.match(page, /รายงานสด: ยังไม่ปิดยอด/);
+assert.match(page, /border-emerald-500\/30 bg-emerald-500\/10[^\n]*text-text-primary/, "finalized banner uses readable theme text");
+assert.match(page, /border-amber-500\/30 bg-amber-500\/10[^\n]*text-text-primary/, "live banner uses readable theme text");
+assert.doesNotMatch(page, /dark:text-(?:emerald|amber)-100/, "daily-close banners do not use washed-out dark text overrides");
+assert.match(page, /cashDifferenceNeedsReason && !closeReasonIsValid \? \(/, "cash difference warning disappears as soon as a reason is valid");
 assert.match(page, /isCloseFinalized \? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน"/, "snapshot totals are not paired with live payment counts");
 for (const guardedWrite of guardedWrites) {
   assert.match(guardedWrite, /checkDailyClose\(/, "post-close operational guard remains connected");
   assert.match(guardedWrite, /BUSINESS_DAY_CLOSED/, "post-close operational guard keeps its stable block code");
 }
 
-const changedFiles = execFileSync("git", ["diff", "--name-only", "main"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+const changedFiles = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
 for (const forbidden of [
   "scripts/test-order-cancellation-security.mjs",
   "src/app/admin/(protected)/orders/[id]/OrderDetailClient.tsx",

@@ -930,12 +930,12 @@ export default function DailyClosePage() {
                 </div>
 
                 {isCloseFinalized ? (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-100">
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-text-primary">
                         Snapshot ณ เวลาปิดยอด: ยอดสรุปและยอดแยกตามวิธีชำระเงินเป็นข้อมูลที่จัดเก็บตอนปิดยอดและเป็น read-only
                         ส่วนจำนวนรายการและรายละเอียดธุรกรรมด้านล่างเป็นข้อมูลปัจจุบัน ไม่ใช่ส่วนหนึ่งของ snapshot
                     </div>
                 ) : (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-text-primary">
                         รายงานสด: ยังไม่ปิดยอดและยังไม่ล็อกยอด หากมีการแก้ไขออเดอร์ ตัวเลขอาจเปลี่ยนได้
                     </div>
                 )}
@@ -1022,7 +1022,7 @@ export default function DailyClosePage() {
                                             rows={2}
                                             disabled={closeLoading}
                                         />
-                                        {cashDifferenceNeedsReason ? (
+                                        {cashDifferenceNeedsReason && !closeReasonIsValid ? (
                                             <div className="mt-1 text-xs text-amber-300">
                                                 เงินสดขาดหรือเกิน กรุณาระบุสาเหตุก่อนปิดยอด
                                             </div>
