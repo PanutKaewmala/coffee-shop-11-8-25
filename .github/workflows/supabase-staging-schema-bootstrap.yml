@@ -3,10 +3,6 @@ name: Supabase Staging Schema Bootstrap
 on:
   workflow_dispatch:
     inputs:
-      staging_project_ref:
-        description: "Staging Supabase project ref from the staging project URL"
-        required: true
-        type: string
       confirmation:
         description: "Type BOOTSTRAP_STAGING to confirm schema-only restore into staging"
         required: true
@@ -28,7 +24,6 @@ jobs:
         env:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-          STAGING_PROJECT_REF: ${{ inputs.staging_project_ref }}
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
@@ -44,13 +39,6 @@ jobs:
               echo "$name is not configured"
               exit 1
             fi
-            case "$value" in
-              postgres://*|postgresql://*) ;;
-              *)
-                echo "$name is not a PostgreSQL connection URL"
-                exit 1
-                ;;
-            esac
           done
 
           python3 - <<'PY'
@@ -58,11 +46,9 @@ jobs:
           import re
           from urllib.parse import urlparse, unquote
 
-          staging_ref = os.environ["STAGING_PROJECT_REF"].strip()
-          if not re.fullmatch(r"[a-z0-9]{20}", staging_ref):
-              raise SystemExit("Staging project ref must be the 20-character ref from the staging Supabase URL")
+          expected_staging_ref = "vgsrqrirtxxxnccaqtsb"
 
-          def inspect(label: str, value: str, expected_ref: str | None = None):
+          def inspect(label: str, value: str):
               parsed = urlparse(value)
               username = unquote(parsed.username or "")
               hostname = parsed.hostname or ""
@@ -75,10 +61,9 @@ jobs:
               match = re.fullmatch(r"postgres\.([a-z0-9]{20})", username)
               if not match:
                   raise SystemExit(f"{label} pooler username must be postgres.<20-character-project-ref>")
+
               project_ref = match.group(1)
 
-              if expected_ref is not None and project_ref != expected_ref:
-                  raise SystemExit(f"{label} pooler username does not match the expected project ref")
               if not hostname.endswith(".pooler.supabase.com"):
                   raise SystemExit(f"{label} must use a Supabase pooler host")
               if port != 5432:
@@ -89,17 +74,17 @@ jobs:
               return project_ref, (hostname, port, username, database)
 
           production_ref, production = inspect("Production", os.environ["PRODUCTION_DATABASE_URL"])
-          staging_url_ref, staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"], staging_ref)
+          staging_ref, staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"])
 
-          if staging_url_ref != staging_ref:
-              raise SystemExit("Staging URL project ref does not match workflow input")
-          if production_ref == staging_ref:
-              raise SystemExit("Production secret resolves to the staging project; refusing to continue")
+          if staging_ref != expected_staging_ref:
+              raise SystemExit("STAGING_DATABASE_URL does not resolve to the confirmed staging project ref")
+          if production_ref == expected_staging_ref:
+              raise SystemExit("PRODUCTION_DATABASE_URL resolves to staging; refusing to continue")
           if production == staging:
               raise SystemExit("Production and staging resolve to the same endpoint; refusing to continue")
 
           print(f"Production identity: {production_ref} (derived and validated)")
-          print(f"Staging identity: {staging_ref} (validated)")
+          print(f"Staging identity: {staging_ref} (matches confirmed project)")
           print("Production/staging target separation: OK")
           PY
 
@@ -152,8 +137,7 @@ jobs:
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/external-trigger-count.sql')"
 
           if [ "$count" != "0" ]; then
-            echo "Production has $count application trigger(s) on auth/storage tables that a public-only dump would omit."
-            echo "Refusing to create an incomplete staging baseline."
+            echo "Production has $count public-function trigger(s) on auth/storage tables; refusing incomplete baseline"
             exit 1
           fi
 
@@ -181,8 +165,6 @@ jobs:
 
           path = Path(os.environ["RUNNER_TEMP"]) / "coffee-saas-staging-bootstrap" / "production-public-schema.sql"
           text = path.read_text()
-          # A fresh Supabase project already owns the public schema. Keep its schema
-          # container and restore the application objects into it.
           text = re.sub(r"(?m)^CREATE SCHEMA public(?: AUTHORIZATION [^;]+)?;\n?", "", text)
           path.write_text(text)
           PY
@@ -222,8 +204,6 @@ jobs:
           fi
 
           echo "Schema-only dump verification: OK"
-          echo "Dump size: $(wc -c < "$file") bytes"
-          echo "Dump SHA-256: $(sha256sum "$file" | cut -d' ' -f1)"
 
       - name: Preflight staging is empty for application tables
         env:
@@ -254,6 +234,7 @@ jobs:
             echo "Staging already contains $existing application table(s); refusing to restore over an existing baseline"
             exit 1
           fi
+
           echo "Staging application-table preflight: empty"
 
       - name: Restore schema to validated staging target
