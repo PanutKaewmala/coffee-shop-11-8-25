@@ -183,6 +183,7 @@ jobs:
           workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
 
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
             -e PGOPTIONS="-c default_transaction_read_only=on" \
             -v "$workdir:/work" \
