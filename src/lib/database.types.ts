@@ -1634,7 +1634,14 @@ export type Database = {
         }
       }
       process_pos_checkout: {
-        Args: { p_branch_id: string; p_items: Json }
+        Args: {
+          p_branch_id: string
+          p_idempotency_key: string
+          p_items: Json
+          p_paid_amount: number | null
+          p_payment_method: string
+          p_shop_id: string
+        }
         Returns: Json
       }
       revenue_summary_range: {
