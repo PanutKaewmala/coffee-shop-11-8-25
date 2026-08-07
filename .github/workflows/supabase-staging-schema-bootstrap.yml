@@ -46,45 +46,45 @@ jobs:
           import re
           from urllib.parse import urlparse, unquote
 
-          expected_staging_ref = "vgsrqrirtxxxnccaqtsb"
+          EXPECTED_PRODUCTION_HOST = "aws-1-ap-southeast-1.pooler.supabase.com"
+          EXPECTED_STAGING_HOST = "aws-0-ap-southeast-2.pooler.supabase.com"
 
-          def inspect(label: str, value: str):
+          def inspect(label: str, value: str, expected_host: str):
               parsed = urlparse(value)
               username = unquote(parsed.username or "")
-              hostname = parsed.hostname or ""
+              hostname = (parsed.hostname or "").lower()
               port = parsed.port or 5432
               database = (parsed.path or "").lstrip("/")
 
               if parsed.scheme not in {"postgres", "postgresql"}:
                   raise SystemExit(f"{label} URL is not PostgreSQL")
-
-              match = re.fullmatch(r"postgres\.([a-z0-9]{20})", username)
-              if not match:
-                  raise SystemExit(f"{label} pooler username must be postgres.<20-character-project-ref>")
-
-              project_ref = match.group(1)
-
-              if not hostname.endswith(".pooler.supabase.com"):
-                  raise SystemExit(f"{label} must use a Supabase pooler host")
+              if not re.fullmatch(r"postgres\.[a-z0-9]+", username):
+                  raise SystemExit(f"{label} pooler username must use postgres.<project-ref>")
+              if hostname != expected_host:
+                  raise SystemExit(f"{label} host does not match the confirmed Supabase project endpoint")
               if port != 5432:
                   raise SystemExit(f"{label} must use the Session pooler on port 5432")
               if database != "postgres":
                   raise SystemExit(f"{label} database must be postgres")
 
-              return project_ref, (hostname, port, username, database)
+              return hostname, port, username, database
 
-          production_ref, production = inspect("Production", os.environ["PRODUCTION_DATABASE_URL"])
-          staging_ref, staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"])
+          production = inspect(
+              "Production",
+              os.environ["PRODUCTION_DATABASE_URL"],
+              EXPECTED_PRODUCTION_HOST,
+          )
+          staging = inspect(
+              "Staging",
+              os.environ["STAGING_DATABASE_URL"],
+              EXPECTED_STAGING_HOST,
+          )
 
-          if staging_ref != expected_staging_ref:
-              raise SystemExit("STAGING_DATABASE_URL does not resolve to the confirmed staging project ref")
-          if production_ref == expected_staging_ref:
-              raise SystemExit("PRODUCTION_DATABASE_URL resolves to staging; refusing to continue")
           if production == staging:
               raise SystemExit("Production and staging resolve to the same endpoint; refusing to continue")
 
-          print(f"Production identity: {production_ref} (derived and validated)")
-          print(f"Staging identity: {staging_ref} (matches confirmed project)")
+          print("Production endpoint: validated")
+          print("Staging endpoint: validated")
           print("Production/staging target separation: OK")
           PY
 
@@ -109,13 +109,45 @@ jobs:
           echo "Production read-only connection: OK"
           echo "Staging connection: OK"
 
+      - name: Preflight staging is empty for application tables
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+          mkdir -p "$workdir"
+
+          cat > "$workdir/staging-preflight.sql" <<'SQL'
+          select count(*)
+          from information_schema.tables
+          where table_schema = 'public'
+            and table_name in (
+              'shops', 'branch', 'shop_members', 'profiles', 'menu',
+              'menu_variants', 'menu_serve_types', 'ingredients', 'recipe_items',
+              'orders', 'order_items', 'stock_logs', 'pos_idempotency',
+              'daily_closes', 'cash_movements'
+            );
+          SQL
+
+          existing="$(docker run --rm \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -v "$workdir:/work:ro" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/staging-preflight.sql')"
+
+          if [ "$existing" != "0" ]; then
+            echo "Staging already contains $existing application table(s); refusing to restore over an existing baseline"
+            exit 1
+          fi
+
+          echo "Staging application-table preflight: empty"
+
       - name: Check for application triggers outside public schema
         env:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           set -euo pipefail
           workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
-          mkdir -p "$workdir"
 
           cat > "$workdir/external-trigger-count.sql" <<'SQL'
           select count(*)
@@ -149,7 +181,6 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
-          mkdir -p "$workdir"
 
           docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
@@ -204,38 +235,6 @@ jobs:
           fi
 
           echo "Schema-only dump verification: OK"
-
-      - name: Preflight staging is empty for application tables
-        env:
-          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
-
-          cat > "$workdir/staging-preflight.sql" <<'SQL'
-          select count(*)
-          from information_schema.tables
-          where table_schema = 'public'
-            and table_name in (
-              'shops', 'branch', 'shop_members', 'profiles', 'menu',
-              'menu_variants', 'menu_serve_types', 'ingredients', 'recipe_items',
-              'orders', 'order_items', 'stock_logs', 'pos_idempotency',
-              'daily_closes', 'cash_movements'
-            );
-          SQL
-
-          existing="$(docker run --rm \
-            -e DATABASE_URL="$STAGING_DATABASE_URL" \
-            -v "$workdir:/work:ro" \
-            postgres:17-alpine \
-            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/staging-preflight.sql')"
-
-          if [ "$existing" != "0" ]; then
-            echo "Staging already contains $existing application table(s); refusing to restore over an existing baseline"
-            exit 1
-          fi
-
-          echo "Staging application-table preflight: empty"
 
       - name: Restore schema to validated staging target
         env:
