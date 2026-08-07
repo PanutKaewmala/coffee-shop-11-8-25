@@ -10,7 +10,9 @@
     "test:role-navigation": "node scripts/test-role-navigation.mjs",
     "test:context-reliability": "node scripts/test-context-reliability.mjs",
     "test:pos-interactions": "node scripts/test-pos-interactions.mjs",
-    "test:cash-movement-policy": "node scripts/test-cash-movement-policy.mjs"
+    "test:cash-movement-policy": "node scripts/test-cash-movement-policy.mjs",
+    "test:order-cancellation-security": "node scripts/test-order-cancellation-security.mjs",
+    "test:daily-close-flow": "node scripts/test-daily-close-flow.mjs"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",
