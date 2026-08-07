@@ -9,23 +9,84 @@ permissions:
 jobs:
   dump-schema:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Dump production schema
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" --file supabase-schema.sql
+      - name: Validate production database secret
         env:
-          SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          if [ -z "$PRODUCTION_DATABASE_URL" ]; then
+            echo "PRODUCTION_DATABASE_URL is not configured"
+            exit 1
+          fi
 
-      - name: Upload schema dump
-        uses: actions/upload-artifact@v4
-        with:
-          name: supabase-schema-dump
-          path: supabase-schema.sql
-          if-no-files-found: error
+          case "$PRODUCTION_DATABASE_URL" in
+            postgres://*|postgresql://*) ;;
+            *)
+              echo "PRODUCTION_DATABASE_URL is not a PostgreSQL connection URL"
+              exit 1
+              ;;
+          esac
+
+      - name: Dump production public schema with PostgreSQL 17
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/coffee-saas-schema"
+
+          docker run --rm \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -v "$RUNNER_TEMP/coffee-saas-schema:/dump" \
+            postgres:17-alpine \
+            sh -ec 'pg_dump --schema-only --schema=public --no-owner --dbname="$DATABASE_URL" --file=/dump/production-public-schema.sql'
+
+      - name: Verify schema-only dump and print safe manifest
+        run: |
+          file="$RUNNER_TEMP/coffee-saas-schema/production-public-schema.sql"
+          test -s "$file"
+
+          if grep -Eq '^(COPY|INSERT INTO) ' "$file"; then
+            echo "Unexpected row-data statement found in schema-only dump"
+            exit 1
+          fi
+
+          echo "Schema dump size:"
+          wc -c "$file"
+          echo "Schema dump SHA-256:"
+          sha256sum "$file"
+
+          echo "Object counts:"
+          echo "tables=$(grep -Ec '^CREATE TABLE public\.' "$file" || true)"
+          echo "functions=$(grep -Ec '^CREATE FUNCTION public\.' "$file" || true)"
+          echo "policies=$(grep -Ec '^CREATE POLICY ' "$file" || true)"
+          echo "triggers=$(grep -Ec '^CREATE TRIGGER ' "$file" || true)"
+          echo "grants=$(grep -Ec '^GRANT ' "$file" || true)"
+
+          missing=0
+          for table in shops branch shop_members profiles menu menu_variants menu_serve_types ingredients recipe_items orders order_items stock_logs pos_idempotency daily_closes cash_movements; do
+            if grep -Eq "^CREATE TABLE public\\.${table} \\(" "$file"; then
+              echo "OK table: $table"
+            else
+              echo "MISSING table: $table"
+              missing=1
+            fi
+          done
+
+          for fn in current_shop_id current_branch_id is_staff_in_current_shop is_owner_in_current_shop cancel_order; do
+            if grep -Eq "^CREATE FUNCTION public\\.${fn}\\(" "$file"; then
+              echo "OK function: $fn"
+            else
+              echo "MISSING function: $fn"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
+
+      - name: Remove temporary schema dump
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/coffee-saas-schema"
