@@ -1,0 +1,319 @@
+name: Supabase Staging Schema Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_project_ref:
+        description: "Staging Supabase project ref from the staging project URL"
+        required: true
+        type: string
+      confirmation:
+        description: "Type BOOTSTRAP_STAGING to confirm schema-only restore into staging"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-staging-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate secrets and prove production/staging identity
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_PROJECT_REF: ${{ inputs.staging_project_ref }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CONFIRMATION" != "BOOTSTRAP_STAGING" ]; then
+            echo "Confirmation text does not match BOOTSTRAP_STAGING"
+            exit 1
+          fi
+
+          for name in PRODUCTION_DATABASE_URL STAGING_DATABASE_URL; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "$name is not configured"
+              exit 1
+            fi
+            case "$value" in
+              postgres://*|postgresql://*) ;;
+              *)
+                echo "$name is not a PostgreSQL connection URL"
+                exit 1
+                ;;
+            esac
+          done
+
+          python3 - <<'PY'
+          import os
+          import re
+          from urllib.parse import urlparse, unquote
+
+          production_ref = "udgxrvtbhytqncmymhiv"
+          staging_ref = os.environ["STAGING_PROJECT_REF"].strip()
+          if not re.fullmatch(r"[a-z0-9]{20}", staging_ref):
+              raise SystemExit("Staging project ref must be the 20-character ref from the staging Supabase URL")
+          if staging_ref == production_ref:
+              raise SystemExit("Staging project ref matches production; refusing to continue")
+
+          def inspect(label: str, value: str, expected_ref: str):
+              parsed = urlparse(value)
+              username = unquote(parsed.username or "")
+              hostname = parsed.hostname or ""
+              port = parsed.port or 5432
+              database = (parsed.path or "").lstrip("/")
+
+              if parsed.scheme not in {"postgres", "postgresql"}:
+                  raise SystemExit(f"{label} URL is not PostgreSQL")
+              if username != f"postgres.{expected_ref}":
+                  raise SystemExit(f"{label} pooler username does not match the expected project ref")
+              if not hostname.endswith(".pooler.supabase.com"):
+                  raise SystemExit(f"{label} must use a Supabase pooler host")
+              if port != 5432:
+                  raise SystemExit(f"{label} must use the Session pooler on port 5432")
+              if database != "postgres":
+                  raise SystemExit(f"{label} database must be postgres")
+
+              return hostname, port, username, database
+
+          production = inspect("Production", os.environ["PRODUCTION_DATABASE_URL"], production_ref)
+          staging = inspect("Staging", os.environ["STAGING_DATABASE_URL"], staging_ref)
+          if production == staging:
+              raise SystemExit("Production and staging resolve to the same endpoint; refusing to continue")
+
+          print(f"Production identity: {production_ref} (validated)")
+          print(f"Staging identity: {staging_ref} (validated)")
+          print("Production/staging target separation: OK")
+          PY
+
+      - name: Verify both database connections
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select 1" >/dev/null'
+
+          docker run --rm \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select 1" >/dev/null'
+
+          echo "Production read-only connection: OK"
+          echo "Staging connection: OK"
+
+      - name: Check for application triggers outside public schema
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+          mkdir -p "$workdir"
+
+          cat > "$workdir/external-trigger-count.sql" <<'SQL'
+          select count(*)
+          from pg_trigger t
+          join pg_class c on c.oid = t.tgrelid
+          join pg_namespace table_ns on table_ns.oid = c.relnamespace
+          join pg_proc p on p.oid = t.tgfoid
+          join pg_namespace fn_ns on fn_ns.oid = p.pronamespace
+          where not t.tgisinternal
+            and table_ns.nspname in ('auth', 'storage')
+            and fn_ns.nspname = 'public';
+          SQL
+
+          count="$(docker run --rm \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            -v "$workdir:/work:ro" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/external-trigger-count.sql')"
+
+          if [ "$count" != "0" ]; then
+            echo "Production has $count application trigger(s) on auth/storage tables that a public-only dump would omit."
+            echo "Refusing to create an incomplete staging baseline."
+            exit 1
+          fi
+
+          echo "No public-function triggers on auth/storage tables: OK"
+
+      - name: Dump production public schema only
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+          mkdir -p "$workdir"
+
+          docker run --rm \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            -v "$workdir:/work" \
+            postgres:17-alpine \
+            sh -ec 'pg_dump --schema-only --schema=public --no-owner --dbname="$DATABASE_URL" --file=/work/production-public-schema.sql'
+
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "coffee-saas-staging-bootstrap" / "production-public-schema.sql"
+          text = path.read_text()
+          # A fresh Supabase project already owns the public schema. Keep its schema
+          # container and restore the application objects into it.
+          text = re.sub(r"(?m)^CREATE SCHEMA public(?: AUTHORIZATION [^;]+)?;\n?", "", text)
+          path.write_text(text)
+          PY
+
+      - name: Verify dump is schema-only and complete enough for baseline
+        run: |
+          set -euo pipefail
+          file="$RUNNER_TEMP/coffee-saas-staging-bootstrap/production-public-schema.sql"
+          test -s "$file"
+
+          if grep -Eq '^(COPY|INSERT INTO) ' "$file"; then
+            echo "Unexpected row-data statement found in schema-only dump"
+            exit 1
+          fi
+
+          missing=0
+          for table in shops branch shop_members profiles menu menu_variants menu_serve_types ingredients recipe_items orders order_items stock_logs pos_idempotency daily_closes cash_movements; do
+            if grep -Eq "^CREATE TABLE public\\.${table} \\(" "$file"; then
+              echo "OK table in dump: $table"
+            else
+              echo "MISSING table in dump: $table"
+              missing=1
+            fi
+          done
+
+          for fn in current_shop_id current_branch_id is_staff_in_current_shop is_owner_in_current_shop cancel_order; do
+            if grep -Eq "^CREATE FUNCTION public\\.${fn}\\(" "$file"; then
+              echo "OK function in dump: $fn"
+            else
+              echo "MISSING function in dump: $fn"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+
+          echo "Schema-only dump verification: OK"
+          echo "Dump size: $(wc -c < "$file") bytes"
+          echo "Dump SHA-256: $(sha256sum "$file" | cut -d' ' -f1)"
+
+      - name: Preflight staging is empty for application tables
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+
+          cat > "$workdir/staging-preflight.sql" <<'SQL'
+          select count(*)
+          from information_schema.tables
+          where table_schema = 'public'
+            and table_name in (
+              'shops', 'branch', 'shop_members', 'profiles', 'menu',
+              'menu_variants', 'menu_serve_types', 'ingredients', 'recipe_items',
+              'orders', 'order_items', 'stock_logs', 'pos_idempotency',
+              'daily_closes', 'cash_movements'
+            );
+          SQL
+
+          existing="$(docker run --rm \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -v "$workdir:/work:ro" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/staging-preflight.sql')"
+
+          if [ "$existing" != "0" ]; then
+            echo "Staging already contains $existing application table(s); refusing to restore over an existing baseline"
+            exit 1
+          fi
+          echo "Staging application-table preflight: empty"
+
+      - name: Restore schema to validated staging target
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+
+          docker run --rm \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -v "$workdir:/work:ro" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 --single-transaction --file=/work/production-public-schema.sql'
+
+      - name: Verify staging baseline and zero application rows
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
+
+          cat > "$workdir/verify-staging.sql" <<'SQL'
+          do $$
+          declare
+            object_name text;
+            row_count bigint;
+          begin
+            foreach object_name in array array[
+              'shops', 'branch', 'shop_members', 'profiles', 'menu',
+              'menu_variants', 'menu_serve_types', 'ingredients', 'recipe_items',
+              'orders', 'order_items', 'stock_logs', 'pos_idempotency',
+              'daily_closes', 'cash_movements'
+            ] loop
+              if to_regclass(format('public.%I', object_name)) is null then
+                raise exception 'Missing required staging table: %', object_name;
+              end if;
+
+              execute format('select count(*) from public.%I', object_name) into row_count;
+              if row_count <> 0 then
+                raise exception 'Staging table % unexpectedly contains % rows', object_name, row_count;
+              end if;
+            end loop;
+
+            if to_regprocedure('public.cancel_order(uuid,text,text,text,boolean)') is null then
+              raise exception 'Missing exact legacy cancel_order(uuid,text,text,text,boolean) signature';
+            end if;
+          end
+          $$;
+
+          select
+            (select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE') as public_tables,
+            (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public') as public_functions,
+            (select count(*) from pg_policies where schemaname = 'public') as public_policies,
+            (select count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and not t.tgisinternal) as public_triggers,
+            (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relrowsecurity) as rls_enabled_relations;
+          SQL
+
+          docker run --rm \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -v "$workdir:/work:ro" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /work/verify-staging.sql'
+
+          echo "Staging baseline verification: OK"
+          echo "No production application rows were copied."
+          echo "PR #22 migration has NOT been applied by this workflow."
+
+      - name: Remove temporary production schema dump
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/coffee-saas-staging-bootstrap"
