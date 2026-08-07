@@ -1637,6 +1637,18 @@ export type Database = {
         Args: { p_branch_id: string; p_items: Json }
         Returns: Json
       }
+      create_cash_movement_atomic: {
+        Args: { p_amount: number; p_branch_id: string; p_business_date: string; p_note: string | null; p_reason: string; p_shop_id: string; p_type: string }
+        Returns: Json
+      }
+      finalize_daily_close_atomic: {
+        Args: { p_branch_id: string; p_business_date: string; p_cash_difference: number; p_close_id: string; p_counted_cash: number; p_notes: string | null; p_shop_id: string; p_snapshot: Json }
+        Returns: Json
+      }
+      process_pos_checkout_atomic: {
+        Args: { p_branch_id: string; p_idempotency_key: string; p_items: Json; p_paid_amount: number | null; p_payment_method: string; p_shop_id: string }
+        Returns: Json
+      }
       revenue_summary_range: {
         Args: { p_by?: string; p_end: string; p_start: string }
         Returns: {

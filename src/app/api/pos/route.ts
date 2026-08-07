@@ -886,198 +886,34 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // IMPORTANT:
-        // Use user-scoped client for write path so DB functions/triggers that rely
-        // on auth/context (ex. current_shop_id()) get correct values.
-        const writeClient = supabase;
-
-        const orderInsertBase: Database["public"]["Tables"]["orders"]["Insert"] = {
-            total,
-            status: "paid",
-            payment_method: paymentMethod,
-            paid_amount: paidAmount,
-            change_amount: changeAmount,
-            paid_at: paidAt,
-            note: null,
-            shop_id: currentShopId,
-        };
-
-        // `branch_id` may exist in DB but not yet in generated types; keep runtime field.
-        const orderInsertWithBranch = {
-            ...orderInsertBase,
-            branch_id: branchRes.id,
-        } as unknown as Database["public"]["Tables"]["orders"]["Insert"];
-
-        let createdOrder: CreatedOrderRow | null = null;
-        const withBranch = await writeClient
-            .from("orders")
-            .insert([orderInsertWithBranch])
-            .select("id,total,created_at,status,payment_method,paid_at,note")
-            .maybeSingle()
-            .returns<CreatedOrderRow | null>();
-
-        if (withBranch.error) {
-            const branchColumnMissing = withBranch.error.message
-                .toLowerCase()
-                .includes('column "branch_id" of relation "orders" does not exist');
-
-            if (!branchColumnMissing) {
-                return NextResponse.json(
-                    { error: withBranch.error.message, code: "CHECKOUT_FAILED" },
-                    { status: 400 }
-                );
-            }
-
-            const withoutBranch = await writeClient
-                .from("orders")
-                .insert([
-                    orderInsertBase,
-                ])
-                .select("id,total,created_at,status,payment_method,paid_at,note")
-                .single()
-                .returns<CreatedOrderRow>();
-
-            if (withoutBranch.error || !withoutBranch.data) {
-                return NextResponse.json(
-                    { error: withoutBranch.error?.message ?? "Failed to create order", code: "CHECKOUT_FAILED" },
-                    { status: 400 }
-                );
-            }
-
-            createdOrder = withoutBranch.data;
-        } else if (withBranch.data) {
-            createdOrder = withBranch.data;
+        if (!idempotencyKey) {
+            return NextResponse.json(
+                { error: "Idempotency-Key header is required", code: "IDEMPOTENCY_KEY_REQUIRED" },
+                { status: 400 }
+            );
         }
 
-        if (!createdOrder) {
-            return NextResponse.json({ error: "Failed to create order", code: "CHECKOUT_FAILED" }, { status: 500 });
-        }
-
-        const createdOrderId = createdOrder.id;
-
-        const { error: itemErr } = await writeClient.from("order_items").insert(
-            itemsToInsert.map((i) => ({
-                order_id: createdOrderId,
-                menu_id: i.menu_id,
-                variant_id: i.variant_id,
-                variant_label: i.variant_label,
-                name: i.name,
-                price: i.price,
-                qty: i.qty,
-                shop_id: currentShopId,
-            }))
+        // The RPC owns the complete write transaction (order, line items, stock,
+        // stock logs, closed-day guard and idempotency response).
+        const { data: atomicCheckout, error: atomicError } = await supabase.rpc(
+            "process_pos_checkout_atomic",
+            {
+                p_shop_id: currentShopId,
+                p_branch_id: branchRes.id,
+                p_items: toJson(items),
+                p_payment_method: paymentMethod,
+                p_paid_amount: paidAmount,
+                p_idempotency_key: idempotencyKey,
+            }
         );
-
-        if (itemErr) {
-            await admin.from("orders").delete().eq("id", createdOrderId).eq("shop_id", currentShopId);
-            return NextResponse.json({ error: itemErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
+        if (atomicError) {
+            const code = atomicError.message.includes("BUSINESS_DAY_CLOSED")
+                ? "BUSINESS_DAY_CLOSED"
+                : mapCheckoutErrorCode(atomicError.message);
+            return NextResponse.json({ error: atomicError.message, code }, { status: code === "BUSINESS_DAY_CLOSED" ? 409 : 400 });
         }
+        return NextResponse.json(atomicCheckout);
 
-        // Pre-clean invalid legacy recipe rows for checkout variants.
-        // Some old rows may have null/missing ingredient refs and make stock deduction fail.
-        const { data: recipeRowsForCheck, error: recipeScanErr } = await admin
-            .from("recipe_items")
-            .select("id,variant_id,ingredient_id")
-            .eq("shop_id", currentShopId)
-            .in("variant_id", variantIds)
-            .returns<RecipeItemForCheckRow[]>();
-
-        if (recipeScanErr) {
-            await admin.from("order_items").delete().eq("order_id", createdOrderId).eq("shop_id", currentShopId);
-            await admin.from("orders").delete().eq("id", createdOrderId).eq("shop_id", currentShopId);
-            return NextResponse.json({ error: recipeScanErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
-        }
-
-        const recipeRows = recipeRowsForCheck ?? [];
-        const ingredientIds = Array.from(
-            new Set(
-                recipeRows
-                    .map((r) => r.ingredient_id)
-                    .filter((v): v is string => typeof v === "string" && v.length > 0)
-            )
-        );
-
-        let validIngredientIds = new Set<string>();
-        if (ingredientIds.length > 0) {
-            const { data: ingredientRows, error: ingredientScanErr } = await admin
-                .from("ingredients")
-                .select("id")
-                .eq("shop_id", currentShopId)
-                .filter("branch_id", "eq", branchRes.id)
-                .in("id", ingredientIds)
-                .returns<IngredientIdRow[]>();
-
-            if (ingredientScanErr) {
-                await admin.from("order_items").delete().eq("order_id", createdOrderId).eq("shop_id", currentShopId);
-                await admin.from("orders").delete().eq("id", createdOrderId).eq("shop_id", currentShopId);
-                return NextResponse.json({ error: ingredientScanErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
-            }
-
-            validIngredientIds = new Set((ingredientRows ?? []).map((r) => r.id));
-        }
-
-        const invalidRecipeItemIds = recipeRows
-            .filter((r) => !r.ingredient_id || !validIngredientIds.has(r.ingredient_id))
-            .map((r) => r.id);
-
-        if (invalidRecipeItemIds.length > 0) {
-            await admin
-                .from("recipe_items")
-                .delete()
-                .eq("shop_id", currentShopId)
-                .in("id", invalidRecipeItemIds);
-        }
-
-        const deductResult = await deductStockFallbackFromRecipeItems({
-            admin,
-            currentShopId,
-            currentBranchId: branchRes.id,
-            orderId: createdOrderId,
-            items,
-            variantIds,
-        });
-
-        if (!deductResult.ok) {
-            await admin.from("order_items").delete().eq("order_id", createdOrderId).eq("shop_id", currentShopId);
-            await admin.from("orders").delete().eq("id", createdOrderId).eq("shop_id", currentShopId);
-            const code = mapCheckoutErrorCode(deductResult.error || "");
-            return NextResponse.json({ error: deductResult.error, code }, { status: 400 });
-        }
-
-        const data: Json = toJson({
-            success: true,
-            order: {
-                ...createdOrder,
-                shop_id: currentShopId,
-                branch_id: branchRes.id,
-                items: itemsToInsert,
-            },
-            deducted: asArray<unknown>(deductResult.data),
-        });
-
-        // 4) Save idempotency response
-        if (idempotencyKey) {
-            const payload: Json = toJson(data ?? { ok: true });
-
-            // insert array to keep TS overload calm
-            const { error: insErr } = await admin
-                .from("pos_idempotency")
-                .insert([{ key: idempotencyKey, response: payload, shop_id: currentShopId }]);
-
-            // ถ้าชน unique ก็ช่างมัน (อีก request อาจบันทึกไปแล้ว)
-            if (insErr) {
-                const { data: fallback } = await admin
-                    .from("pos_idempotency")
-                    .select("key, response, created_at")
-                    .eq("key", idempotencyKey)
-                    .eq("shop_id", currentShopId)
-                    .maybeSingle();
-
-                if (fallback?.response) return NextResponse.json(fallback.response);
-            }
-        }
-
-        return NextResponse.json(data);
     } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Server error while checkout";
         return NextResponse.json({ error: msg, code: "SERVER_ERROR" }, { status: 500 });
