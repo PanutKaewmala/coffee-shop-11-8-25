@@ -133,22 +133,8 @@ jobs:
             fi
             echo "PASS preflight: $label"
           }
-          check_false() {
-            local label="$1" sql="$2" result
-            result="$(printf '%s\n' "$sql" | psql_staging)"
-            if [[ "$result" != "f" ]]; then
-              echo "FAIL preflight: $label"
-              exit 1
-            fi
-            echo "PASS preflight: $label"
-          }
-
           check_true "connection and staging database identity" \
             "select current_database()='postgres' and inet_server_addr() is not null;"
-          check_true "public.cancel_order legacy signature exists" \
-            "select to_regprocedure('public.cancel_order(uuid,text,text,text,boolean)') is not null;"
-          check_false "private cancellation helper is absent" \
-            "select to_regprocedure('public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)') is not null;"
           check_true "public.pos_idempotency exists" \
             "select to_regclass('public.pos_idempotency') is not null;"
 
@@ -181,7 +167,92 @@ jobs:
           check_true "pgcrypto digest(bytea,text) is available" \
             "select coalesce(to_regprocedure('extensions.digest(bytea,text)'),to_regprocedure('public.digest(bytea,text)')) is not null;"
 
+          state="$(cat <<'SQL' | psql_staging
+          with objects as (
+            select
+              to_regprocedure('public.cancel_order(uuid,text,text,text,boolean)') as cancel_order,
+              to_regprocedure('public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)') as cancel_helper,
+              to_regprocedure('public.process_pos_checkout_atomic(uuid,uuid,jsonb,text,numeric,text)') as checkout_atomic,
+              to_regprocedure('public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text)') as cash_atomic,
+              to_regprocedure('public.finalize_daily_close_atomic(uuid,uuid,date,uuid,numeric,text)') as close_atomic,
+              exists (
+                select 1 from information_schema.columns
+                where table_schema='public' and table_name='pos_idempotency' and column_name='request_hash'
+              ) as request_hash
+          ), checks as (
+            select *,
+              coalesce((select pg_get_functiondef(cancel_order::oid) like '%cancel_order_without_business_day_guard%' from objects), false) as guarded_cancel_order,
+              coalesce((
+                select not exists (
+                    select 1 from pg_proc p
+                    cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+                    where p.oid=cancel_helper::oid and a.grantee=0 and a.privilege_type='EXECUTE'
+                  )
+                  and not has_function_privilege('anon',cancel_helper::oid,'execute')
+                  and not has_function_privilege('authenticated',cancel_helper::oid,'execute')
+                  and not has_function_privilege('service_role',cancel_helper::oid,'execute')
+                from objects where cancel_helper is not null
+              ), false) as helper_acl_denied,
+              coalesce((
+                select count(*)=4 and bool_and(
+                  p.prosecdef and coalesce(p.proconfig,'{}') @> array['search_path=pg_catalog, pg_temp']
+                )
+                from pg_proc p
+                where p.oid in (cancel_order::oid,checkout_atomic::oid,cash_atomic::oid,close_atomic::oid)
+              ), false) as hardened_wrapper_search_path,
+              coalesce((select p.prosecdef from pg_proc p where p.oid=cancel_helper::oid), false) as helper_security_definer,
+              not exists (
+                select 1 from pg_namespace n
+                cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+                where n.oid='public'::regnamespace and a.grantee=0 and a.privilege_type='CREATE'
+              )
+                and not has_schema_privilege('anon','public','create')
+                and not has_schema_privilege('authenticated','public','create')
+                and not has_schema_privilege('service_role','public','create') as public_schema_create_denied
+            from objects
+          )
+          select concat_ws('|',
+            (cancel_order is not null)::text,
+            (cancel_helper is not null)::text,
+            (checkout_atomic is not null)::text,
+            (cash_atomic is not null)::text,
+            (close_atomic is not null)::text,
+            request_hash::text,
+            guarded_cancel_order::text,
+            helper_acl_denied::text,
+            hardened_wrapper_search_path::text,
+            helper_security_definer::text,
+            public_schema_create_denied::text
+          ) from checks;
+          SQL
+          )"
+          IFS='|' read -r cancel_order helper checkout_atomic cash_atomic close_atomic request_hash guarded_cancel helper_acl hardened helper_security_definer schema_create_denied <<< "$state"
+
+          if [[ "$cancel_order" == t && "$helper" == f && "$checkout_atomic" == f && "$cash_atomic" == f && "$close_atomic" == f && "$guarded_cancel" == f ]]; then
+            echo "MIGRATION_STATE=PRE_MIGRATION" >> "$GITHUB_ENV"
+            echo "PASS migration state: PRE_MIGRATION"
+          elif [[ "$cancel_order" == t && "$helper" == t && "$checkout_atomic" == t && "$cash_atomic" == t && "$close_atomic" == t && "$request_hash" == t && "$guarded_cancel" == t && "$helper_acl" == t && "$hardened" == t && "$helper_security_definer" == t && "$schema_create_denied" == t ]]; then
+            echo "MIGRATION_STATE=FULLY_MIGRATED" >> "$GITHUB_ENV"
+            echo "PASS migration state: FULLY_MIGRATED"
+            echo "PASS staging already has PR32 migration; migration application will be skipped"
+          else
+            echo "FAIL migration state: PARTIAL_OR_UNKNOWN"
+            echo "cancel_order_present=$cancel_order"
+            echo "cancel_helper_present=$helper"
+            echo "checkout_atomic_present=$checkout_atomic"
+            echo "cash_atomic_present=$cash_atomic"
+            echo "close_atomic_present=$close_atomic"
+            echo "request_hash_present=$request_hash"
+            echo "guarded_cancel_order=$guarded_cancel"
+            echo "helper_acl_denied=$helper_acl"
+            echo "hardened_wrapper_search_path=$hardened"
+            echo "helper_security_definer=$helper_security_definer"
+            echo "public_schema_create_denied=$schema_create_denied"
+            exit 1
+          fi
+
       - name: Apply only PR 32 atomic migration
+        if: env.MIGRATION_STATE == 'PRE_MIGRATION'
         shell: bash
         run: |
           set -euo pipefail
@@ -222,13 +293,30 @@ jobs:
               and not has_function_privilege('anon','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute')
               and not has_function_privilege('authenticated','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute')
               and not has_function_privilege('service_role','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute');"
-          check_true "SECURITY DEFINER functions have hardened search_path" "
+          check_true "private cancellation helper is SECURITY DEFINER" "
+            select prosecdef
+            from pg_proc
+            where oid='public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)'::regprocedure;"
+          check_true "guarded SECURITY DEFINER functions have hardened search_path" "
+            with target(signature) as (values
+              ('public.process_pos_checkout_atomic(uuid,uuid,jsonb,text,numeric,text)'),
+              ('public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text)'),
+              ('public.finalize_daily_close_atomic(uuid,uuid,date,uuid,numeric,text)'),
+              ('public.cancel_order(uuid,text,text,text,boolean)')
+            )
+            select count(*)=4 and bool_and(
+              p.prosecdef and coalesce(p.proconfig,'{}') @> array['search_path=pg_catalog, pg_temp']
+            )
+            from target t join pg_proc p on p.oid=t.signature::regprocedure::oid;"
+          check_true "CREATE on schema public denied to all exposed roles" "
             select not exists (
-              select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-              where n.nspname='public'
-                and p.proname in ('process_pos_checkout_atomic','create_cash_movement_atomic','finalize_daily_close_atomic','cancel_order','cancel_order_without_business_day_guard')
-                and (not p.prosecdef or not coalesce(p.proconfig,'{}') @> array['search_path=pg_catalog, pg_temp'])
-            );"
+                select 1 from pg_namespace n
+                cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a
+                where n.oid='public'::regnamespace and a.grantee=0 and a.privilege_type='CREATE'
+              )
+              and not has_schema_privilege('anon','public','create')
+              and not has_schema_privilege('authenticated','public','create')
+              and not has_schema_privilege('service_role','public','create');"
 
       - name: Create isolated staging fixtures
         shell: bash
