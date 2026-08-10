@@ -228,10 +228,10 @@ jobs:
           )"
           IFS='|' read -r cancel_order helper checkout_atomic cash_atomic close_atomic request_hash guarded_cancel helper_acl hardened helper_security_definer schema_create_denied <<< "$state"
 
-          if [[ "$cancel_order" == t && "$helper" == f && "$checkout_atomic" == f && "$cash_atomic" == f && "$close_atomic" == f && "$guarded_cancel" == f ]]; then
+          if [[ "$cancel_order" == true && "$helper" == false && "$checkout_atomic" == false && "$cash_atomic" == false && "$close_atomic" == false && "$request_hash" == false && "$guarded_cancel" == false ]]; then
             echo "MIGRATION_STATE=PRE_MIGRATION" >> "$GITHUB_ENV"
             echo "PASS migration state: PRE_MIGRATION"
-          elif [[ "$cancel_order" == t && "$helper" == t && "$checkout_atomic" == t && "$cash_atomic" == t && "$close_atomic" == t && "$request_hash" == t && "$guarded_cancel" == t && "$helper_acl" == t && "$hardened" == t && "$helper_security_definer" == t && "$schema_create_denied" == t ]]; then
+          elif [[ "$cancel_order" == true && "$helper" == true && "$checkout_atomic" == true && "$cash_atomic" == true && "$close_atomic" == true && "$request_hash" == true && "$guarded_cancel" == true && "$helper_acl" == true && "$hardened" == true && "$helper_security_definer" == true && "$schema_create_denied" == true ]]; then
             echo "MIGRATION_STATE=FULLY_MIGRATED" >> "$GITHUB_ENV"
             echo "PASS migration state: FULLY_MIGRATED"
             echo "PASS staging already has PR32 migration; migration application will be skipped"
