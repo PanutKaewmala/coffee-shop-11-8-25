@@ -37,6 +37,82 @@ jobs:
       VARIANT_ID: 32000000-0000-4000-8000-00000000000a
       INGREDIENT_ID: 32000000-0000-4000-8000-00000000000b
       FOREIGN_INGREDIENT_ID: 32000000-0000-4000-8000-00000000000c
+      # One canonical, transaction-safe cleanup program is used both before fixture
+      # creation and by the always() teardown. Every predicate is tied to the
+      # deterministic PR32 shop/object/user identities.
+      PR32_FIXTURE_CLEANUP_SQL: |
+        select set_config('pr32.shop', :'shop', false);
+        select set_config('pr32.branch', :'branch', false);
+        select set_config('pr32.other_branch', :'other_branch', false);
+        select set_config('pr32.owner', :'owner', false);
+        select set_config('pr32.staff', :'staff', false);
+        select set_config('pr32.outsider', :'outsider', false);
+        select set_config('pr32.category', :'category', false);
+        select set_config('pr32.serve', :'serve', false);
+        select set_config('pr32.menu', :'menu', false);
+        select set_config('pr32.variant', :'variant', false);
+        select set_config('pr32.ingredient', :'ingredient', false);
+        select set_config('pr32.foreign_ingredient', :'foreign_ingredient', false);
+        select set_config('pr32.close', :'close', false);
+        select set_config('pr32.cash_close', :'cash_close', false);
+        select set_config('pr32.cancel_close', :'cancel_close', false);
+        select set_config('pr32.cancel_order', :'cancel_order', false);
+        begin;
+        alter table public.branch disable trigger trg_prevent_delete_last_branch;
+        delete from public.stock_logs where shop_id=:'shop';
+        delete from public.order_items where shop_id=:'shop';
+        delete from public.orders where shop_id=:'shop' or id=:'cancel_order';
+        delete from public.pos_idempotency where shop_id=:'shop';
+        delete from public.cash_movements where shop_id=:'shop';
+        delete from public.daily_closes
+          where shop_id=:'shop' or id in (:'close',:'cash_close',:'cancel_close');
+        delete from public.recipe_items
+          where shop_id=:'shop' or ingredient_id in (:'ingredient',:'foreign_ingredient') or variant_id=:'variant';
+        delete from public.ingredients
+          where shop_id=:'shop' or id in (:'ingredient',:'foreign_ingredient');
+        delete from public.menu_variants where shop_id=:'shop' or id=:'variant';
+        delete from public.menu where shop_id=:'shop' or id=:'menu';
+        delete from public.menu_serve_types where shop_id=:'shop' or id=:'serve';
+        delete from public.menu_categories where shop_id=:'shop' or id=:'category';
+        delete from public.shop_members
+          where shop_id=:'shop' or user_id in (:'owner',:'staff',:'outsider');
+        delete from public.branch
+          where shop_id=:'shop' or id in (:'branch',:'other_branch');
+        delete from public.shops where id=:'shop';
+        delete from auth.users where id in (:'owner',:'staff',:'outsider');
+        alter table public.branch enable trigger trg_prevent_delete_last_branch;
+        commit;
+        do $cleanup_verification$
+        declare
+          failures text[] := array[]::text[];
+        begin
+          if (select count(*) from public.shops where id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'shops'); end if;
+          if (select count(*) from public.branch where shop_id=current_setting('pr32.shop')::uuid or id in (current_setting('pr32.branch')::uuid,current_setting('pr32.other_branch')::uuid)) <> 0 then failures := array_append(failures,'branch'); end if;
+          if (select count(*) from public.shop_members where shop_id=current_setting('pr32.shop')::uuid or user_id in (current_setting('pr32.owner')::uuid,current_setting('pr32.staff')::uuid,current_setting('pr32.outsider')::uuid)) <> 0 then failures := array_append(failures,'shop_members'); end if;
+          if (select count(*) from auth.users where id in (current_setting('pr32.owner')::uuid,current_setting('pr32.staff')::uuid,current_setting('pr32.outsider')::uuid)) <> 0 then failures := array_append(failures,'auth.users'); end if;
+          if (select count(*) from public.orders where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.cancel_order')::uuid) <> 0 then failures := array_append(failures,'orders'); end if;
+          if (select count(*) from public.order_items where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'order_items'); end if;
+          if (select count(*) from public.stock_logs where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'stock_logs'); end if;
+          if (select count(*) from public.pos_idempotency where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'pos_idempotency'); end if;
+          if (select count(*) from public.cash_movements where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'cash_movements'); end if;
+          if (select count(*) from public.daily_closes where shop_id=current_setting('pr32.shop')::uuid or id in (current_setting('pr32.close')::uuid,current_setting('pr32.cash_close')::uuid,current_setting('pr32.cancel_close')::uuid)) <> 0 then failures := array_append(failures,'daily_closes'); end if;
+          if (select count(*) from public.recipe_items where shop_id=current_setting('pr32.shop')::uuid or ingredient_id in (current_setting('pr32.ingredient')::uuid,current_setting('pr32.foreign_ingredient')::uuid) or variant_id=current_setting('pr32.variant')::uuid) <> 0 then failures := array_append(failures,'recipe_items'); end if;
+          if (select count(*) from public.ingredients where shop_id=current_setting('pr32.shop')::uuid or id in (current_setting('pr32.ingredient')::uuid,current_setting('pr32.foreign_ingredient')::uuid)) <> 0 then failures := array_append(failures,'ingredients'); end if;
+          if (select count(*) from public.menu_variants where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.variant')::uuid) <> 0 then failures := array_append(failures,'menu_variants'); end if;
+          if (select count(*) from public.menu where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.menu')::uuid) <> 0 then failures := array_append(failures,'menu'); end if;
+          if (select count(*) from public.menu_categories where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.category')::uuid) <> 0 then failures := array_append(failures,'menu_categories'); end if;
+          if (select count(*) from public.menu_serve_types where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.serve')::uuid) <> 0 then failures := array_append(failures,'menu_serve_types'); end if;
+          if not exists (
+            select 1 from pg_trigger
+            where tgrelid='public.branch'::regclass
+              and tgname='trg_prevent_delete_last_branch' and not tgisinternal and tgenabled='O'
+          ) then failures := array_append(failures,'trg_prevent_delete_last_branch not ENABLED'); end if;
+          if cardinality(failures) <> 0 then
+            raise exception 'PR32 cleanup verification failed: %', array_to_string(failures,', ');
+          end if;
+          raise notice 'PASS cleanup verification: all deterministic fixtures absent and trg_prevent_delete_last_branch ENABLED';
+        end
+        $cleanup_verification$;
 
     steps:
       - name: Require main workflow and exact manual confirmation
@@ -318,7 +394,26 @@ jobs:
               and not has_schema_privilege('authenticated','public','create')
               and not has_schema_privilege('service_role','public','create');"
 
-      - name: Create isolated staging fixtures
+      - name: Pre-clean stale deterministic staging fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$PR32_FIXTURE_CLEANUP_SQL" | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e STAFF_ID -e OUTSIDER_ID \
+            -e CATEGORY_ID -e SERVE_ID -e MENU_ID -e VARIANT_ID -e INGREDIENT_ID -e FOREIGN_INGREDIENT_ID \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v staff="$STAFF_ID" -v outsider="$OUTSIDER_ID" \
+              -v category="$CATEGORY_ID" -v serve="$SERVE_ID" -v menu="$MENU_ID" \
+              -v variant="$VARIANT_ID" -v ingredient="$INGREDIENT_ID" -v foreign_ingredient="$FOREIGN_INGREDIENT_ID" \
+              -v close="32000000-0000-4000-8000-00000000000d" \
+              -v cash_close="32000000-0000-4000-8000-00000000000e" \
+              -v cancel_close="32000000-0000-4000-8000-00000000000f" \
+              -v cancel_order="32000000-0000-4000-8000-000000000010"'
+          echo "PASS stale deterministic fixtures removed"
+
+      - name: Create isolated staging fixtures atomically
         shell: bash
         run: |
           set -euo pipefail
@@ -330,14 +425,37 @@ jobs:
               -v owner="$OWNER_ID" -v staff="$STAFF_ID" -v outsider="$OUTSIDER_ID" \
               -v category="$CATEGORY_ID" -v serve="$SERVE_ID" -v menu="$MENU_ID" \
               -v variant="$VARIANT_ID" -v ingredient="$INGREDIENT_ID" -v foreign_ingredient="$FOREIGN_INGREDIENT_ID"' <<'SQL'
+          select set_config('pr32.fixture_shop', :'shop', false);
+          select set_config('pr32.fixture_branch', :'branch', false);
+          begin;
           insert into auth.users(id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
           values
             (:'owner','authenticated','authenticated','pr32-owner@example.invalid','',now(),'{}','{}',now(),now()),
             (:'staff','authenticated','authenticated','pr32-staff@example.invalid','',now(),'{}','{}',now(),now()),
             (:'outsider','authenticated','authenticated','pr32-outsider@example.invalid','',now(),'{}','{}',now(),now());
           insert into public.shops(id,name,slug) values(:'shop','PR32 staging validation','pr32-atomic-validation');
-          insert into public.branch(id,shop_id,name,is_primary) values
-            (:'branch',:'shop','PR32 branch',true),(:'other_branch',:'shop','PR32 other branch',false);
+          do $fixture_branch_assertion$
+          declare
+            branch_count integer;
+            primary_count integer;
+            generated_branch_id uuid;
+          begin
+            select count(*), count(*) filter (where is_primary), (array_agg(id order by id))[1]
+              into branch_count, primary_count, generated_branch_id
+            from public.branch where shop_id=current_setting('pr32.fixture_shop')::uuid;
+            if branch_count <> 1 or primary_count <> 1 or generated_branch_id is null then
+              raise exception 'Expected exactly one auto-created primary branch for fixture shop; branches=%, primaries=%', branch_count, primary_count;
+            end if;
+            update public.branch
+              set id=current_setting('pr32.fixture_branch')::uuid, name='PR32 branch', is_primary=true
+              where id=generated_branch_id and shop_id=current_setting('pr32.fixture_shop')::uuid;
+            if not found then
+              raise exception 'Failed to normalize auto-created primary branch to deterministic BRANCH_ID';
+            end if;
+          end
+          $fixture_branch_assertion$;
+          insert into public.branch(id,shop_id,name,is_primary)
+            values(:'other_branch',:'shop','PR32 other branch',false);
           insert into public.shop_members(shop_id,user_id,role) values
             (:'shop',:'owner','owner'),(:'shop',:'staff','staff');
           insert into public.menu_categories(id,shop_id,name) values(:'category',:'shop','PR32 category');
@@ -350,6 +468,7 @@ jobs:
                   (:'foreign_ingredient',:'shop',:'other_branch','PR32 foreign ingredient','pr32 foreign ingredient',100,0,'g','g');
           insert into public.recipe_items(shop_id,variant_id,ingredient_id,quantity)
             values(:'shop',:'variant',:'ingredient',2);
+          commit;
           \echo PASS fixtures created
           SQL
 
@@ -485,37 +604,22 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           if [[ "${STAGING_IDENTITY_VALIDATED:-}" != "true" ]]; then
             echo "Cleanup skipped: staging identity was not validated"
             exit 0
           fi
-          docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" \
-            -e SHOP_ID -e OWNER_ID -e STAFF_ID -e OUTSIDER_ID postgres:17 \
-            sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
-              -v shop="$SHOP_ID" -v owner="$OWNER_ID" -v staff="$STAFF_ID" -v outsider="$OUTSIDER_ID"' <<'SQL'
-          begin;
-          delete from public.stock_logs where shop_id=:'shop';
-          delete from public.order_items where shop_id=:'shop';
-          delete from public.orders where shop_id=:'shop';
-          delete from public.pos_idempotency where shop_id=:'shop';
-          delete from public.cash_movements where shop_id=:'shop';
-          delete from public.daily_closes where shop_id=:'shop';
-          delete from public.recipe_items where shop_id=:'shop';
-          delete from public.ingredients where shop_id=:'shop';
-          delete from public.menu_variants where shop_id=:'shop';
-          delete from public.menu where shop_id=:'shop';
-          delete from public.menu_serve_types where shop_id=:'shop';
-          delete from public.menu_categories where shop_id=:'shop';
-          delete from public.shop_members where shop_id=:'shop';
-          delete from public.branch where shop_id=:'shop';
-          delete from public.shops where id=:'shop';
-          delete from auth.users where id in (:'owner',:'staff',:'outsider');
-          commit;
-          SQL
-          rc=$?
-          if (( rc != 0 )); then
-            echo "FAIL cleanup: manual staging cleanup required for shop ID $SHOP_ID"
-            exit "$rc"
-          fi
+          printf '%s\n' "$PR32_FIXTURE_CLEANUP_SQL" | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e STAFF_ID -e OUTSIDER_ID \
+            -e CATEGORY_ID -e SERVE_ID -e MENU_ID -e VARIANT_ID -e INGREDIENT_ID -e FOREIGN_INGREDIENT_ID \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v staff="$STAFF_ID" -v outsider="$OUTSIDER_ID" \
+              -v category="$CATEGORY_ID" -v serve="$SERVE_ID" -v menu="$MENU_ID" \
+              -v variant="$VARIANT_ID" -v ingredient="$INGREDIENT_ID" -v foreign_ingredient="$FOREIGN_INGREDIENT_ID" \
+              -v close="32000000-0000-4000-8000-00000000000d" \
+              -v cash_close="32000000-0000-4000-8000-00000000000e" \
+              -v cancel_close="32000000-0000-4000-8000-00000000000f" \
+              -v cancel_order="32000000-0000-4000-8000-000000000010"'
           echo "PASS cleanup: staging fixture shop ID $SHOP_ID removed"
