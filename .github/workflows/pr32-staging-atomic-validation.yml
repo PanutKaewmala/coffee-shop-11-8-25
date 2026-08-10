@@ -59,7 +59,10 @@ jobs:
         select set_config('pr32.cancel_order', :'cancel_order', false);
         begin;
         alter table public.branch disable trigger trg_prevent_delete_last_branch;
-        delete from public.stock_logs where shop_id=:'shop';
+        delete from public.stock_logs
+          where shop_id=:'shop'
+            or ingredient_id in (:'ingredient',:'foreign_ingredient')
+            or order_id=:'cancel_order';
         delete from public.order_items where shop_id=:'shop';
         delete from public.orders where shop_id=:'shop' or id=:'cancel_order';
         delete from public.pos_idempotency where shop_id=:'shop';
@@ -92,7 +95,7 @@ jobs:
           if (select count(*) from auth.users where id in (current_setting('pr32.owner')::uuid,current_setting('pr32.staff')::uuid,current_setting('pr32.outsider')::uuid)) <> 0 then failures := array_append(failures,'auth.users'); end if;
           if (select count(*) from public.orders where shop_id=current_setting('pr32.shop')::uuid or id=current_setting('pr32.cancel_order')::uuid) <> 0 then failures := array_append(failures,'orders'); end if;
           if (select count(*) from public.order_items where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'order_items'); end if;
-          if (select count(*) from public.stock_logs where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'stock_logs'); end if;
+          if (select count(*) from public.stock_logs where shop_id=current_setting('pr32.shop')::uuid or ingredient_id in (current_setting('pr32.ingredient')::uuid,current_setting('pr32.foreign_ingredient')::uuid) or order_id=current_setting('pr32.cancel_order')::uuid) <> 0 then failures := array_append(failures,'stock_logs'); end if;
           if (select count(*) from public.pos_idempotency where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'pos_idempotency'); end if;
           if (select count(*) from public.cash_movements where shop_id=current_setting('pr32.shop')::uuid) <> 0 then failures := array_append(failures,'cash_movements'); end if;
           if (select count(*) from public.daily_closes where shop_id=current_setting('pr32.shop')::uuid or id in (current_setting('pr32.close')::uuid,current_setting('pr32.cash_close')::uuid,current_setting('pr32.cancel_close')::uuid)) <> 0 then failures := array_append(failures,'daily_closes'); end if;
@@ -485,7 +488,7 @@ jobs:
           checkout_sql() {
             local actor="$1" key="$2" items="$3"
             auth_sql "$actor"
-            printf "select public.process_pos_checkout_atomic('%s','%s','%s'::jsonb,'cash',100,'%s')::text;\n" "$SHOP_ID" "$BRANCH_ID" "$items" "$key"
+            printf "select public.process_pos_checkout_atomic('%s','%s','%s'::jsonb,'cash',1000,'%s')::text;\n" "$SHOP_ID" "$BRANCH_ID" "$items" "$key"
           }
           scalar() {
             printf '%s\n' "$1" | docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq'
