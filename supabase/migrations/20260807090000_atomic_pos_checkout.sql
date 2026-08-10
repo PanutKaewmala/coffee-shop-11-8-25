@@ -91,8 +91,6 @@ begin
       'items', p_items, 'payment_method', p_payment_method, 'paid_amount', p_paid_amount
     )::text, 'UTF8'), 'sha256'), 'hex');
 
-  -- The idempotency lock is the first side-effecting operation. It serializes
-  -- every request for a shop/key before temp tables, orders, stock or logs.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('pos-idempotency:' || p_shop_id::text || ':' || p_idempotency_key, 0)
   );
@@ -168,7 +166,6 @@ begin
   join public.recipe_items r on r.shop_id=p_shop_id and r.variant_id=l.variant_id
   group by r.ingredient_id;
 
-  -- Lock all affected ingredients in stable UUID order before validating any stock.
   perform i.id from public.ingredients i
   join pg_temp.pos_deductions d on d.ingredient_id=i.id
   where i.shop_id=p_shop_id and i.branch_id=p_branch_id
@@ -260,7 +257,20 @@ revoke all on function public.create_cash_movement_atomic(uuid,uuid,date,text,te
 grant execute on function public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text) to authenticated;
 
 -- Preserve the existing stock-restoration implementation as a private primitive.
-alter function public.cancel_order(uuid,text,text,text,boolean) rename to cancel_order_without_business_day_guard;
+-- The migration may be re-applied to review staging after PR updates. Rename the
+-- legacy function only on the first application; later applications keep the
+-- already-private helper and simply refresh the wrappers below.
+do $rename_cancel_helper$
+begin
+  if to_regprocedure('public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)') is null then
+    if to_regprocedure('public.cancel_order(uuid,text,text,text,boolean)') is null then
+      raise exception 'CANCEL_ORDER_BASE_FUNCTION_MISSING';
+    end if;
+    alter function public.cancel_order(uuid,text,text,text,boolean)
+      rename to cancel_order_without_business_day_guard;
+  end if;
+end
+$rename_cancel_helper$;
 revoke all on function public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean) from public,anon,authenticated,service_role;
 
 create or replace function public.cancel_order(p_order_id uuid,p_reason text,p_note text,p_cancelled_by text,p_restock boolean)
@@ -292,7 +302,6 @@ begin
  select sm.role into v_role from public.shop_members sm where sm.shop_id=p_shop_id and sm.user_id=v_actor;
  if v_actor is null or v_role<>'owner' then raise exception 'OWNER_REQUIRED' using errcode='42501'; end if;
  if not exists(select 1 from public.branch b where b.id=p_branch_id and b.shop_id=p_shop_id) then raise exception 'INVALID_BRANCH' using errcode='22023'; end if;
- -- Lock before reading any value used by the final snapshot.
  perform public.lock_business_day(p_shop_id,p_branch_id,p_business_date);
  select * into v_close from public.daily_closes d where d.id=p_close_id and d.shop_id=p_shop_id and d.branch_id=p_branch_id and d.business_date=p_business_date and d.status='draft' for update;
  if not found then raise exception 'DAILY_CLOSE_NOT_DRAFT' using errcode='P0001'; end if;
