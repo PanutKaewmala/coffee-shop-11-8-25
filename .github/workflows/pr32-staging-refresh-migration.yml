@@ -1,0 +1,175 @@
+name: Refresh PR 32 migration on staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type REFRESH_PR32_STAGING to confirm staging-only migration refresh"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr32-staging-atomic-validation
+  cancel-in-progress: false
+
+jobs:
+  refresh-staging-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      EXPECTED_STAGING_HOST: aws-0-ap-southeast-2.pooler.supabase.com
+      REJECTED_PRODUCTION_HOST: aws-1-ap-southeast-1.pooler.supabase.com
+      MIGRATION: supabase/migrations/20260807090000_atomic_pos_checkout.sql
+
+    steps:
+      - name: Require main workflow and exact manual confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "FAIL: dispatch from main only"; exit 1; }
+          [[ "${{ inputs.confirmation }}" == "REFRESH_PR32_STAGING" ]] || { echo "FAIL: confirmation mismatch"; exit 1; }
+          echo "PASS workflow source and confirmation"
+
+      - name: Validate staging URL without connecting
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${STAGING_DATABASE_URL:-}" ]] || { echo "FAIL: STAGING_DATABASE_URL missing"; exit 1; }
+          python3 - <<'PY'
+          import os, re
+          from urllib.parse import urlparse, unquote
+          parsed = urlparse(os.environ['STAGING_DATABASE_URL'])
+          username = unquote(parsed.username or '')
+          host = (parsed.hostname or '').lower()
+          port = parsed.port or 5432
+          database = parsed.path.lstrip('/')
+          if parsed.scheme not in {'postgres','postgresql'}:
+              raise SystemExit('FAIL: URL is not PostgreSQL')
+          if host == os.environ['REJECTED_PRODUCTION_HOST']:
+              raise SystemExit('FAIL: production host explicitly rejected')
+          if host != os.environ['EXPECTED_STAGING_HOST']:
+              raise SystemExit('FAIL: host is not approved staging host')
+          if port != 5432 or database != 'postgres':
+              raise SystemExit('FAIL: unexpected staging port/database')
+          if not re.fullmatch(r'postgres\.[a-z0-9]+', username):
+              raise SystemExit('FAIL: unexpected staging username')
+          print('PASS staging URL identity')
+          PY
+
+      - name: Check out PR 32 head
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/32/head
+          fetch-depth: 0
+
+      - name: Verify PR 32 migration scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PR32_HEAD_SHA=$(git rev-parse HEAD)"
+          test -f "$MIGRATION" || { echo "FAIL: migration missing"; exit 1; }
+          git fetch --no-tags origin main
+          if git diff --name-only origin/main...HEAD -- .github | grep -q .; then
+            echo "FAIL: PR 32 contains .github changes"
+            exit 1
+          fi
+          echo "PASS PR 32 migration exists and contains no workflow changes"
+
+      - name: Detect staging migration state
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql_staging() {
+            docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" postgres:17 \
+              sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq'
+          }
+          state="$(cat <<'SQL' | psql_staging
+          with o as (
+            select
+              to_regprocedure('public.cancel_order(uuid,text,text,text,boolean)') cancel_order,
+              to_regprocedure('public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)') helper,
+              to_regprocedure('public.process_pos_checkout_atomic(uuid,uuid,jsonb,text,numeric,text)') checkout_atomic,
+              to_regprocedure('public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text)') cash_atomic,
+              to_regprocedure('public.finalize_daily_close_atomic(uuid,uuid,date,uuid,numeric,text)') close_atomic,
+              exists (
+                select 1 from information_schema.columns
+                where table_schema='public' and table_name='pos_idempotency' and column_name='request_hash'
+              ) request_hash
+          ), c as (
+            select *,
+              coalesce(position('pg_catalog.nullif' in lower(pg_get_functiondef(cash_atomic::oid))) = 0, false) cash_nullif_current,
+              coalesce(position('pg_catalog.nullif' in lower(pg_get_functiondef(close_atomic::oid))) = 0, false) close_nullif_current,
+              coalesce(pg_get_functiondef(cancel_order::oid) like '%cancel_order_without_business_day_guard%', false) guarded_cancel
+            from o
+          )
+          select concat_ws('|',
+            (cancel_order is not null)::text,
+            (helper is not null)::text,
+            (checkout_atomic is not null)::text,
+            (cash_atomic is not null)::text,
+            (close_atomic is not null)::text,
+            request_hash::text,
+            guarded_cancel::text,
+            cash_nullif_current::text,
+            close_nullif_current::text
+          ) from c;
+          SQL
+          )"
+          IFS='|' read -r cancel_order helper checkout_atomic cash_atomic close_atomic request_hash guarded_cancel cash_current close_current <<< "$state"
+
+          if [[ "$cancel_order" == true && "$helper" == false && "$checkout_atomic" == false && "$cash_atomic" == false && "$close_atomic" == false && "$request_hash" == false && "$guarded_cancel" == false ]]; then
+            migration_state=PRE_MIGRATION
+          elif [[ "$cancel_order" == true && "$helper" == true && "$checkout_atomic" == true && "$cash_atomic" == true && "$close_atomic" == true && "$request_hash" == true && "$guarded_cancel" == true && "$cash_current" == true && "$close_current" == true ]]; then
+            migration_state=FULLY_CURRENT
+          elif [[ "$cancel_order" == true && "$helper" == true && "$checkout_atomic" == true && "$cash_atomic" == true && "$close_atomic" == true && "$request_hash" == true && "$guarded_cancel" == true && ( "$cash_current" == false || "$close_current" == false ) ]]; then
+            migration_state=STALE_MIGRATION
+          else
+            echo "FAIL migration state: PARTIAL_OR_UNKNOWN"
+            echo "state=$state"
+            exit 1
+          fi
+
+          echo "MIGRATION_STATE=$migration_state" >> "$GITHUB_ENV"
+          echo "PASS migration state: $migration_state"
+
+      - name: Apply current PR 32 migration when needed
+        if: env.MIGRATION_STATE == 'PRE_MIGRATION' || env.MIGRATION_STATE == 'STALE_MIGRATION'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Applying $MIGRATION to confirmed staging target because state=$MIGRATION_STATE"
+          docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" postgres:17 \
+            sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1' < "$MIGRATION"
+          echo "PASS migration refresh"
+
+      - name: Verify current function definitions and security invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" postgres:17 sh -euc \
+            'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          do $verify$
+          declare failures text[] := array[]::text[];
+          begin
+            if to_regprocedure('public.process_pos_checkout_atomic(uuid,uuid,jsonb,text,numeric,text)') is null then failures:=array_append(failures,'checkout_atomic missing'); end if;
+            if to_regprocedure('public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text)') is null then failures:=array_append(failures,'cash_atomic missing'); end if;
+            if to_regprocedure('public.finalize_daily_close_atomic(uuid,uuid,date,uuid,numeric,text)') is null then failures:=array_append(failures,'close_atomic missing'); end if;
+            if to_regprocedure('public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)') is null then failures:=array_append(failures,'cancel helper missing'); end if;
+            if position('pg_catalog.nullif' in lower(pg_get_functiondef('public.create_cash_movement_atomic(uuid,uuid,date,text,text,numeric,text)'::regprocedure))) <> 0 then failures:=array_append(failures,'cash_atomic stale nullif'); end if;
+            if position('pg_catalog.nullif' in lower(pg_get_functiondef('public.finalize_daily_close_atomic(uuid,uuid,date,uuid,numeric,text)'::regprocedure))) <> 0 then failures:=array_append(failures,'close_atomic stale nullif'); end if;
+            if has_function_privilege('anon','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute')
+               or has_function_privilege('authenticated','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute')
+               or has_function_privilege('service_role','public.cancel_order_without_business_day_guard(uuid,text,text,text,boolean)','execute') then
+              failures:=array_append(failures,'private helper executable by exposed role');
+            end if;
+            if cardinality(failures) <> 0 then
+              raise exception 'PR32 staging refresh verification failed: %', array_to_string(failures,', ');
+            end if;
+            raise notice 'PASS PR32 staging migration is current and private helper remains denied';
+          end
+          $verify$;
+          SQL
