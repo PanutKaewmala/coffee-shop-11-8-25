@@ -249,7 +249,7 @@ begin
  ) as x(kind,reason,requires_note,owner_only) where x.kind=p_type and x.reason=p_reason;
  if not found then raise exception 'INVALID_CASH_MOVEMENT_REASON_FOR_TYPE' using errcode='22023'; end if;
  if v_owner_only and v_role<>'owner' then raise exception 'OWNER_REQUIRED_FOR_CASH_MOVEMENT_REASON' using errcode='42501'; end if;
- if v_requires_note and pg_catalog.nullif(pg_catalog.btrim(p_note),'') is null then raise exception 'CASH_MOVEMENT_NOTE_REQUIRED' using errcode='22023'; end if;
+ if v_requires_note and NULLIF(pg_catalog.btrim(p_note),'') is null then raise exception 'CASH_MOVEMENT_NOTE_REQUIRED' using errcode='22023'; end if;
  if p_amount is null or p_amount<=0 then raise exception 'INVALID_CASH_MOVEMENT_AMOUNT' using errcode='22023'; end if;
  perform public.assert_business_day_open(p_shop_id,p_branch_id,p_business_date);
  insert into public.cash_movements(shop_id,branch_id,business_date,type,reason,amount,note,created_by)
@@ -303,7 +303,7 @@ begin
  select coalesce(sum(cm.amount) filter(where cm.type='cash_in'),0),coalesce(sum(cm.amount) filter(where cm.type='cash_out'),0) into v_cash_in,v_cash_out from public.cash_movements cm where cm.shop_id=p_shop_id and cm.branch_id=p_branch_id and cm.business_date=p_business_date;
  v_expected:=v_close.opening_cash_float+v_cash+v_cash_in-v_cash_out; v_difference:=p_counted_cash-v_expected;
  if p_counted_cash is null or p_counted_cash<0 then raise exception 'INVALID_COUNTED_CASH' using errcode='22023'; end if;
- if pg_catalog.abs(v_difference)>=0.01 and pg_catalog.nullif(pg_catalog.btrim(p_notes),'') is null then raise exception 'CASH_DIFFERENCE_REASON_REQUIRED' using errcode='22023'; end if;
+ if pg_catalog.abs(v_difference)>=0.01 and NULLIF(pg_catalog.btrim(p_notes),'') is null then raise exception 'CASH_DIFFERENCE_REASON_REQUIRED' using errcode='22023'; end if;
  update public.daily_closes set status='closed',counted_cash=p_counted_cash,expected_cash=v_expected,cash_difference=v_difference,notes=p_notes,closed_by=v_actor,closed_at=pg_catalog.now(),gross_sales=v_gross,net_sales=v_gross,cash_sales=v_cash,promptpay_sales=v_promptpay,unknown_payment_sales=v_unknown,paid_order_count=v_paid_count,cancelled_order_count=v_cancelled,refunded_order_count=0,void_order_count=0 where id=p_close_id returning * into v_close;
  return v_close;
 end; $$;
