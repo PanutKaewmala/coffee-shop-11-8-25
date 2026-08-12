@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkDailyClose } from "@/lib/dailyCloseGuard";
 import { parseAppRole } from "@/lib/accessPolicy.mjs";
 import { cashMovementNavigationIntent, validateCashMovementReason } from "@/lib/cashMovementPolicy.mjs";
 
@@ -294,66 +293,37 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Closed-day guard
-        const guardResult = await checkDailyClose(currentShopId, currentBranchId, businessDate);
-        if (guardResult.blocked && guardResult.closeStatus) {
-            return NextResponse.json(
-                {
-                    error: "ปิดยอดของวันนี้แล้ว ไม่สามารถบันทึกรายการเงินสดได้",
-                    code: "BUSINESS_DAY_CLOSED",
-                    business_date: businessDate,
-                    close_status: guardResult.closeStatus,
-                },
-                { status: 409 }
-            );
-        }
-
-        const cmAdmin = cashAdmin(admin);
-
-        const { data: inserted, error: insErr } = await cmAdmin
-            .from("cash_movements")
-            .insert({
-                shop_id: currentShopId,
-                branch_id: currentBranchId,
-                business_date: businessDate,
-                type,
-                reason,
-                amount,
-                note,
-                created_by: auth.user.id,
-            })
-            .select(
-                "id, shop_id, branch_id, business_date, type, reason, amount, note, created_by, created_at"
-            )
-            .single();
+        // The database RPC takes the canonical business-day lock and performs
+        // the closed-day check and insert in one transaction.
+        const { data: inserted, error: insErr } = await supabase.rpc("create_cash_movement_atomic", {
+            p_shop_id: currentShopId,
+            p_branch_id: currentBranchId,
+            p_business_date: businessDate,
+            p_type: type,
+            p_reason: reason!,
+            p_amount: amount,
+            p_note: note,
+        });
 
         if (insErr || !inserted) {
-            console.error("cash_movement_insert_failed", {
-                error: insErr,
-                shop_id: currentShopId,
-                branch_id: currentBranchId,
-                business_date: businessDate,
-                type,
-                reason,
-                created_by: auth.user.id,
-            });
-            return NextResponse.json(
-                { error: "Failed to create cash movement", code: "CASH_MOVEMENT_INSERT_FAILED" },
-                { status: 500 }
-            );
+            if (insErr?.message?.includes("BUSINESS_DAY_CLOSED")) {
+                return NextResponse.json({ error: "ปิดยอดของวันนี้แล้ว ไม่สามารถบันทึกรายการเงินสดได้", code: "BUSINESS_DAY_CLOSED", business_date: businessDate }, { status: 409 });
+            }
+            return unexpectedServerErrorResponse("cash_movement_atomic_insert_failed", insErr);
         }
 
+        const insertedRow = inserted as unknown as CashMovementRow;
         const movement: CashMovement = {
-            id: inserted.id as string,
-            shop_id: inserted.shop_id as string,
-            branch_id: inserted.branch_id as string,
-            business_date: inserted.business_date as string,
-            type: inserted.type as CashMovementType,
-            reason: inserted.reason as string,
-            amount: Number(inserted.amount),
-            note: (inserted.note as string | null) ?? null,
-            created_by: (inserted.created_by as string | null) ?? null,
-            created_at: inserted.created_at as string,
+            id: insertedRow.id as string,
+            shop_id: insertedRow.shop_id as string,
+            branch_id: insertedRow.branch_id as string,
+            business_date: insertedRow.business_date as string,
+            type: insertedRow.type as CashMovementType,
+            reason: insertedRow.reason as string,
+            amount: Number(insertedRow.amount),
+            note: (insertedRow.note as string | null) ?? null,
+            created_by: (insertedRow.created_by as string | null) ?? null,
+            created_at: insertedRow.created_at as string,
         };
 
         return NextResponse.json({ movement, navigationIntent: cashMovementNavigationIntent(movement) }, { status: 201 });

@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { checkDailyClose, toBangkokBusinessDate } from "@/lib/dailyCloseGuard";
 import { parseAppRole } from "@/lib/accessPolicy.mjs";
 
 export const dynamic = "force-dynamic";
@@ -153,40 +152,8 @@ export async function POST(
             );
         }
 
-        if ((orderRow as Record<string, unknown>).status === "paid") {
-            const paidAt = (orderRow as Record<string, unknown>).paid_at as string | null;
-            const createdAt = (orderRow as Record<string, unknown>).created_at as string | null;
-            const timestamp = paidAt ?? createdAt;
-
-            if (timestamp) {
-                const businessDate = toBangkokBusinessDate(timestamp);
-                const shopId = (orderRow as Record<string, unknown>).shop_id as string;
-                const branchId = (orderRow as Record<string, unknown>).branch_id as string | null;
-
-                if (!branchId) {
-                    return NextResponse.json(
-                        {
-                            error: "ไม่สามารถตรวจสอบสาขาของออเดอร์นี้ได้ จึงไม่สามารถยกเลิกหลังปิดยอดได้",
-                            code: "ORDER_BRANCH_REQUIRED",
-                        },
-                        { status: 409 }
-                    );
-                }
-
-                const guardResult = await checkDailyClose(shopId, branchId, businessDate);
-                if (guardResult.blocked && guardResult.closeStatus) {
-                    return NextResponse.json(
-                        {
-                            error: "ปิดยอดของวันนี้แล้ว ไม่สามารถยกเลิกออเดอร์นี้ได้",
-                            code: "BUSINESS_DAY_CLOSED",
-                            business_date: businessDate,
-                            close_status: guardResult.closeStatus,
-                        },
-                        { status: 409 }
-                    );
-                }
-            }
-        }
+        // Closed-day validation is performed atomically by cancel_order while
+        // holding the canonical business-day transaction lock.
 
         const body: unknown = await req.json().catch(() => null);
         if (!isRecord(body)) {
