@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { computeDailyCloseReport, computeSnapshotFromReport } from "@/lib/dailyCloseReport";
 import { roundMoney } from "@/lib/dailyCloseMoney";
-import { cashDifferenceRequiresReason, parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
+import { parseDailyCloseRole } from "@/lib/dailyClosePolicy.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -433,48 +433,21 @@ return NextResponse.json(
 
         await assertBranchBelongsToShop(admin, currentShopId, currentBranchId);
 
-        const openingCashFloat = Number(existingRecord.opening_cash_float) || 0;
-        const report = await computeDailyCloseReport(admin, currentShopId, currentBranchId, businessDate);
-        const snapshot = computeSnapshotFromReport(report, openingCashFloat);
-        const expectedCash = snapshot.expected_cash;
-        const cashDifference = roundMoney(countedCash - expectedCash);
-        if (cashDifferenceRequiresReason(cashDifference) && !notes) {
-            return NextResponse.json(
-                { error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" },
-                { status: 400 }
-            );
-        }
+         const { data: updated, error: updateError } = await supabase.rpc("finalize_daily_close_atomic", {
+             p_shop_id: currentShopId,
+             p_branch_id: currentBranchId,
+             p_business_date: businessDate,
+             p_close_id: existingRecord.id as string,
+             p_counted_cash: countedCash,
+             p_notes: notes,
+         });
 
-         const updatePayload = {
-             status: "closed",
-             counted_cash: countedCash,
-             expected_cash: expectedCash,
-             cash_difference: cashDifference,
-             closed_by: auth.user.id,
-             closed_at: new Date().toISOString(),
-             notes,
-             gross_sales: snapshot.gross_sales,
-             net_sales: snapshot.net_sales,
-             cash_sales: snapshot.cash_sales,
-             promptpay_sales: snapshot.promptpay_sales,
-             unknown_payment_sales: snapshot.unknown_payment_sales,
-             paid_order_count: snapshot.paid_order_count,
-             cancelled_order_count: snapshot.cancelled_order_count,
-             refunded_order_count: snapshot.refunded_order_count,
-             void_order_count: snapshot.void_order_count,
-         };
-
-         const { data: updated, error: updateError } = await dcAdmin
-             .from("daily_closes")
-             .update(updatePayload)
-             .eq("id", existingRecord.id as string)
-             .eq("shop_id", currentShopId)
-             .eq("branch_id", currentBranchId)
-             .eq("business_date", businessDate)
-             .eq("status", "draft")
-             .select("*")
-             .maybeSingle();
-
+         if (updateError?.message.includes("CASH_DIFFERENCE_REASON_REQUIRED")) {
+             return NextResponse.json({ error: "Cash difference reason is required", code: "CASH_DIFFERENCE_REASON_REQUIRED" }, { status: 400 });
+         }
+         if (updateError?.message.includes("DAILY_CLOSE_NOT_DRAFT")) {
+             return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });
+         }
          if (updateError) return unexpectedServerError("patch_update_failed", updateError);
          if (!updated) {
              return NextResponse.json({ error: "Can only close a draft daily close", code: "DAILY_CLOSE_NOT_DRAFT" }, { status: 409 });

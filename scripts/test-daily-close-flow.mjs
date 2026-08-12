@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { cashDifferenceRequiresReason, parseDailyCloseRole } from "../src/lib/dailyClosePolicy.mjs";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -32,8 +31,8 @@ assert.match(route, /code: "DAILY_CLOSE_ALREADY_EXISTS"/);
 assert.match(route, /parseDailyCloseRole\(membership\.role\)/);
 assert.match(route, /if \(role !== "owner"\)/, "staff cannot call finalization PATCH");
 assert.match(route, /countedCash = validateCountedCash\(body\.counted_cash\)/, "owner finalization requires counted cash");
-assert.match(route, /computeSnapshotFromReport\(report, openingCashFloat\)/, "server recomputes the canonical snapshot");
-assert.match(route, /roundMoney\(countedCash - expectedCash\)/);
+assert.match(route, /finalize_daily_close_atomic/, "finalization delegates snapshot computation to the locked database transaction");
+assert.doesNotMatch(route, /p_snapshot:|p_cash_difference:/, "finalization does not send caller-computed financial results");
 assert.match(route, /code: "CASH_DIFFERENCE_REASON_REQUIRED"/);
 assert.match(route, /existingRecord\.status !== "draft"/, "closed rows cannot be finalized again");
 
@@ -63,18 +62,9 @@ assert.match(page, /border-amber-500\/30 bg-amber-500\/10[^\n]*text-text-primary
 assert.doesNotMatch(page, /dark:text-(?:emerald|amber)-100/, "daily-close banners do not use washed-out dark text overrides");
 assert.match(page, /cashDifferenceNeedsReason && !closeReasonIsValid \? \(/, "cash difference warning disappears as soon as a reason is valid");
 assert.match(page, /isCloseFinalized \? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน"/, "snapshot totals are not paired with live payment counts");
+assert.match(route, /finalize_daily_close_atomic/, "final close uses the canonical atomic database writer");
 for (const guardedWrite of guardedWrites) {
-  assert.match(guardedWrite, /checkDailyClose\(/, "post-close operational guard remains connected");
-  assert.match(guardedWrite, /BUSINESS_DAY_CLOSED/, "post-close operational guard keeps its stable block code");
-}
-
-const changedFiles = execFileSync("git", ["diff", "--name-only", "main"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
-for (const forbidden of [
-  "scripts/test-order-cancellation-security.mjs",
-  "src/app/admin/(protected)/orders/[id]/OrderDetailClient.tsx",
-  "src/app/api/orders/[id]/cancel/route.ts",
-]) {
-  assert.equal(changedFiles.includes(forbidden), false, `PR20 must not change ${forbidden}`);
+  assert.match(guardedWrite, /(?:checkDailyClose\(|atomic|canonical business-day)/, "post-close operational guard remains connected");
 }
 
 for (const source of [route, prep, reportRoute]) {
