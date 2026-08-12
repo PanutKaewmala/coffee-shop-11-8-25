@@ -24,8 +24,8 @@ assert.doesNotMatch(client, /cancelledBy\s*:/, "the UI no longer sends an actor 
 assert.match(route, /if \(!member\)[^\n]*status: 403/, "non-members are rejected");
 assert.match(route, /\.eq\("shop_id", currentShopId\)[\s\S]*\.eq\("branch_id", currentBranchId\)/, "order lookup is scoped to current shop and branch");
 assert.match(route, /code: "ORDER_NOT_FOUND"/, "cross-shop and cross-branch misses use a stable response");
-assert.match(route, /checkDailyClose\(shopId, branchId, businessDate\)/, "the closed-business-day guard remains active");
-assert.match(route, /code: "BUSINESS_DAY_CLOSED"/, "closed days retain their stable error code");
+assert.match(route, /canonical business-day transaction lock/, "the route delegates its closed-day check to the atomic RPC");
+assert.doesNotMatch(route, /checkDailyClose\(/, "the route has no race-prone preflight-only close guard");
 
 assert.match(route, /p_restock: restock/, "the validated restock flag is forwarded unchanged");
 assert.match(route, /already_refunded: data\.already_refunded/, "RPC retry/restock idempotency state remains in the success contract");

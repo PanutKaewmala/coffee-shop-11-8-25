@@ -32,9 +32,9 @@ const cashMovementRoute = readFileSync(new URL("../src/app/api/cash-movements/ro
 const reasonConstraintMigration = readFileSync(new URL("../supabase/migrations/20260805083000_update_cash_movements_reason_check_for_categories.sql", import.meta.url), "utf8");
 
 assert.match(dailyClosePage, /router\.push\(href\)/, "ingredient restock intent navigates from daily close client");
-assert.match(cashMovementRoute, /console\.error\("cash_movement_insert_failed"/, "server logs raw insert failures for debugging");
-assert.match(cashMovementRoute, /\{ error: "Failed to create cash movement", code: "CASH_MOVEMENT_INSERT_FAILED" \}/, "API returns sanitized insert failure without leaking Supabase details");
-assert.doesNotMatch(cashMovementRoute, /\{ error: insErr\?\.message/, "API does not return raw Supabase insert errors to clients");
+assert.match(cashMovementRoute, /unexpectedServerErrorResponse\("cash_movement_atomic_insert_failed"/, "server logs atomic insert failures for debugging");
+assert.match(cashMovementRoute, /create_cash_movement_atomic/, "cash movements use the atomic database writer");
+assert.match(cashMovementRoute, /cash_movement_atomic_insert_failed/, "atomic failures use the sanitized server error path");
 assert.match(cashMovementRoute, /\{ error: reasonValidation\.error \}/, "normal policy validation errors still return before insert");
 assert.match(cashMovementRoute, /code: "BUSINESS_DAY_CLOSED"/, "closed-day guard response is still preserved");
 assert.doesNotMatch(cashMovementRoute, /error: [a-zA-Z]+Err\.message|error: [a-zA-Z]+\.message|const message = e instanceof Error/, "unexpected route errors are not returned as raw messages");
