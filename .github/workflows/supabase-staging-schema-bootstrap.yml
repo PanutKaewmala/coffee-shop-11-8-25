@@ -19,28 +19,36 @@ concurrency:
 
 jobs:
   bootstrap-staging-schema:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: talvo-staging
     env:
+      EXPECTED_PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
       EXPECTED_STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Require main recovery workflow and exact confirmation
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Dispatch this recovery workflow from main only"
+            exit 1
+          }
+          [[ "$CONFIRMATION" == "BOOTSTRAP_STAGING" ]] || {
+            echo "Confirmation text does not match BOOTSTRAP_STAGING"
+            exit 1
+          }
 
       - name: Validate secrets and prove production/staging identity
         env:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
-          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-
-          if [ "$CONFIRMATION" != "BOOTSTRAP_STAGING" ]; then
-            echo "Confirmation text does not match BOOTSTRAP_STAGING"
-            exit 1
-          fi
 
           for name in PRODUCTION_DATABASE_URL STAGING_DATABASE_URL; do
             value="${!name:-}"
@@ -50,10 +58,13 @@ jobs:
             fi
           done
 
-          if [[ ! "${EXPECTED_STAGING_PROJECT_REF:-}" =~ ^[a-z0-9]+$ ]]; then
-            echo "talvo-staging must define STAGING_PROJECT_REF"
-            exit 1
-          fi
+          for name in EXPECTED_PRODUCTION_PROJECT_REF EXPECTED_STAGING_PROJECT_REF; do
+            value="${!name:-}"
+            [[ "$value" =~ ^[a-z0-9]+$ ]] || {
+              echo "talvo-staging must define valid PRODUCTION_PROJECT_REF and STAGING_PROJECT_REF variables"
+              exit 1
+            }
+          done
 
           python3 - <<'PY'
           import os
@@ -89,6 +100,7 @@ jobs:
               "Production",
               os.environ["PRODUCTION_DATABASE_URL"],
               EXPECTED_PRODUCTION_HOST,
+              os.environ["EXPECTED_PRODUCTION_PROJECT_REF"],
           )
           staging = inspect(
               "Staging",
@@ -114,9 +126,8 @@ jobs:
 
           docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            -e PGOPTIONS="-c default_transaction_read_only=on" \
             postgres:17-alpine \
-            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select 1" >/dev/null'
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "begin transaction read only; select 1; commit" >/dev/null'
 
           docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
@@ -126,7 +137,7 @@ jobs:
           echo "Production read-only connection: OK"
           echo "Staging connection: OK"
 
-      - name: Preflight staging is empty for application tables
+      - name: Prove staging has no existing application objects
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
@@ -135,29 +146,68 @@ jobs:
           mkdir -p "$workdir"
 
           cat > "$workdir/staging-preflight.sql" <<'SQL'
-          select count(*)
-          from information_schema.tables
-          where table_schema = 'public'
-            and table_name in (
-              'shops', 'branch', 'shop_members', 'profiles', 'menu',
-              'menu_variants', 'menu_serve_types', 'ingredients', 'recipe_items',
-              'orders', 'order_items', 'stock_logs', 'pos_idempotency',
-              'daily_closes', 'cash_movements'
-            );
+          select concat_ws('|',
+            (to_regnamespace('talvo') is not null)::text,
+            (
+              select count(*)
+              from pg_class c
+              join pg_namespace n on n.oid=c.relnamespace
+              where n.nspname='public'
+                and c.relkind in ('r','p','v','m','S','f')
+                and not exists(
+                  select 1
+                  from pg_depend d
+                  where d.classid='pg_class'::regclass
+                    and d.objid=c.oid
+                    and d.deptype='e'
+                )
+            )::text,
+            (
+              select count(*)
+              from pg_proc p
+              join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public'
+                and not exists(
+                  select 1
+                  from pg_depend d
+                  where d.classid='pg_proc'::regclass
+                    and d.objid=p.oid
+                    and d.deptype='e'
+                )
+            )::text,
+            (
+              select count(*)
+              from pg_type t
+              join pg_namespace n on n.oid=t.typnamespace
+              where n.nspname='public'
+                and t.typtype in ('b','d','e','m','r')
+                and not exists(
+                  select 1
+                  from pg_depend d
+                  where d.classid='pg_type'::regclass
+                    and d.objid=t.oid
+                    and d.deptype='e'
+                )
+            )::text
+          );
           SQL
 
-          existing="$(docker run --rm \
+          state="$(docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
             -v "$workdir:/work:ro" \
             postgres:17-alpine \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/staging-preflight.sql')"
 
-          if [ "$existing" != "0" ]; then
-            echo "Staging already contains $existing application table(s); refusing to restore over an existing baseline"
+          IFS='|' read -r talvo_present public_relations public_functions public_types <<< "$state"
+          [[ "$talvo_present" == "false" &&
+             "$public_relations" == "0" &&
+             "$public_functions" == "0" &&
+             "$public_types" == "0" ]] || {
+            echo "Staging is not an empty recovery target: talvo=$talvo_present relations=$public_relations functions=$public_functions types=$public_types"
             exit 1
-          fi
+          }
 
-          echo "Staging application-table preflight: empty"
+          echo "Staging recovery-target preflight: no TALVO schema or non-extension public objects"
 
       - name: Refuse an incomplete public-only recovery baseline
         env:
@@ -167,6 +217,7 @@ jobs:
           workdir="$RUNNER_TEMP/coffee-saas-staging-bootstrap"
 
           cat > "$workdir/external-trigger-count.sql" <<'SQL'
+          begin transaction read only;
           select count(*)
           from pg_trigger t
           join pg_class c on c.oid = t.tgrelid
@@ -176,14 +227,14 @@ jobs:
           where not t.tgisinternal
             and table_ns.nspname in ('auth', 'storage')
             and fn_ns.nspname = 'public';
+          commit;
           SQL
 
           count="$(docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            -e PGOPTIONS="-c default_transaction_read_only=on" \
             -v "$workdir:/work:ro" \
             postgres:17-alpine \
-            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/external-trigger-count.sql')"
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atq -f /work/external-trigger-count.sql')"
 
           if [ "$count" != "0" ]; then
             echo "Production has $count public-function trigger(s) on auth/storage tables; refusing incomplete baseline"
@@ -192,9 +243,8 @@ jobs:
 
           talvo_schema_present="$(docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            -e PGOPTIONS="-c default_transaction_read_only=on" \
             postgres:17-alpine \
-            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select exists(select 1 from pg_namespace where nspname = '\''talvo'\'')"')"
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "begin transaction read only; select exists(select 1 from pg_namespace where nspname = '\''talvo'\''); commit"')"
 
           if [ "$talvo_schema_present" != "f" ]; then
             echo "Production already contains the TALVO schema; this public-only recovery workflow is intentionally blocked"
@@ -214,7 +264,6 @@ jobs:
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            -e PGOPTIONS="-c default_transaction_read_only=on" \
             -v "$workdir:/work" \
             postgres:17-alpine \
             sh -ec 'pg_dump --schema-only --schema=public --no-owner --dbname="$DATABASE_URL" --file=/work/production-public-schema.sql'

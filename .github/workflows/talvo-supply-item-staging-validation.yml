@@ -233,21 +233,48 @@ jobs:
             echo 'FAIL migration may not contain psql backslash commands'
             exit 1
           fi
-          awk '
-            /^[[:space:]]*--/ { next }
-            /\\/ {
-              line=$0
-              sub(/^[[:space:]]*/, "", line)
-              if (line !~ /^\\(set|if|else|endif|echo|quit|gset)([[:space:]]|$)/) {
-                print FNR ":" $0
-                unsafe=1
-              }
-            }
-            END { exit unsafe ? 1 : 0 }
-          ' "$INTEGRATION_TEST" || {
-            echo 'FAIL integration test contains a non-allowlisted psql backslash command'
-            exit 1
-          }
+          python3 - "$INTEGRATION_TEST" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          expected_meta_commands = [
+              r"\set ON_ERROR_STOP on",
+              r"\if :{?talvo_business_id}",
+              r"\else",
+              r"\echo 'talvo_business_id is required'",
+              r"\quit",
+              r"\endif",
+              r"\if :{?talvo_actor_id}",
+              r"\else",
+              r"\echo 'talvo_actor_id is required'",
+              r"\quit",
+              r"\endif",
+              r"\gset",
+              r"\echo 'TALVO CreateSupplyItem integration contract passed (transaction rolled back)'",
+          ]
+          found_meta_commands = []
+          for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+              stripped = line.strip()
+              if stripped.startswith("--"):
+                  continue
+              if "`" in line:
+                  raise SystemExit(
+                      f"FAIL integration test line {line_number}: psql backquote shell expansion is forbidden"
+                  )
+              if "\\" in line:
+                  if not stripped.startswith("\\"):
+                      raise SystemExit(
+                          f"FAIL integration test line {line_number}: backslash is allowed only in an exact meta-command"
+                      )
+                  found_meta_commands.append(stripped)
+
+          if found_meta_commands != expected_meta_commands:
+              raise SystemExit(
+                  "FAIL integration test psql meta-command sequence differs from the reviewed contract"
+              )
+          print("PASS integration test has the exact non-shell psql meta-command contract")
+          PY
           sha256sum "$MIGRATION" "$INTEGRATION_TEST"
           migration_sha256="$(sha256sum "$MIGRATION" | awk '{print $1}')"
           [[ "$migration_sha256" =~ ^[0-9a-f]{64}$ ]]
@@ -288,14 +315,15 @@ jobs:
             exists(
               select 1 from information_schema.columns
               where table_schema='public' and table_name='branch' and column_name='is_active'
-            )::text
+            )::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is not null)::text
           );
           SQL
           )"
-          if [[ "$state" == "false|false|false|false|false|false" ]]; then
+          if [[ "$state" == "false|false|false|false|false|false|false" ]]; then
             echo "TALVO_MIGRATION_STATE=PRE_MIGRATION" >> "$GITHUB_ENV"
             echo "PASS migration state: PRE_MIGRATION"
-          elif [[ "$state" == "true|true|true|true|true|true" ]]; then
+          elif [[ "$state" == "true|true|true|true|true|true|true" ]]; then
             stored_sha256="$(printf "select coalesce((select source_sha256 from talvo.schema_revisions where version='%s'),'');\n" "$MIGRATION_VERSION" | psql_staging)"
             [[ "$stored_sha256" == "$TALVO_MIGRATION_SHA256" ]] || {
               echo "FAIL migration checksum: staging=$stored_sha256 target=$TALVO_MIGRATION_SHA256"
@@ -315,6 +343,7 @@ jobs:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
+          echo "TALVO_MIGRATION_ATTEMPTED_THIS_RUN=true" >> "$GITHUB_ENV"
           {
             cat "$MIGRATION"
             printf '\n'
@@ -504,13 +533,19 @@ jobs:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
-          docker run --rm -i \
+          output="$(docker run --rm -i \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
             -e SHOP_ID -e OWNER_ID \
             -v "$PWD:/repo:ro" \
             postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
               -v talvo_business_id="$SHOP_ID" -v talvo_actor_id="$OWNER_ID" \
-              -f "/repo/$1"' sh "$INTEGRATION_TEST"
+              -f "/repo/$1"' sh "$INTEGRATION_TEST")"
+          printf '%s\n' "$output"
+          [[ "$(printf '%s\n' "$output" | tail -n1)" == \
+            "TALVO CreateSupplyItem integration contract passed (transaction rolled back)" ]] || {
+            echo "FAIL integration contract did not reach its reviewed completion marker"
+            exit 1
+          }
 
       - name: Run TALVO idempotency and namespace concurrency races
         shell: bash
@@ -696,3 +731,150 @@ jobs:
               -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
               -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"'
           echo "PASS cleanup: TALVO fixture shop $SHOP_ID removed"
+
+      - name: Recover a migration applied by this failed run
+        if: ${{ always() && env.TALVO_MIGRATION_ATTEMPTED_THIS_RUN == 'true' && (failure() || cancelled()) }}
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          [[ "${STAGING_IDENTITY_VALIDATED:-}" == 'true' ]] || {
+            echo "FAIL recovery refused: staging identity was not validated"
+            exit 1
+          }
+
+          state="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (to_regnamespace('talvo') is not null)::text,
+            (to_regclass('talvo.schema_revisions') is not null)::text,
+            (to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is not null)::text,
+            exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+            )::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is not null)::text,
+            exists(
+              select 1 from pg_trigger
+              where tgrelid='public.branch'::regclass
+                and tgname='talvo_supply_item_integrity_from_branch'
+            )::text
+          );
+          SQL
+          )"
+
+          if [[ "$state" == "false|false|false|false|false|false" ]]; then
+            echo "PASS recovery: failed migration transaction left no TALVO state"
+            exit 0
+          fi
+          [[ "$state" == "true|true|true|true|true|true" ]] || {
+            echo "FAIL recovery refused: TALVO state is partial or externally modified ($state)"
+            exit 1
+          }
+
+          revision_state="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e MIGRATION_VERSION -e TALVO_MIGRATION_SHA256 \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq \
+              -v migration_version="$MIGRATION_VERSION" \
+              -v migration_sha256="$TALVO_MIGRATION_SHA256"' <<'SQL'
+          select
+            count(*)::text || '|' ||
+            count(*) filter (
+              where version=:'migration_version'
+                and source_sha256=:'migration_sha256'
+            )::text
+          from talvo.schema_revisions;
+          SQL
+          )"
+          [[ "$revision_state" == "1|1" ]] || {
+            echo "FAIL recovery refused: schema revision does not exactly match this run ($revision_state)"
+            exit 1
+          }
+
+          docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e MIGRATION_VERSION -e TALVO_MIGRATION_SHA256 \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e OTHER_OWNER_ID \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v migration_version="$MIGRATION_VERSION" \
+              -v migration_sha256="$TALVO_MIGRATION_SHA256" \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"' <<'SQL'
+          select set_config('talvo.recovery_shop', :'shop', false);
+          select set_config('talvo.recovery_version', :'migration_version', false);
+          select set_config('talvo.recovery_sha256', :'migration_sha256', false);
+
+          begin;
+          do $guard$
+          begin
+            if (select count(*) from talvo.schema_revisions) <> 1
+               or not exists(
+                 select 1
+                 from talvo.schema_revisions
+                 where version=current_setting('talvo.recovery_version')
+                   and source_sha256=current_setting('talvo.recovery_sha256')
+               ) then
+              raise exception 'RECOVERY_REVISION_CHANGED';
+            end if;
+
+            if exists(
+              select 1 from talvo.command_executions where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.supply_items where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_expiry_policies where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_expiry_policy_versions where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_lots where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.inventory_locations where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.inventory_balances where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.audit_events where business_id<>current_setting('talvo.recovery_shop')::uuid
+            ) then
+              raise exception 'RECOVERY_REFUSED_NON_FIXTURE_TALVO_DATA';
+            end if;
+          end
+          $guard$;
+
+          drop function public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text);
+          drop trigger talvo_supply_item_integrity_from_branch on public.branch;
+          drop schema talvo cascade;
+          drop index public.branch_shop_id_id_uidx;
+
+          alter table public.branch disable trigger trg_prevent_delete_last_branch;
+          delete from public.shop_members
+            where shop_id=:'shop' or user_id in (:'owner', :'other_owner');
+          delete from public.branch
+            where shop_id=:'shop' or id in (:'branch', :'other_branch');
+          delete from public.shops where id=:'shop';
+          delete from auth.users where id in (:'owner', :'other_owner');
+          alter table public.branch enable trigger trg_prevent_delete_last_branch;
+          alter table public.branch drop column is_active;
+          commit;
+          SQL
+
+          post_state="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            postgres:17 sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (to_regnamespace('talvo') is null)::text,
+            (to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is null)::text,
+            (not exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+            ))::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is null)::text,
+            exists(
+              select 1 from pg_trigger
+              where tgrelid='public.branch'::regclass
+                and tgname='trg_prevent_delete_last_branch'
+                and tgenabled='O'
+            )::text
+          );
+          SQL
+          )"
+          [[ "$post_state" == "true|true|true|true|true" ]] || {
+            echo "FAIL recovery verification: $post_state"
+            exit 1
+          }
+
+          echo "PASS recovery: failed-run TALVO migration and deterministic fixtures removed"
