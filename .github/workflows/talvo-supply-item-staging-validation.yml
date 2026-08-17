@@ -16,7 +16,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: talvo-supply-item-staging-validation
+  # Every workflow that mutates the shared staging database must use this
+  # repository-wide lock. UUID isolation is not enough because migrations and
+  # global triggers still share the same PostgreSQL catalogs and tables.
+  group: staging-database-mutation
   cancel-in-progress: false
 
 jobs:

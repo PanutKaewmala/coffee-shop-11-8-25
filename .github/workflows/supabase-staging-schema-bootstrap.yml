@@ -1,4 +1,4 @@
-name: Supabase Staging Schema Bootstrap
+name: Supabase Staging Schema Bootstrap (Recovery Only)
 
 on:
   workflow_dispatch:
@@ -11,10 +11,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Serialize recovery/bootstrap work with TALVO validation and every future
+  # workflow that mutates the shared staging database.
+  group: staging-database-mutation
+  cancel-in-progress: false
+
 jobs:
   bootstrap-staging-schema:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: talvo-staging
+    env:
+      EXPECTED_STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
 
     steps:
       - name: Check out repository
@@ -41,6 +50,11 @@ jobs:
             fi
           done
 
+          if [[ ! "${EXPECTED_STAGING_PROJECT_REF:-}" =~ ^[a-z0-9]+$ ]]; then
+            echo "talvo-staging must define STAGING_PROJECT_REF"
+            exit 1
+          fi
+
           python3 - <<'PY'
           import os
           import re
@@ -49,7 +63,7 @@ jobs:
           EXPECTED_PRODUCTION_HOST = "aws-1-ap-southeast-1.pooler.supabase.com"
           EXPECTED_STAGING_HOST = "aws-0-ap-southeast-2.pooler.supabase.com"
 
-          def inspect(label: str, value: str, expected_host: str):
+          def inspect(label: str, value: str, expected_host: str, expected_project_ref: str | None = None):
               parsed = urlparse(value)
               username = unquote(parsed.username or "")
               hostname = (parsed.hostname or "").lower()
@@ -66,6 +80,8 @@ jobs:
                   raise SystemExit(f"{label} must use the Session pooler on port 5432")
               if database != "postgres":
                   raise SystemExit(f"{label} database must be postgres")
+              if expected_project_ref is not None and username != f"postgres.{expected_project_ref}":
+                  raise SystemExit(f"{label} project ref is not the approved staging project")
 
               return hostname, port, username, database
 
@@ -78,6 +94,7 @@ jobs:
               "Staging",
               os.environ["STAGING_DATABASE_URL"],
               EXPECTED_STAGING_HOST,
+              os.environ["EXPECTED_STAGING_PROJECT_REF"],
           )
 
           if production == staging:
@@ -142,7 +159,7 @@ jobs:
 
           echo "Staging application-table preflight: empty"
 
-      - name: Check for application triggers outside public schema
+      - name: Refuse an incomplete public-only recovery baseline
         env:
           PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
@@ -173,7 +190,19 @@ jobs:
             exit 1
           fi
 
+          talvo_schema_present="$(docker run --rm \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            postgres:17-alpine \
+            sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select exists(select 1 from pg_namespace where nspname = '\''talvo'\'')"')"
+
+          if [ "$talvo_schema_present" != "f" ]; then
+            echo "Production already contains the TALVO schema; this public-only recovery workflow is intentionally blocked"
+            exit 1
+          fi
+
           echo "No public-function triggers on auth/storage tables: OK"
+          echo "No TALVO schema omitted from the recovery baseline: OK"
 
       - name: Dump production public schema only
         env:
