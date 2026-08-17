@@ -820,6 +820,63 @@ jobs:
               raise exception 'RECOVERY_REVISION_CHANGED';
             end if;
 
+            if (
+                 select count(*)
+                 from pg_class c
+                 join pg_namespace n on n.oid=c.relnamespace
+                 where n.nspname='talvo' and c.relkind in ('r','p')
+               ) <> 11
+               or exists(
+                 select 1
+                 from pg_class c
+                 join pg_namespace n on n.oid=c.relnamespace
+                 where n.nspname='talvo'
+                   and c.relkind in ('r','p')
+                   and c.relname not in (
+                     'schema_revisions','units','role_capabilities','command_executions',
+                     'supply_items','ingredient_expiry_policies',
+                     'ingredient_expiry_policy_versions','ingredient_lots',
+                     'inventory_locations','inventory_balances','audit_events'
+                   )
+               )
+               or (
+                 select count(*)
+                 from pg_proc p
+                 join pg_namespace n on n.oid=p.pronamespace
+                 where n.nspname='talvo'
+               ) <> 2
+               or exists(
+                 select 1
+                 from pg_proc p
+                 join pg_namespace n on n.oid=p.pronamespace
+                 where n.nspname='talvo'
+                   and p.proname not in (
+                     'reject_immutable_event_mutation',
+                     'assert_supply_item_integrity'
+                   )
+               ) then
+              raise exception 'RECOVERY_REFUSED_MODIFIED_TALVO_SCHEMA';
+            end if;
+
+            if (select count(*) from talvo.units) <> 3
+               or (
+                 select count(*)
+                 from talvo.units
+                 where (id,dimension,symbol,decimal_scale) in (
+                   ('10000000-0000-4000-8000-000000000001'::uuid,'VOLUME','ml',3),
+                   ('10000000-0000-4000-8000-000000000002'::uuid,'MASS','g',3),
+                   ('10000000-0000-4000-8000-000000000003'::uuid,'COUNT','piece',0)
+                 )
+               ) <> 3
+               or (select count(*) from talvo.role_capabilities) <> 1
+               or not exists(
+                 select 1
+                 from talvo.role_capabilities
+                 where role='owner' and capability='inventory.supply_item.create'
+               ) then
+              raise exception 'RECOVERY_REFUSED_MODIFIED_CANONICAL_DATA';
+            end if;
+
             if exists(
               select 1 from talvo.command_executions where business_id<>current_setting('talvo.recovery_shop')::uuid
               union all select 1 from talvo.supply_items where business_id<>current_setting('talvo.recovery_shop')::uuid
