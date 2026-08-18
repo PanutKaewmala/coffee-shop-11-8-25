@@ -74,6 +74,7 @@ jobs:
             .github/scripts/talvo-recovery-manifest.sql \
             supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql \
             supabase/tests/talvo_create_supply_item_integration.sql \
+            scripts/test-talvo-staging-workflow.mjs \
             scripts/test-talvo-create-supply-item.mjs; do
             [[ -f "$path" && ! -L "$path" ]] || {
               echo "FAIL target contract must be a regular file: $path"
@@ -83,6 +84,7 @@ jobs:
           sha256sum \
             supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql \
             supabase/tests/talvo_create_supply_item_integration.sql
+          node scripts/test-talvo-staging-workflow.mjs
           node scripts/test-talvo-create-supply-item.mjs
           [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
             echo "FAIL target static test mutated its checkout"
@@ -506,17 +508,17 @@ jobs:
           do $verify$
           declare
             failures text[] := array[]::text[];
-            table_name text;
+            checked_table_name text;
           begin
-            foreach table_name in array array[
+            foreach checked_table_name in array array[
               'schema_revisions','units','role_capabilities','command_executions','supply_items',
               'ingredient_expiry_policies','ingredient_expiry_policy_versions',
               'ingredient_lots','inventory_locations','inventory_balances','audit_events'
             ] loop
-              if to_regclass(format('talvo.%I',table_name)) is null then
-                failures:=array_append(failures,'missing table '||table_name);
-              elsif not (select c.relrowsecurity from pg_class c where c.oid=format('talvo.%I',table_name)::regclass) then
-                failures:=array_append(failures,'RLS disabled '||table_name);
+              if to_regclass(format('talvo.%I',checked_table_name)) is null then
+                failures:=array_append(failures,'missing table '||checked_table_name);
+              elsif not (select c.relrowsecurity from pg_class c where c.oid=format('talvo.%I',checked_table_name)::regclass) then
+                failures:=array_append(failures,'RLS disabled '||checked_table_name);
               end if;
             end loop;
 
@@ -543,9 +545,9 @@ jobs:
             end if;
 
             if not exists(
-              select 1 from information_schema.columns
-              where table_schema='public' and table_name='branch' and column_name='is_active'
-                and is_nullable='NO' and column_default in ('false','false::boolean')
+              select 1 from information_schema.columns isc
+              where isc.table_schema='public' and isc.table_name='branch' and isc.column_name='is_active'
+                and isc.is_nullable='NO' and isc.column_default in ('false','false::boolean')
             ) then failures:=array_append(failures,'branch is_active is not fail-closed'); end if;
 
             if (select count(*) from talvo.units where symbol in ('ml','g','piece')) <> 3 then
@@ -930,17 +932,17 @@ jobs:
           SQL
             cat "$RECOVERY_MANIFEST_SQL"
             cat <<'SQL'
-          do $settings$
-          begin
-            perform set_config('talvo.recovery_shop', :'shop', false);
-            perform set_config('talvo.recovery_version', :'migration_version', false);
-            perform set_config('talvo.recovery_sha256', :'migration_sha256', false);
-            perform set_config('talvo.recovery_object_count', :'recovery_object_count', false);
-            perform set_config('talvo.recovery_manifest_sha256', :'recovery_manifest_sha256', false);
-            perform set_config('talvo.public_baseline_object_count', :'baseline_object_count', false);
-            perform set_config('talvo.public_baseline_sha256', :'baseline_sha256', false);
-          end
-          $settings$;
+          select set_config('talvo.recovery_shop', :'shop', false);
+          select set_config('talvo.recovery_branch', :'branch', false);
+          select set_config('talvo.recovery_other_branch', :'other_branch', false);
+          select set_config('talvo.recovery_owner', :'owner', false);
+          select set_config('talvo.recovery_other_owner', :'other_owner', false);
+          select set_config('talvo.recovery_version', :'migration_version', false);
+          select set_config('talvo.recovery_sha256', :'migration_sha256', false);
+          select set_config('talvo.recovery_object_count', :'recovery_object_count', false);
+          select set_config('talvo.recovery_manifest_sha256', :'recovery_manifest_sha256', false);
+          select set_config('talvo.public_baseline_object_count', :'baseline_object_count', false);
+          select set_config('talvo.public_baseline_sha256', :'baseline_sha256', false);
 
           do $guard$
           declare
@@ -1021,33 +1023,45 @@ jobs:
             end if;
             if exists(
               select 1 from public.branch
-              where id in (:'branch', :'other_branch')
+              where id in (
+                current_setting('talvo.recovery_branch')::uuid,
+                current_setting('talvo.recovery_other_branch')::uuid
+              )
                 and shop_id<>current_setting('talvo.recovery_shop')::uuid
             ) or exists(
               select 1 from public.branch
               where shop_id=current_setting('talvo.recovery_shop')::uuid
-                and id not in (:'branch', :'other_branch')
+                and id not in (
+                  current_setting('talvo.recovery_branch')::uuid,
+                  current_setting('talvo.recovery_other_branch')::uuid
+                )
             ) then
               raise exception 'RECOVERY_REFUSED_FIXTURE_BRANCH_NAMESPACE_COLLISION';
             end if;
             if exists(
               select 1 from public.shop_members
-              where user_id in (:'owner', :'other_owner')
+              where user_id in (
+                current_setting('talvo.recovery_owner')::uuid,
+                current_setting('talvo.recovery_other_owner')::uuid
+              )
                 and shop_id<>current_setting('talvo.recovery_shop')::uuid
             ) or exists(
               select 1 from public.shop_members
               where shop_id=current_setting('talvo.recovery_shop')::uuid
-                and user_id not in (:'owner', :'other_owner')
+                and user_id not in (
+                  current_setting('talvo.recovery_owner')::uuid,
+                  current_setting('talvo.recovery_other_owner')::uuid
+                )
             ) then
               raise exception 'RECOVERY_REFUSED_FIXTURE_MEMBER_NAMESPACE_COLLISION';
             end if;
             if exists(
               select 1 from auth.users
-              where id=:'owner'
+              where id=current_setting('talvo.recovery_owner')::uuid
                 and email is distinct from 'talvo-owner@example.invalid'
             ) or exists(
               select 1 from auth.users
-              where id=:'other_owner'
+              where id=current_setting('talvo.recovery_other_owner')::uuid
                 and email is distinct from 'talvo-owner-2@example.invalid'
             ) then
               raise exception 'RECOVERY_REFUSED_FIXTURE_AUTH_NAMESPACE_COLLISION';
