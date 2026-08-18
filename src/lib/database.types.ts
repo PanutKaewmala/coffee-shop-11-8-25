@@ -103,6 +103,7 @@ export type Database = {
           address: string | null
           created_at: string | null
           id: string
+          is_active: boolean
           is_primary: boolean | null
           map_url: string | null
           name: string
@@ -114,6 +115,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           id?: string
+          is_active?: boolean
           is_primary?: boolean | null
           map_url?: string | null
           name: string
@@ -125,6 +127,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           id?: string
+          is_active?: boolean
           is_primary?: boolean | null
           map_url?: string | null
           name?: string
@@ -1642,6 +1645,18 @@ export type Database = {
       }
       create_cash_movement_atomic: {
         Args: { p_amount: number; p_branch_id: string; p_business_date: string; p_note: string | null; p_reason: string; p_shop_id: string; p_type: string }
+        Returns: Json
+      }
+      create_talvo_supply_item: {
+        Args: {
+          p_base_unit_id: string
+          p_business_id: string
+          p_idempotency_key: string
+          p_initial_expiry_mode: string
+          p_is_lot_tracked: boolean
+          p_name: string
+          p_quantity_step: number
+        }
         Returns: Json
       }
       finalize_daily_close_atomic: {

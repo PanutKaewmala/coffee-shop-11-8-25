@@ -13,7 +13,8 @@
     "test:cash-movement-policy": "node scripts/test-cash-movement-policy.mjs",
     "test:order-cancellation-security": "node scripts/test-order-cancellation-security.mjs",
     "test:daily-close-flow": "node scripts/test-daily-close-flow.mjs",
-    "test:pos-atomic-checkout": "node scripts/test-pos-atomic-checkout.mjs"
+    "test:pos-atomic-checkout": "node scripts/test-pos-atomic-checkout.mjs",
+    "test:talvo-create-supply-item": "node scripts/test-talvo-create-supply-item.mjs"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",
