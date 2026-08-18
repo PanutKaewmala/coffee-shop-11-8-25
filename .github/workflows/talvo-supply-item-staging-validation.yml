@@ -1,0 +1,1155 @@
+name: Validate TALVO CreateSupplyItem on staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type VALIDATE_TALVO_SUPPLY_ITEM_STAGING"
+        required: true
+        type: string
+      target_sha:
+        description: "Exact commit SHA; must equal talvo-staging APPROVED_TALVO_TARGET_SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Every workflow that mutates the shared staging database must use this
+  # repository-wide lock. UUID isolation is not enough because migrations and
+  # global triggers still share the same PostgreSQL catalogs and tables.
+  group: staging-database-mutation
+  cancel-in-progress: false
+
+jobs:
+  verify-target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require main workflow, exact confirmation, and immutable target
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "FAIL: dispatch this workflow from main only"
+            exit 1
+          }
+          [[ "$CONFIRMATION" == "VALIDATE_TALVO_SUPPLY_ITEM_STAGING" ]] || {
+            echo "FAIL: confirmation text does not match"
+            exit 1
+          }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "FAIL: target_sha must be an exact lowercase 40-character commit SHA"
+            exit 1
+          }
+          echo "PASS guarded dispatch inputs"
+
+      - name: Check out exact target without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify target source in a secret-free job
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]] || {
+            echo "FAIL checked-out commit differs from target_sha"
+            exit 1
+          }
+          git cat-file -e "$GITHUB_SHA^{commit}"
+          git merge-base --is-ancestor "$GITHUB_SHA" "$TARGET_SHA" || {
+            echo "FAIL target_sha must contain the dispatched main commit"
+            exit 1
+          }
+          for path in \
+            .github/scripts/talvo-recovery-manifest.sql \
+            supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql \
+            supabase/tests/talvo_create_supply_item_integration.sql \
+            scripts/test-talvo-create-supply-item.mjs; do
+            [[ -f "$path" && ! -L "$path" ]] || {
+              echo "FAIL target contract must be a regular file: $path"
+              exit 1
+            }
+          done
+          sha256sum \
+            supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql \
+            supabase/tests/talvo_create_supply_item_integration.sql
+          node scripts/test-talvo-create-supply-item.mjs
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+            echo "FAIL target static test mutated its checkout"
+            git status --short
+            exit 1
+          }
+          echo "PASS target source verified without database secrets or persisted credentials"
+
+  validate-staging:
+    needs: verify-target
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: talvo-staging
+    env:
+      APPROVED_TALVO_TARGET_SHA: ${{ vars.APPROVED_TALVO_TARGET_SHA }}
+      EXPECTED_STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      EXPECTED_STAGING_HOST: aws-0-ap-southeast-2.pooler.supabase.com
+      REJECTED_PRODUCTION_HOST: aws-1-ap-southeast-1.pooler.supabase.com
+      POSTGRES_17_IMAGE: postgres:17.11-trixie@sha256:f86c774c7a51d0f05133f2ab70e4c384b589170458ab1df1ba83426d7cc30da7
+      MIGRATION: supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql
+      MIGRATION_VERSION: "20260817100000"
+      INTEGRATION_TEST: supabase/tests/talvo_create_supply_item_integration.sql
+      RECOVERY_MANIFEST_SQL: .github/scripts/talvo-recovery-manifest.sql
+      TALVO_DB_PGOPTIONS: "-c statement_timeout=120000 -c lock_timeout=45000 -c idle_in_transaction_session_timeout=120000"
+      SHOP_ID: 34000000-0000-4000-8000-000000000001
+      BRANCH_ID: 34000000-0000-4000-8000-000000000002
+      OTHER_BRANCH_ID: 34000000-0000-4000-8000-000000000003
+      OWNER_ID: 34000000-0000-4000-8000-000000000004
+      OTHER_OWNER_ID: 34000000-0000-4000-8000-000000000005
+      TALVO_FIXTURE_CLEANUP_SQL: |
+        select set_config('talvo_test.shop', :'shop', false);
+        select set_config('talvo_test.branch', :'branch', false);
+        select set_config('talvo_test.other_branch', :'other_branch', false);
+        select set_config('talvo_test.owner', :'owner', false);
+        select set_config('talvo_test.other_owner', :'other_owner', false);
+        do $fixture_namespace_guard$
+        begin
+          if exists(
+            select 1 from public.shops
+            where id=current_setting('talvo_test.shop')::uuid
+              and (
+                slug is distinct from 'talvo-supply-item-validation'
+                or name is distinct from 'TALVO staging validation'
+              )
+          ) then
+            raise exception 'TALVO_FIXTURE_SHOP_ID_COLLISION';
+          end if;
+          if exists(
+            select 1 from public.branch
+            where id in (
+              current_setting('talvo_test.branch')::uuid,
+              current_setting('talvo_test.other_branch')::uuid
+            )
+              and shop_id<>current_setting('talvo_test.shop')::uuid
+          ) or exists(
+            select 1 from public.branch
+            where shop_id=current_setting('talvo_test.shop')::uuid
+              and id not in (
+                current_setting('talvo_test.branch')::uuid,
+                current_setting('talvo_test.other_branch')::uuid
+              )
+          ) then
+            raise exception 'TALVO_FIXTURE_BRANCH_NAMESPACE_COLLISION';
+          end if;
+          if exists(
+            select 1 from public.shop_members
+            where user_id in (
+              current_setting('talvo_test.owner')::uuid,
+              current_setting('talvo_test.other_owner')::uuid
+            )
+              and shop_id<>current_setting('talvo_test.shop')::uuid
+          ) or exists(
+            select 1 from public.shop_members
+            where shop_id=current_setting('talvo_test.shop')::uuid
+              and user_id not in (
+                current_setting('talvo_test.owner')::uuid,
+                current_setting('talvo_test.other_owner')::uuid
+              )
+          ) then
+            raise exception 'TALVO_FIXTURE_MEMBER_NAMESPACE_COLLISION';
+          end if;
+          if exists(
+            select 1 from auth.users
+            where id=current_setting('talvo_test.owner')::uuid
+              and email is distinct from 'talvo-owner@example.invalid'
+          ) or exists(
+            select 1 from auth.users
+            where id=current_setting('talvo_test.other_owner')::uuid
+              and email is distinct from 'talvo-owner-2@example.invalid'
+          ) then
+            raise exception 'TALVO_FIXTURE_AUTH_NAMESPACE_COLLISION';
+          end if;
+        end
+        $fixture_namespace_guard$;
+        begin;
+        alter table talvo.audit_events enable trigger talvo_audit_events_immutable;
+        alter table talvo.audit_events disable trigger talvo_audit_events_immutable;
+        alter table public.branch disable trigger trg_prevent_delete_last_branch;
+        delete from talvo.audit_events where business_id=:'shop';
+        delete from talvo.inventory_balances where business_id=:'shop';
+        delete from talvo.ingredient_lots where business_id=:'shop';
+        delete from talvo.ingredient_expiry_policy_versions where business_id=:'shop';
+        delete from talvo.ingredient_expiry_policies where business_id=:'shop';
+        delete from talvo.supply_items where business_id=:'shop';
+        delete from talvo.command_executions where business_id=:'shop';
+        delete from talvo.inventory_locations where business_id=:'shop';
+        delete from public.shop_members
+          where shop_id=:'shop' and user_id in (:'owner', :'other_owner');
+        delete from public.branch
+          where shop_id=:'shop' and id in (:'branch', :'other_branch');
+        delete from public.shops
+          where id=:'shop' and slug='talvo-supply-item-validation';
+        delete from auth.users u
+          where (
+              (u.id=:'owner' and u.email='talvo-owner@example.invalid')
+              or (u.id=:'other_owner' and u.email='talvo-owner-2@example.invalid')
+            )
+            and not exists(
+              select 1 from public.shop_members sm where sm.user_id=u.id
+            );
+        alter table public.branch enable trigger trg_prevent_delete_last_branch;
+        alter table talvo.audit_events enable trigger talvo_audit_events_immutable;
+        commit;
+        do $cleanup_verification$
+        declare failures text[] := array[]::text[];
+        begin
+          if exists(select 1 from talvo.audit_events where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'audit_events'); end if;
+          if exists(select 1 from talvo.inventory_balances where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'inventory_balances'); end if;
+          if exists(select 1 from talvo.ingredient_lots where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'ingredient_lots'); end if;
+          if exists(select 1 from talvo.ingredient_expiry_policy_versions where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'expiry_policy_versions'); end if;
+          if exists(select 1 from talvo.ingredient_expiry_policies where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'expiry_policies'); end if;
+          if exists(select 1 from talvo.supply_items where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'supply_items'); end if;
+          if exists(select 1 from talvo.command_executions where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'command_executions'); end if;
+          if exists(select 1 from talvo.inventory_locations where business_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'inventory_locations'); end if;
+          if exists(select 1 from public.shops where id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'shops'); end if;
+          if exists(select 1 from public.branch where shop_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'branch'); end if;
+          if exists(select 1 from public.shop_members where shop_id=current_setting('talvo_test.shop')::uuid) then failures:=array_append(failures,'shop_members'); end if;
+          if exists(select 1 from auth.users where id in (current_setting('talvo_test.owner')::uuid,current_setting('talvo_test.other_owner')::uuid)) then failures:=array_append(failures,'auth.users'); end if;
+          if not exists(
+            select 1 from pg_trigger
+            where tgrelid='talvo.audit_events'::regclass
+              and tgname='talvo_audit_events_immutable' and tgenabled='O'
+          ) then failures:=array_append(failures,'audit immutable trigger disabled'); end if;
+          if not exists(
+            select 1 from pg_trigger
+            where tgrelid='public.branch'::regclass
+              and tgname='trg_prevent_delete_last_branch' and tgenabled='O'
+          ) then failures:=array_append(failures,'last-branch trigger disabled'); end if;
+          if cardinality(failures) <> 0 then
+            raise exception 'TALVO fixture cleanup failed: %', array_to_string(failures,', ');
+          end if;
+          raise notice 'PASS TALVO deterministic fixture cleanup';
+        end
+        $cleanup_verification$;
+
+    steps:
+      - name: Require the exact protected TALVO target
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${APPROVED_TALVO_TARGET_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "FAIL protected target: talvo-staging must define APPROVED_TALVO_TARGET_SHA"
+            exit 1
+          }
+          [[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]] || {
+            echo "FAIL protected target: target_sha is not the exact approved commit"
+            exit 1
+          }
+          echo "PASS exact protected TALVO target approved"
+
+      - name: Validate staging URL without connecting
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          [[ -n "${STAGING_DATABASE_URL:-}" ]] || {
+            echo "FAIL staging identity: STAGING_DATABASE_URL is not configured"
+            exit 1
+          }
+          [[ "${EXPECTED_STAGING_PROJECT_REF:-}" =~ ^[a-z0-9]+$ ]] || {
+            echo "FAIL staging identity: talvo-staging must define STAGING_PROJECT_REF"
+            exit 1
+          }
+          python3 - <<'PY'
+          import os
+          from urllib.parse import unquote, urlparse
+
+          parsed = urlparse(os.environ["STAGING_DATABASE_URL"])
+          username = unquote(parsed.username or "")
+          host = (parsed.hostname or "").lower()
+          port = parsed.port or 5432
+          database = parsed.path.lstrip("/")
+
+          if parsed.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit("FAIL staging identity: URL is not PostgreSQL")
+          if host == os.environ["REJECTED_PRODUCTION_HOST"]:
+              raise SystemExit("FAIL staging identity: production host explicitly rejected")
+          if host != os.environ["EXPECTED_STAGING_HOST"]:
+              raise SystemExit("FAIL staging identity: host is not the approved staging endpoint")
+          if port != 5432:
+              raise SystemExit("FAIL staging identity: Session pooler port must be 5432")
+          if database != "postgres":
+              raise SystemExit("FAIL staging identity: database must be postgres")
+          expected_username = "postgres." + os.environ["EXPECTED_STAGING_PROJECT_REF"]
+          if username != expected_username:
+              raise SystemExit("FAIL staging identity: project ref is not the approved staging project")
+
+          print("PASS confirmed exact staging project; production rejected")
+          PY
+          echo "STAGING_IDENTITY_VALIDATED=true" >> "$GITHUB_ENV"
+
+      - name: Check out exact target as database input only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable database inputs and compute migration checksum
+        shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]] || {
+            echo "FAIL checked-out commit differs from target_sha"
+            exit 1
+          }
+          [[ -f "$MIGRATION" && ! -L "$MIGRATION" ]]
+          [[ -f "$INTEGRATION_TEST" && ! -L "$INTEGRATION_TEST" ]]
+          [[ -f "$RECOVERY_MANIFEST_SQL" && ! -L "$RECOVERY_MANIFEST_SQL" ]]
+          if grep -n '\\' "$MIGRATION"; then
+            echo 'FAIL migration may not contain psql backslash commands'
+            exit 1
+          fi
+          python3 - "$INTEGRATION_TEST" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          expected_meta_commands = [
+              r"\set ON_ERROR_STOP on",
+              r"\if :{?talvo_business_id}",
+              r"\else",
+              r"\echo 'talvo_business_id is required'",
+              r"\quit",
+              r"\endif",
+              r"\if :{?talvo_actor_id}",
+              r"\else",
+              r"\echo 'talvo_actor_id is required'",
+              r"\quit",
+              r"\endif",
+              r"\gset",
+              r"\echo 'TALVO CreateSupplyItem integration contract passed (transaction rolled back)'",
+          ]
+          found_meta_commands = []
+          for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+              stripped = line.strip()
+              if stripped.startswith("--"):
+                  continue
+              if "`" in line:
+                  raise SystemExit(
+                      f"FAIL integration test line {line_number}: psql backquote shell expansion is forbidden"
+                  )
+              if "\\" in line:
+                  if not stripped.startswith("\\"):
+                      raise SystemExit(
+                          f"FAIL integration test line {line_number}: backslash is allowed only in an exact meta-command"
+                      )
+                  found_meta_commands.append(stripped)
+
+          if found_meta_commands != expected_meta_commands:
+              raise SystemExit(
+                  "FAIL integration test psql meta-command sequence differs from the reviewed contract"
+              )
+          print("PASS integration test has the exact non-shell psql meta-command contract")
+          PY
+          sha256sum "$MIGRATION" "$INTEGRATION_TEST"
+          migration_sha256="$(sha256sum "$MIGRATION" | awk '{print $1}')"
+          [[ "$migration_sha256" =~ ^[0-9a-f]{64}$ ]]
+          echo "TALVO_MIGRATION_SHA256=$migration_sha256" >> "$GITHUB_ENV"
+          echo "PASS immutable database inputs; migration sha256=$migration_sha256"
+
+      - name: Read-only staging preflight and migration-state classification
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql_staging() {
+            docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" "$POSTGRES_17_IMAGE" \
+              sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq'
+          }
+          check_true() {
+            local label="$1" result
+            result="$(printf '%s\n' "$2" | psql_staging)"
+            [[ "$result" == "t" ]] || { echo "FAIL preflight: $label"; exit 1; }
+            echo "PASS preflight: $label"
+          }
+          check_true "connection" "select current_database()='postgres' and inet_server_addr() is not null;"
+          for table in shops branch shop_members; do
+            check_true "public.$table exists" "select to_regclass('public.$table') is not null;"
+          done
+          check_true "auth.uid() exists" "select to_regprocedure('auth.uid()') is not null;"
+          check_true "pgcrypto digest exists" "select to_regprocedure('extensions.digest(bytea,text)') is not null;"
+          check_true "last-branch protection exists" "select exists(select 1 from pg_trigger where tgrelid='public.branch'::regclass and tgname='trg_prevent_delete_last_branch' and not tgisinternal);"
+
+          state="$(cat <<'SQL' | psql_staging
+          select concat_ws('|',
+            (to_regnamespace('talvo') is not null)::text,
+            (to_regclass('talvo.schema_revisions') is not null)::text,
+            (to_regclass('talvo.supply_items') is not null)::text,
+            (to_regclass('talvo.command_executions') is not null)::text,
+            (to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is not null)::text,
+            exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+            )::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is not null)::text
+          );
+          SQL
+          )"
+          if [[ "$state" == "false|false|false|false|false|false|false" ]]; then
+            baseline_manifest="$({
+              cat <<'SQL'
+          do $scope$
+          begin
+            perform set_config('talvo.manifest_scope','public-baseline',false);
+          end
+          $scope$;
+          SQL
+              cat "$RECOVERY_MANIFEST_SQL"
+              cat <<'SQL'
+          select object_count::text||'|'||manifest_sha256
+          from talvo_recovery_manifest;
+          SQL
+            } | psql_staging)"
+            [[ "$baseline_manifest" =~ ^[0-9]+\|[0-9a-f]{64}$ ]] || {
+              echo "FAIL public baseline manifest: invalid result ($baseline_manifest)"
+              exit 1
+            }
+            IFS='|' read -r baseline_count baseline_sha256 <<< "$baseline_manifest"
+            echo "TALVO_PUBLIC_BASELINE_OBJECT_COUNT=$baseline_count" >> "$GITHUB_ENV"
+            echo "TALVO_PUBLIC_BASELINE_SHA256=$baseline_sha256" >> "$GITHUB_ENV"
+            echo "TALVO_MIGRATION_STATE=PRE_MIGRATION" >> "$GITHUB_ENV"
+            echo "PASS migration state: PRE_MIGRATION; public baseline objects=$baseline_count sha256=$baseline_sha256"
+          elif [[ "$state" == "true|true|true|true|true|true|true" ]]; then
+            stored_sha256="$(printf "select coalesce((select source_sha256 from talvo.schema_revisions where version='%s'),'');\n" "$MIGRATION_VERSION" | psql_staging)"
+            [[ "$stored_sha256" == "$TALVO_MIGRATION_SHA256" ]] || {
+              echo "FAIL migration checksum: staging=$stored_sha256 target=$TALVO_MIGRATION_SHA256"
+              exit 1
+            }
+            echo "TALVO_MIGRATION_STATE=FULLY_MIGRATED" >> "$GITHUB_ENV"
+            echo "PASS migration state: FULLY_MIGRATED with exact source checksum"
+          else
+            echo "FAIL migration state: PARTIAL_OR_UNKNOWN ($state)"
+            exit 1
+          fi
+
+      - name: Apply TALVO migration in one transaction
+        if: env.TALVO_MIGRATION_STATE == 'PRE_MIGRATION'
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "TALVO_MIGRATION_ATTEMPTED_THIS_RUN=true" >> "$GITHUB_ENV"
+          migration_manifest="$({
+            cat "$MIGRATION"
+            printf '\n'
+            cat <<'SQL'
+          insert into talvo.schema_revisions(version, source_sha256)
+          values (:'migration_version', :'migration_sha256');
+          do $scope$
+          begin
+            perform set_config('talvo.manifest_scope','talvo-post',false);
+          end
+          $scope$;
+          SQL
+            cat "$RECOVERY_MANIFEST_SQL"
+            cat <<'SQL'
+          select object_count::text||'|'||manifest_sha256
+          from talvo_recovery_manifest;
+          SQL
+          } | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e MIGRATION_VERSION \
+            -e TALVO_MIGRATION_SHA256 \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
+              -Atq \
+              -v migration_version="$MIGRATION_VERSION" \
+              -v migration_sha256="$TALVO_MIGRATION_SHA256"')"
+          migration_manifest="$(printf '%s\n' "$migration_manifest" | tail -n1)"
+          [[ "$migration_manifest" =~ ^[0-9]+\|[0-9a-f]{64}$ ]] || {
+            echo "FAIL TALVO recovery manifest: invalid result ($migration_manifest)"
+            exit 1
+          }
+          IFS='|' read -r schema_count schema_sha256 <<< "$migration_manifest"
+          echo "TALVO_RECOVERY_OBJECT_COUNT=$schema_count" >> "$GITHUB_ENV"
+          echo "TALVO_RECOVERY_MANIFEST_SHA256=$schema_sha256" >> "$GITHUB_ENV"
+          echo "PASS migration, source checksum, and recovery manifest committed atomically; objects=$schema_count sha256=$schema_sha256"
+
+      - name: Verify canonical schema, security, and constraints
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e MIGRATION_VERSION \
+            -e TALVO_MIGRATION_SHA256 \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq \
+              -v migration_version="$MIGRATION_VERSION" \
+              -v migration_sha256="$TALVO_MIGRATION_SHA256"' <<'SQL'
+          select set_config('talvo.verify_migration_version', :'migration_version', false);
+          select set_config('talvo.verify_migration_sha256', :'migration_sha256', false);
+          do $verify$
+          declare
+            failures text[] := array[]::text[];
+            table_name text;
+          begin
+            foreach table_name in array array[
+              'schema_revisions','units','role_capabilities','command_executions','supply_items',
+              'ingredient_expiry_policies','ingredient_expiry_policy_versions',
+              'ingredient_lots','inventory_locations','inventory_balances','audit_events'
+            ] loop
+              if to_regclass(format('talvo.%I',table_name)) is null then
+                failures:=array_append(failures,'missing table '||table_name);
+              elsif not (select c.relrowsecurity from pg_class c where c.oid=format('talvo.%I',table_name)::regclass) then
+                failures:=array_append(failures,'RLS disabled '||table_name);
+              end if;
+            end loop;
+
+            if to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is null then
+              failures:=array_append(failures,'CreateSupplyItem RPC missing');
+            elsif not (
+              select p.prosecdef and coalesce(p.proconfig,'{}') @> array['search_path=pg_catalog, pg_temp']
+              from pg_proc p
+              where p.oid='public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)'::regprocedure
+            ) then
+              failures:=array_append(failures,'CreateSupplyItem RPC not hardened');
+            end if;
+
+            if not has_function_privilege('authenticated','public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)','execute')
+               or has_function_privilege('anon','public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)','execute')
+               or has_function_privilege('service_role','public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)','execute') then
+              failures:=array_append(failures,'CreateSupplyItem RPC ACL mismatch');
+            end if;
+
+            if has_schema_privilege('anon','talvo','usage')
+               or has_schema_privilege('authenticated','talvo','usage')
+               or has_schema_privilege('service_role','talvo','usage') then
+              failures:=array_append(failures,'direct talvo schema access exposed');
+            end if;
+
+            if not exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+                and is_nullable='NO' and column_default in ('false','false::boolean')
+            ) then failures:=array_append(failures,'branch is_active is not fail-closed'); end if;
+
+            if (select count(*) from talvo.units where symbol in ('ml','g','piece')) <> 3 then
+              failures:=array_append(failures,'canonical unit seed incomplete');
+            end if;
+
+            if not exists(
+              select 1 from talvo.schema_revisions sr
+              where sr.version=current_setting('talvo.verify_migration_version')
+                and sr.source_sha256=current_setting('talvo.verify_migration_sha256')
+            ) then failures:=array_append(failures,'migration source checksum mismatch'); end if;
+
+            if not exists(
+              select 1 from pg_trigger
+              where tgrelid='public.branch'::regclass
+                and tgname='talvo_supply_item_integrity_from_branch'
+                and tgdeferrable and tginitdeferred
+            ) then failures:=array_append(failures,'branch integrity trigger missing'); end if;
+
+            if not exists(
+              select 1 from pg_constraint
+              where conrelid='talvo.command_executions'::regclass
+                and conname='talvo_command_executions_business_fk'
+                and condeferrable and condeferred
+            ) then failures:=array_append(failures,'execution business FK is not deferred'); end if;
+
+            if cardinality(failures) <> 0 then
+              raise exception 'TALVO structural verification failed: %', array_to_string(failures,', ');
+            end if;
+            raise notice 'PASS TALVO schema, ACL, RLS, branch fail-close, and deferred constraints';
+          end
+          $verify$;
+          SQL
+          echo "TALVO_CLEANUP_ARMED=true" >> "$GITHUB_ENV"
+          echo "PASS cleanup armed only after exact schema verification"
+
+      - name: Pre-clean deterministic TALVO fixtures
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$TALVO_FIXTURE_CLEANUP_SQL" | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e OTHER_OWNER_ID \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"'
+
+      - name: Create isolated TALVO fixtures atomically
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e OTHER_OWNER_ID \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"' <<'SQL'
+          select set_config('talvo_fixture.shop', :'shop', false);
+          select set_config('talvo_fixture.branch', :'branch', false);
+          begin;
+          insert into auth.users(
+            id,aud,role,email,encrypted_password,email_confirmed_at,
+            raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+          ) values
+            (:'owner','authenticated','authenticated','talvo-owner@example.invalid','',now(),'{}','{}',now(),now()),
+            (:'other_owner','authenticated','authenticated','talvo-owner-2@example.invalid','',now(),'{}','{}',now(),now());
+
+          insert into public.shops(id,name,slug)
+          values(:'shop','TALVO staging validation','talvo-supply-item-validation');
+
+          do $normalize_primary_branch$
+          declare generated_branch_id uuid;
+          begin
+            select id into generated_branch_id
+            from public.branch
+            where shop_id=current_setting('talvo_fixture.shop')::uuid
+            order by id
+            limit 1;
+            if generated_branch_id is null then
+              raise exception 'Expected the shop trigger to create a primary branch';
+            end if;
+            update public.branch
+            set id=current_setting('talvo_fixture.branch')::uuid,
+                name='TALVO branch A', is_primary=true, is_active=false
+            where id=generated_branch_id;
+          end
+          $normalize_primary_branch$;
+
+          insert into public.branch(id,shop_id,name,is_primary,is_active)
+          values(:'other_branch',:'shop','TALVO branch B',false,false);
+
+          insert into public.shop_members(shop_id,user_id,role) values
+            (:'shop',:'owner','owner'),
+            (:'shop',:'other_owner','owner');
+
+          insert into talvo.inventory_locations(business_id,branch_id,kind)
+          select :'shop', b.id, k.kind
+          from public.branch b
+          cross join (values ('BRANCH_AVAILABLE'),('BRANCH_QUARANTINE')) k(kind)
+          where b.shop_id=:'shop';
+
+          update public.branch set is_active=true where shop_id=:'shop';
+          commit;
+          \echo PASS isolated TALVO fixtures created with two active branches
+          SQL
+
+      - name: Run single-session integration contract
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          output="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e OWNER_ID \
+            -v "$PWD:/repo:ro" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v talvo_business_id="$SHOP_ID" -v talvo_actor_id="$OWNER_ID" \
+              -f "/repo/$1"' sh "$INTEGRATION_TEST")"
+          printf '%s\n' "$output"
+          [[ "$(printf '%s\n' "$output" | tail -n1)" == \
+            "TALVO CreateSupplyItem integration contract passed (transaction rolled back)" ]] || {
+            echo "FAIL integration contract did not reach its reviewed completion marker"
+            exit 1
+          }
+
+      - name: Run TALVO idempotency and namespace concurrency races
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          terminate_background_jobs() {
+            local running
+            running="$(jobs -pr || true)"
+            if [[ -n "$running" ]]; then
+              kill $running 2>/dev/null || true
+            fi
+          }
+          trap terminate_background_jobs EXIT
+          psql_file() {
+            docker run --rm -i \
+              -e DATABASE_URL="$STAGING_DATABASE_URL" \
+              -e PGOPTIONS="$TALVO_DB_PGOPTIONS" \
+              "$POSTGRES_17_IMAGE" \
+              sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' < "$1"
+          }
+          scalar() {
+            printf '%s\n' "$1" | docker run --rm -i \
+              -e DATABASE_URL="$STAGING_DATABASE_URL" \
+              -e PGOPTIONS="$TALVO_DB_PGOPTIONS" \
+              "$POSTGRES_17_IMAGE" \
+              sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq'
+          }
+          wait_pair() {
+            local label="$1" first_pid="$2" second_pid="$3" first_status second_status
+            set +e
+            wait "$first_pid"; first_status=$?
+            wait "$second_pid"; second_status=$?
+            set -e
+            [[ "$first_status" -eq 0 && "$second_status" -eq 0 ]] || {
+              echo "FAIL $label process status: $first_status,$second_status"
+              exit 1
+            }
+          }
+          wait_until_true() {
+            local label="$1" sql="$2" attempt
+            for attempt in {1..40}; do
+              if [[ "$(scalar "$sql")" == 't' ]]; then
+                return 0
+              fi
+              sleep 0.25
+            done
+            echo "FAIL timed out waiting for $label"
+            exit 1
+          }
+          command_sql() {
+            local actor="$1" key="$2" name="$3"
+            printf "set role authenticated;\n"
+            printf "select set_config('request.jwt.claim.sub','%s',false);\n" "$actor"
+            printf "select public.create_talvo_supply_item('%s','%s','10000000-0000-4000-8000-000000000001',0.001,false,'NON_EXPIRING','%s')::text;\n" \
+              "$SHOP_ID" "$name" "$key"
+          }
+
+          cat > "$work/revocation-holder.sql" <<SQL
+          begin;
+          set local application_name='talvo-revocation-holder';
+          select id from public.shops where id='$SHOP_ID' for update;
+          select pg_sleep(12);
+          commit;
+          SQL
+          psql_file "$work/revocation-holder.sql" > "$work/revocation-holder.out" & holder_pid=$!
+          wait_until_true 'business-lock holder' "select exists(
+            select 1 from pg_stat_activity
+            where application_name='talvo-revocation-holder'
+              and state='active' and query like '%pg_sleep(12)%'
+          );"
+
+          {
+            printf "set application_name='talvo-revocation-command';\n"
+            command_sql "$OWNER_ID" 'talvo-revocation-race' 'TALVO revocation race'
+          } > "$work/revocation-command.sql"
+          psql_file "$work/revocation-command.sql" > "$work/revocation-command.out" & command_pid=$!
+          wait_until_true 'command blocked after authorization' "select exists(
+            select 1 from pg_stat_activity
+            where application_name='talvo-revocation-command' and wait_event_type='Lock'
+          );"
+
+          cat > "$work/revocation-downgrade.sql" <<SQL
+          set application_name='talvo-revocation-downgrade';
+          update public.shop_members
+          set role='staff'
+          where shop_id='$SHOP_ID' and user_id='$OWNER_ID';
+          SQL
+          psql_file "$work/revocation-downgrade.sql" > "$work/revocation-downgrade.out" & downgrade_pid=$!
+          wait_until_true 'concurrent downgrade blocked by authorization lock' "select exists(
+            select 1 from pg_stat_activity
+            where application_name='talvo-revocation-downgrade' and wait_event_type='Lock'
+          );"
+
+          set +e
+          wait "$holder_pid"; holder_status=$?
+          wait "$command_pid"; command_status=$?
+          wait "$downgrade_pid"; downgrade_status=$?
+          set -e
+          [[ "$holder_status" -eq 0 && "$command_status" -eq 0 && "$downgrade_status" -eq 0 ]] || {
+            echo "FAIL revocation race process status: $holder_status,$command_status,$downgrade_status"
+            exit 1
+          }
+          [[ "$(tail -n1 "$work/revocation-command.out" | jq -r '.ok')" == 'true' ]] || {
+            echo 'FAIL command that linearized before revocation did not commit'
+            exit 1
+          }
+          [[ "$(scalar "select role from public.shop_members where shop_id='$SHOP_ID' and user_id='$OWNER_ID';")" == 'staff' ]] || {
+            echo 'FAIL concurrent downgrade did not commit after the command'
+            exit 1
+          }
+          scalar "update public.shop_members set role='owner' where shop_id='$SHOP_ID' and user_id='$OWNER_ID';" >/dev/null
+          echo 'PASS authorization is linearizable against a concurrent membership downgrade'
+
+          command_sql "$OWNER_ID" 'talvo-race-same-key' 'TALVO race same key' > "$work/same-1.sql"
+          cp "$work/same-1.sql" "$work/same-2.sql"
+          psql_file "$work/same-1.sql" > "$work/same-1.out" & p1=$!
+          psql_file "$work/same-2.sql" > "$work/same-2.out" & p2=$!
+          wait_pair 'same-key race' "$p1" "$p2"
+          cmp -s "$work/same-1.out" "$work/same-2.out" || {
+            echo 'FAIL same-key race returned different responses'
+            exit 1
+          }
+          evidence="$(scalar "select
+            (select count(*) from talvo.supply_items where business_id='$SHOP_ID' and name='TALVO race same key')||','||
+            (select count(*) from talvo.ingredient_lots lot join talvo.supply_items si on si.id=lot.supply_item_id where si.business_id='$SHOP_ID' and si.name='TALVO race same key')||','||
+            (select count(*) from talvo.audit_events ae join talvo.command_executions ce on ce.business_id=ae.business_id and ce.id=ae.command_execution_id where ce.business_id='$SHOP_ID' and ce.idempotency_key='talvo-race-same-key')||','||
+            (select count(*) from talvo.command_executions where business_id='$SHOP_ID' and idempotency_key='talvo-race-same-key' and status='SUCCEEDED');")"
+          [[ "$evidence" == '1,2,1,1' ]] || { echo "FAIL same-key evidence: $evidence"; exit 1; }
+          echo "PASS same-key concurrency: item,lots,audit,execution=$evidence"
+
+          command_sql "$OTHER_OWNER_ID" 'talvo-race-same-key' 'TALVO race same key' > "$work/other-actor.sql"
+          psql_file "$work/other-actor.sql" > "$work/other-actor.out"
+          [[ "$(tail -n1 "$work/other-actor.out" | jq -r '.error.code')" == 'IDEMPOTENCY_CONFLICT' ]] || {
+            echo 'FAIL same key from a different actor was not rejected'
+            exit 1
+          }
+          echo 'PASS actor identity participates in request hash'
+
+          scalar "update public.shop_members set role='staff' where shop_id='$SHOP_ID' and user_id='$OWNER_ID';" >/dev/null
+          command_sql "$OWNER_ID" 'talvo-race-same-key' 'TALVO race same key' > "$work/replay-forbidden.sql"
+          psql_file "$work/replay-forbidden.sql" > "$work/replay-forbidden.out"
+          [[ "$(tail -n1 "$work/replay-forbidden.out" | jq -r '.error.code')" == 'FORBIDDEN' ]] || {
+            echo 'FAIL replay bypassed current authorization'
+            exit 1
+          }
+          scalar "update public.shop_members set role='owner' where shop_id='$SHOP_ID' and user_id='$OWNER_ID';" >/dev/null
+          echo 'PASS replay reauthorizes the current actor'
+
+          command_sql "$OWNER_ID" 'talvo-name-race-a' 'TALVO namespace race' > "$work/name-a.sql"
+          command_sql "$OTHER_OWNER_ID" 'talvo-name-race-b' 'TALVO namespace race' > "$work/name-b.sql"
+          psql_file "$work/name-a.sql" > "$work/name-a.out" & p1=$!
+          psql_file "$work/name-b.sql" > "$work/name-b.out" & p2=$!
+          wait_pair 'same-name different-key race' "$p1" "$p2"
+          evidence="$(scalar "select
+            (select count(*) from talvo.supply_items where business_id='$SHOP_ID' and name='TALVO namespace race')||','||
+            (select count(*) from talvo.command_executions where business_id='$SHOP_ID' and idempotency_key in ('talvo-name-race-a','talvo-name-race-b') and status='SUCCEEDED')||','||
+            (select count(*) from talvo.command_executions where business_id='$SHOP_ID' and idempotency_key in ('talvo-name-race-a','talvo-name-race-b') and status='FAILED');")"
+          [[ "$evidence" == '1,1,1' ]] || { echo "FAIL namespace race evidence: $evidence"; exit 1; }
+          echo "PASS same-name different-key race: item,succeeded,failed=$evidence"
+
+      - name: Clean up all TALVO staging fixtures
+        if: always()
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ "${STAGING_IDENTITY_VALIDATED:-}" != 'true' ]]; then
+            echo 'Cleanup skipped: staging identity was not validated'
+            exit 0
+          fi
+          if [[ "${TALVO_CLEANUP_ARMED:-}" != 'true' ]]; then
+            echo 'Cleanup skipped: exact TALVO schema was not verified'
+            exit 0
+          fi
+          printf '%s\n' "$TALVO_FIXTURE_CLEANUP_SQL" | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e OTHER_OWNER_ID \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"'
+          echo "PASS cleanup: TALVO fixture shop $SHOP_ID removed"
+
+      - name: Recover a migration applied by this failed run
+        if: ${{ always() && env.TALVO_MIGRATION_ATTEMPTED_THIS_RUN == 'true' && (failure() || cancelled()) }}
+        shell: bash
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          [[ "${STAGING_IDENTITY_VALIDATED:-}" == 'true' ]] || {
+            echo "FAIL recovery refused: staging identity was not validated"
+            exit 1
+          }
+
+          state="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (to_regnamespace('talvo') is not null)::text,
+            (to_regclass('talvo.schema_revisions') is not null)::text,
+            (to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is not null)::text,
+            exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+            )::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is not null)::text,
+            exists(
+              select 1 from pg_trigger
+              where tgrelid='public.branch'::regclass
+                and tgname='talvo_supply_item_integrity_from_branch'
+            )::text
+          );
+          SQL
+          )"
+
+          if [[ "$state" == "false|false|false|false|false|false" ]]; then
+            echo "PASS recovery: failed migration transaction left no TALVO state"
+            exit 0
+          fi
+          [[ "$state" == "true|true|true|true|true|true" ]] || {
+            echo "FAIL recovery refused: TALVO state is partial or externally modified ($state)"
+            exit 1
+          }
+
+          [[ "${TALVO_RECOVERY_OBJECT_COUNT:-}" =~ ^[0-9]+$ ]]
+          [[ "${TALVO_RECOVERY_MANIFEST_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${TALVO_PUBLIC_BASELINE_OBJECT_COUNT:-}" =~ ^[0-9]+$ ]]
+          [[ "${TALVO_PUBLIC_BASELINE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]
+
+          {
+            cat <<'SQL'
+          begin;
+          lock table
+            public.shops,
+            public.branch,
+            public.shop_members,
+            auth.users,
+            talvo.schema_revisions,
+            talvo.units,
+            talvo.role_capabilities,
+            talvo.command_executions,
+            talvo.supply_items,
+            talvo.ingredient_expiry_policies,
+            talvo.ingredient_expiry_policy_versions,
+            talvo.ingredient_lots,
+            talvo.inventory_locations,
+            talvo.inventory_balances,
+            talvo.audit_events
+          in access exclusive mode;
+          SQL
+            cat "$RECOVERY_MANIFEST_SQL"
+            cat <<'SQL'
+          do $settings$
+          begin
+            perform set_config('talvo.recovery_shop', :'shop', false);
+            perform set_config('talvo.recovery_version', :'migration_version', false);
+            perform set_config('talvo.recovery_sha256', :'migration_sha256', false);
+            perform set_config('talvo.recovery_object_count', :'recovery_object_count', false);
+            perform set_config('talvo.recovery_manifest_sha256', :'recovery_manifest_sha256', false);
+            perform set_config('talvo.public_baseline_object_count', :'baseline_object_count', false);
+            perform set_config('talvo.public_baseline_sha256', :'baseline_sha256', false);
+          end
+          $settings$;
+
+          do $guard$
+          declare
+            current_object_count bigint;
+            current_manifest_sha256 text;
+          begin
+            if (select count(*) from talvo.schema_revisions) <> 1
+               or not exists(
+                 select 1
+                 from talvo.schema_revisions
+                 where version=current_setting('talvo.recovery_version')
+                   and source_sha256=current_setting('talvo.recovery_sha256')
+               ) then
+              raise exception 'RECOVERY_REVISION_CHANGED';
+            end if;
+
+            perform set_config('talvo.manifest_scope','talvo-post',true);
+            select object_count,manifest_sha256
+            into current_object_count,current_manifest_sha256
+            from talvo_recovery_manifest;
+            if current_object_count::text<>current_setting('talvo.recovery_object_count')
+               or current_manifest_sha256<>current_setting('talvo.recovery_manifest_sha256') then
+              raise exception 'RECOVERY_REFUSED_TALVO_MANIFEST_MISMATCH count=% sha256=%',
+                current_object_count,current_manifest_sha256;
+            end if;
+
+            perform set_config('talvo.manifest_scope','public-baseline',true);
+            select object_count,manifest_sha256
+            into current_object_count,current_manifest_sha256
+            from talvo_recovery_manifest;
+            if current_object_count::text<>current_setting('talvo.public_baseline_object_count')
+               or current_manifest_sha256<>current_setting('talvo.public_baseline_sha256') then
+              raise exception 'RECOVERY_REFUSED_PUBLIC_BASELINE_MISMATCH count=% sha256=%',
+                current_object_count,current_manifest_sha256;
+            end if;
+
+            if (select count(*) from talvo.units) <> 3
+               or (
+                 select count(*)
+                 from talvo.units
+                 where (id,dimension,symbol,decimal_scale) in (
+                   ('10000000-0000-4000-8000-000000000001'::uuid,'VOLUME','ml',3),
+                   ('10000000-0000-4000-8000-000000000002'::uuid,'MASS','g',3),
+                   ('10000000-0000-4000-8000-000000000003'::uuid,'COUNT','piece',0)
+                 )
+               ) <> 3
+               or (select count(*) from talvo.role_capabilities) <> 1
+               or not exists(
+                 select 1
+                 from talvo.role_capabilities
+                 where role='owner' and capability='inventory.supply_item.create'
+               ) then
+              raise exception 'RECOVERY_REFUSED_MODIFIED_CANONICAL_DATA';
+            end if;
+
+            if exists(
+              select 1 from talvo.command_executions where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.supply_items where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_expiry_policies where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_expiry_policy_versions where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.ingredient_lots where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.inventory_locations where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.inventory_balances where business_id<>current_setting('talvo.recovery_shop')::uuid
+              union all select 1 from talvo.audit_events where business_id<>current_setting('talvo.recovery_shop')::uuid
+            ) then
+              raise exception 'RECOVERY_REFUSED_NON_FIXTURE_TALVO_DATA';
+            end if;
+
+            if exists(
+              select 1 from public.shops
+              where id=current_setting('talvo.recovery_shop')::uuid
+                and (
+                  slug is distinct from 'talvo-supply-item-validation'
+                  or name is distinct from 'TALVO staging validation'
+                )
+            ) then
+              raise exception 'RECOVERY_REFUSED_FIXTURE_SHOP_ID_COLLISION';
+            end if;
+            if exists(
+              select 1 from public.branch
+              where id in (:'branch', :'other_branch')
+                and shop_id<>current_setting('talvo.recovery_shop')::uuid
+            ) or exists(
+              select 1 from public.branch
+              where shop_id=current_setting('talvo.recovery_shop')::uuid
+                and id not in (:'branch', :'other_branch')
+            ) then
+              raise exception 'RECOVERY_REFUSED_FIXTURE_BRANCH_NAMESPACE_COLLISION';
+            end if;
+            if exists(
+              select 1 from public.shop_members
+              where user_id in (:'owner', :'other_owner')
+                and shop_id<>current_setting('talvo.recovery_shop')::uuid
+            ) or exists(
+              select 1 from public.shop_members
+              where shop_id=current_setting('talvo.recovery_shop')::uuid
+                and user_id not in (:'owner', :'other_owner')
+            ) then
+              raise exception 'RECOVERY_REFUSED_FIXTURE_MEMBER_NAMESPACE_COLLISION';
+            end if;
+            if exists(
+              select 1 from auth.users
+              where id=:'owner'
+                and email is distinct from 'talvo-owner@example.invalid'
+            ) or exists(
+              select 1 from auth.users
+              where id=:'other_owner'
+                and email is distinct from 'talvo-owner-2@example.invalid'
+            ) then
+              raise exception 'RECOVERY_REFUSED_FIXTURE_AUTH_NAMESPACE_COLLISION';
+            end if;
+          end
+          $guard$;
+
+          drop function public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text);
+          drop trigger talvo_supply_item_integrity_from_branch on public.branch;
+          drop schema talvo cascade;
+          drop index public.branch_shop_id_id_uidx;
+
+          alter table public.branch disable trigger trg_prevent_delete_last_branch;
+          delete from public.shop_members
+            where shop_id=:'shop' and user_id in (:'owner', :'other_owner');
+          delete from public.branch
+            where shop_id=:'shop' and id in (:'branch', :'other_branch');
+          delete from public.shops
+            where id=:'shop' and slug='talvo-supply-item-validation';
+          delete from auth.users u
+            where (
+                (u.id=:'owner' and u.email='talvo-owner@example.invalid')
+                or (u.id=:'other_owner' and u.email='talvo-owner-2@example.invalid')
+              )
+              and not exists(
+                select 1 from public.shop_members sm where sm.user_id=u.id
+              );
+          alter table public.branch enable trigger trg_prevent_delete_last_branch;
+          alter table public.branch drop column is_active;
+
+          do $post_guard$
+          declare
+            current_object_count bigint;
+            current_manifest_sha256 text;
+          begin
+            perform set_config('talvo.manifest_scope','public-baseline',true);
+            select object_count,manifest_sha256
+            into current_object_count,current_manifest_sha256
+            from talvo_recovery_manifest;
+            if current_object_count::text<>current_setting('talvo.public_baseline_object_count')
+               or current_manifest_sha256<>current_setting('talvo.public_baseline_sha256') then
+              raise exception 'RECOVERY_POSTCHECK_PUBLIC_BASELINE_MISMATCH count=% sha256=%',
+                current_object_count,current_manifest_sha256;
+            end if;
+            if to_regnamespace('talvo') is not null
+               or to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is not null
+               or exists(
+                 select 1 from information_schema.columns
+                 where table_schema='public' and table_name='branch' and column_name='is_active'
+               )
+               or to_regclass('public.branch_shop_id_id_uidx') is not null
+               or exists(
+                 select 1 from pg_trigger
+                 where tgrelid='public.branch'::regclass
+                   and tgname='talvo_supply_item_integrity_from_branch'
+               ) then
+              raise exception 'RECOVERY_POSTCHECK_TALVO_ARTIFACT_REMAINS';
+            end if;
+          end
+          $post_guard$;
+          commit;
+          SQL
+          } | docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -e PGOPTIONS="$TALVO_DB_PGOPTIONS" \
+            -e MIGRATION_VERSION -e TALVO_MIGRATION_SHA256 \
+            -e TALVO_RECOVERY_OBJECT_COUNT -e TALVO_RECOVERY_MANIFEST_SHA256 \
+            -e TALVO_PUBLIC_BASELINE_OBJECT_COUNT -e TALVO_PUBLIC_BASELINE_SHA256 \
+            -e SHOP_ID -e BRANCH_ID -e OTHER_BRANCH_ID -e OWNER_ID -e OTHER_OWNER_ID \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v migration_version="$MIGRATION_VERSION" \
+              -v migration_sha256="$TALVO_MIGRATION_SHA256" \
+              -v recovery_object_count="$TALVO_RECOVERY_OBJECT_COUNT" \
+              -v recovery_manifest_sha256="$TALVO_RECOVERY_MANIFEST_SHA256" \
+              -v baseline_object_count="$TALVO_PUBLIC_BASELINE_OBJECT_COUNT" \
+              -v baseline_sha256="$TALVO_PUBLIC_BASELINE_SHA256" \
+              -v shop="$SHOP_ID" -v branch="$BRANCH_ID" -v other_branch="$OTHER_BRANCH_ID" \
+              -v owner="$OWNER_ID" -v other_owner="$OTHER_OWNER_ID"'
+
+          post_state="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (to_regnamespace('talvo') is null)::text,
+            (to_regprocedure('public.create_talvo_supply_item(uuid,text,uuid,numeric,boolean,text,text)') is null)::text,
+            (not exists(
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'
+            ))::text,
+            (to_regclass('public.branch_shop_id_id_uidx') is null)::text,
+            exists(
+              select 1 from pg_trigger
+              where tgrelid='public.branch'::regclass
+                and tgname='trg_prevent_delete_last_branch'
+                and tgenabled='O'
+            )::text
+          );
+          SQL
+          )"
+          [[ "$post_state" == "true|true|true|true|true" ]] || {
+            echo "FAIL recovery verification: $post_state"
+            exit 1
+          }
+
+          echo "PASS recovery: failed-run TALVO migration and deterministic fixtures removed"
