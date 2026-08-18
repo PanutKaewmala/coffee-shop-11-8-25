@@ -26,6 +26,7 @@ jobs:
     env:
       EXPECTED_PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
       EXPECTED_STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      POSTGRES_17_ALPINE_IMAGE: postgres:17.11-alpine3.24@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
 
     steps:
       - name: Require main recovery workflow and exact confirmation
@@ -126,12 +127,12 @@ jobs:
 
           docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "begin transaction read only; select 1; commit" >/dev/null'
 
           docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "select 1" >/dev/null'
 
           echo "Production read-only connection: OK"
@@ -195,7 +196,7 @@ jobs:
           state="$(docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
             -v "$workdir:/work:ro" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -f /work/staging-preflight.sql')"
 
           IFS='|' read -r talvo_present public_relations public_functions public_types <<< "$state"
@@ -233,7 +234,7 @@ jobs:
           count="$(docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
             -v "$workdir:/work:ro" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atq -f /work/external-trigger-count.sql')"
 
           if [ "$count" != "0" ]; then
@@ -243,7 +244,7 @@ jobs:
 
           talvo_schema_present="$(docker run --rm \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -Atqc "begin transaction read only; select exists(select 1 from pg_namespace where nspname = '\''talvo'\''); commit"')"
 
           if [ "$talvo_schema_present" != "f" ]; then
@@ -265,7 +266,7 @@ jobs:
             --user "$(id -u):$(id -g)" \
             -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
             -v "$workdir:/work" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'pg_dump --schema-only --schema=public --no-owner --dbname="$DATABASE_URL" --file=/work/production-public-schema.sql'
 
           python3 - <<'PY'
@@ -331,7 +332,7 @@ jobs:
           docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
             -v "$workdir:/work:ro" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 --single-transaction --file=/work/production-public-schema.sql'
 
       - name: Verify staging baseline and zero application rows
@@ -380,7 +381,7 @@ jobs:
           docker run --rm \
             -e DATABASE_URL="$STAGING_DATABASE_URL" \
             -v "$workdir:/work:ro" \
-            postgres:17-alpine \
+            "$POSTGRES_17_ALPINE_IMAGE" \
             sh -ec 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f /work/verify-staging.sql'
 
           echo "Staging baseline verification: OK"
