@@ -19,6 +19,12 @@ concurrency:
   group: staging-database-mutation
   cancel-in-progress: false
 
+env:
+  # PR #44 was cut from this already-staging-validated main commit. The feature
+  # target must descend from it; it cannot descend from the future validator
+  # merge commit because the feature branch already exists.
+  TRUSTED_TALVO_BASE_SHA: 3ccff98461e601a52f2dc00d7b6a4afc0552824b
+
 jobs:
   verify-target:
     runs-on: ubuntu-latest
@@ -36,21 +42,24 @@ jobs:
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "FAIL target_sha must be lowercase 40-char SHA"; exit 1; }
 
       - name: Check out exact target without persisted credentials
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact target and static contract
+      - name: Verify exact target and source contract
         shell: bash
         env:
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           set -euo pipefail
           [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]] || { echo "FAIL checkout differs from target"; exit 1; }
-          git cat-file -e "$GITHUB_SHA^{commit}"
-          git merge-base --is-ancestor "$GITHUB_SHA" "$TARGET_SHA" || { echo "FAIL target must contain dispatched main commit"; exit 1; }
+          git cat-file -e "$TRUSTED_TALVO_BASE_SHA^{commit}"
+          git merge-base --is-ancestor "$TRUSTED_TALVO_BASE_SHA" "$TARGET_SHA" || {
+            echo "FAIL target does not descend from the approved TALVO base"
+            exit 1
+          }
           for path in \
             supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql \
             supabase/migrations/20260819180000_talvo_receive_supply_item.sql \
@@ -60,7 +69,33 @@ jobs:
             [[ -f "$path" && ! -L "$path" ]] || { echo "FAIL missing regular file: $path"; exit 1; }
           done
           node scripts/test-talvo-receive-supply-item.mjs
-          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || { echo "FAIL static test mutated checkout"; exit 1; }
+          python3 - <<'PY'
+          import pathlib
+
+          migrations = [
+              pathlib.Path('supabase/migrations/20260819180000_talvo_receive_supply_item.sql'),
+              pathlib.Path('supabase/migrations/20260819180100_talvo_receive_history_hardening.sql'),
+          ]
+          for path in migrations:
+              for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+                  stripped = line.strip().lower()
+                  if stripped in {'commit;', 'rollback;'}:
+                      raise SystemExit(f'FAIL {path}:{line_number}: transaction control is forbidden in rollback-only feature input')
+                  if '`' in line:
+                      raise SystemExit(f'FAIL {path}:{line_number}: shell-style backticks are forbidden')
+
+          integration = pathlib.Path('supabase/tests/talvo_receive_supply_item_integration.sql').read_text().splitlines()
+          begins = sum(line.strip().lower() == 'begin;' for line in integration)
+          rollbacks = sum(line.strip().lower() == 'rollback;' for line in integration)
+          commits = sum(line.strip().lower() == 'commit;' for line in integration)
+          if (begins, rollbacks, commits) != (1, 1, 0):
+              raise SystemExit(f'FAIL integration transaction wrapper: begin={begins} rollback={rollbacks} commit={commits}')
+          for line_number, line in enumerate(integration, start=1):
+              if '`' in line or line.lstrip().startswith('\\!') or line.lstrip().startswith('\\copy'):
+                  raise SystemExit(f'FAIL integration test line {line_number}: shell/file psql commands are forbidden')
+          print('PASS rollback-only source shape')
+          PY
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || { echo "FAIL static validation mutated checkout"; exit 1; }
 
   validate-staging:
     needs: verify-target
@@ -112,9 +147,10 @@ jobs:
           if username != 'postgres.'+os.environ['EXPECTED_STAGING_PROJECT_REF']: raise SystemExit('FAIL staging project ref mismatch')
           print('PASS exact staging identity')
           PY
+          echo "STAGING_IDENTITY_VALIDATED=true" >> "$GITHUB_ENV"
 
       - name: Check out exact target as database input only
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.target_sha }}
           fetch-depth: 1
@@ -138,26 +174,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The integration contract already owns the final ROLLBACK and psql
+          # variable setup. Remove only its opening BEGIN so the migration,
+          # fixtures, and tests share one outer transaction. Preserve all \gset
+          # commands because later assertions depend on the variables they set.
           python3 - "$INTEGRATION_TEST" > /tmp/integration-body.sql <<'PY'
           import pathlib, sys
           lines=pathlib.Path(sys.argv[1]).read_text().splitlines()
-          skipped_begin=skipped_rollback=0
-          out=[]
+          removed_begin = 0
+          out = []
           for line in lines:
-              s=line.strip()
-              if s == 'begin;' and skipped_begin == 0:
-                  skipped_begin += 1; continue
-              if s == 'rollback;' and skipped_rollback == 0:
-                  skipped_rollback += 1; continue
-              if s == "\\echo 'TALVO ReceiveSupplyItem integration contract passed (transaction rolled back)'":
-                  continue
-              if s.startswith('\\set ') or s.startswith('\\if ') or s == '\\else' or s == '\\endif' or s == '\\quit' or s.startswith('\\echo ') or '\\gset' in s:
+              if line.strip().lower() == 'begin;' and removed_begin == 0:
+                  removed_begin = 1
                   continue
               out.append(line)
-          if skipped_begin != 1 or skipped_rollback != 1:
-              raise SystemExit('FAIL integration transaction wrapper changed')
+          if removed_begin != 1:
+              raise SystemExit('FAIL integration opening BEGIN not found exactly once')
           print('\n'.join(out))
           PY
+
           cat > /tmp/runtime.sql <<'SQL'
           \set ON_ERROR_STOP on
           begin;
@@ -192,24 +227,31 @@ jobs:
           do $normalize_primary_branch$
           declare generated_branch_id uuid;
           begin
-            select id into generated_branch_id from public.branch where shop_id=current_setting('talvo_fixture.shop')::uuid order by id limit 1;
+            select id into generated_branch_id
+            from public.branch
+            where shop_id=current_setting('talvo_fixture.shop')::uuid
+            order by id
+            limit 1;
             if generated_branch_id is null then raise exception 'Expected shop trigger primary branch'; end if;
-            update public.branch set id=current_setting('talvo_fixture.branch')::uuid,name='TALVO receive branch A',is_primary=true,is_active=false where id=generated_branch_id;
+            update public.branch
+            set id=current_setting('talvo_fixture.branch')::uuid,
+                name='TALVO receive branch A',is_primary=true,is_active=false
+            where id=generated_branch_id;
           end
           $normalize_primary_branch$;
-          insert into public.branch(id,shop_id,name,is_primary,is_active) values(:'talvo_other_branch_id',:'talvo_business_id','TALVO receive branch B',false,false);
+          insert into public.branch(id,shop_id,name,is_primary,is_active)
+          values(:'talvo_other_branch_id',:'talvo_business_id','TALVO receive branch B',false,false);
           insert into public.shop_members(shop_id,user_id,role) values
-            (:'talvo_business_id',:'talvo_actor_id','owner'),(:'talvo_business_id',:'talvo_other_actor_id','owner');
+            (:'talvo_business_id',:'talvo_actor_id','owner'),
+            (:'talvo_business_id',:'talvo_other_actor_id','owner');
           insert into talvo.inventory_locations(business_id,branch_id,kind)
-          select :'talvo_business_id',b.id,k.kind from public.branch b cross join (values ('BRANCH_AVAILABLE'),('BRANCH_QUARANTINE')) k(kind)
+          select :'talvo_business_id',b.id,k.kind
+          from public.branch b
+          cross join (values ('BRANCH_AVAILABLE'),('BRANCH_QUARANTINE')) k(kind)
           where b.shop_id=:'talvo_business_id';
           update public.branch set is_active=true where shop_id=:'talvo_business_id';
           SQL
           cat /tmp/integration-body.sql >> /tmp/runtime.sql
-          cat >> /tmp/runtime.sql <<'SQL'
-          rollback;
-          \echo TALVO_RECEIVE_RUNTIME_VALIDATION_PASSED_AND_ROLLED_BACK
-          SQL
 
       - name: Run ReceiveSupplyItem against staging and roll back everything
         shell: bash
@@ -217,24 +259,40 @@ jobs:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
-          output="$(docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" -v /tmp/runtime.sql:/runtime.sql:ro "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -v talvo_business_id="$1" -v talvo_branch_id="$2" -v talvo_other_branch_id="$3" -v talvo_actor_id="$4" -v talvo_other_actor_id="$5" -f /runtime.sql' sh "$SHOP_ID" "$BRANCH_ID" "$OTHER_BRANCH_ID" "$OWNER_ID" "$OTHER_OWNER_ID")"
+          output="$(docker run --rm -i \
+            -e DATABASE_URL="$STAGING_DATABASE_URL" \
+            -v /tmp/runtime.sql:/runtime.sql:ro \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -v talvo_business_id="$1" -v talvo_branch_id="$2" -v talvo_other_branch_id="$3" \
+              -v talvo_actor_id="$4" -v talvo_other_actor_id="$5" -f /runtime.sql' sh \
+            "$SHOP_ID" "$BRANCH_ID" "$OTHER_BRANCH_ID" "$OWNER_ID" "$OTHER_OWNER_ID")"
           printf '%s\n' "$output"
-          [[ "$(printf '%s\n' "$output" | tail -n1)" == 'TALVO_RECEIVE_RUNTIME_VALIDATION_PASSED_AND_ROLLED_BACK' ]] || { echo 'FAIL completion marker missing'; exit 1; }
+          [[ "$(printf '%s\n' "$output" | tail -n1)" == \
+            "TALVO ReceiveSupplyItem integration contract passed (transaction rolled back)" ]] || {
+            echo 'FAIL integration completion marker missing'
+            exit 1
+          }
 
       - name: Prove validation left staging unchanged
+        if: always()
         shell: bash
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
           set -euo pipefail
+          if [[ "${STAGING_IDENTITY_VALIDATED:-}" != 'true' ]]; then
+            echo 'Residue check skipped: staging identity was not validated'
+            exit 0
+          fi
           result="$(docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<SQL
           select concat_ws('|',
             (to_regprocedure('public.receive_talvo_supply_item(uuid,uuid,uuid,numeric,text,text,timestamptz,text)') is null)::text,
             (not exists(select 1 from public.shops where id='$SHOP_ID'))::text,
+            (not exists(select 1 from public.branch where id in ('$BRANCH_ID','$OTHER_BRANCH_ID')))::text,
             (not exists(select 1 from auth.users where id in ('$OWNER_ID','$OTHER_OWNER_ID')))::text,
             (not exists(select 1 from talvo.role_capabilities where capability='inventory.stock.receive'))::text
           );
           SQL
           )"
-          [[ "$result" == 'true|true|true|true' ]] || { echo "FAIL rollback residue: $result"; exit 1; }
+          [[ "$result" == 'true|true|true|true|true' ]] || { echo "FAIL rollback residue: $result"; exit 1; }
           echo 'PASS rollback left staging unchanged'
