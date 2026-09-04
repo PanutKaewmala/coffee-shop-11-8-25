@@ -68,7 +68,7 @@ jobs:
 
           missing=0
           for table in shops branch shop_members profiles menu menu_variants menu_serve_types ingredients recipe_items orders order_items stock_logs pos_idempotency daily_closes cash_movements; do
-            if grep -Eq "^CREATE TABLE public\\.${table} \\(\" "$file"; then
+            if grep -Eq "^CREATE TABLE public\\.${table} \\(" "$file"; then
               echo "OK table: $table"
             else
               echo "MISSING table: $table"
