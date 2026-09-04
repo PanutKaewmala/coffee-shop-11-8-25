@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:role-navigation && npm run test:context-reliability && npm run test:pos-interactions && npm run test:cash-movement-policy && npm run test:order-cancellation-security && npm run test:daily-close-flow && npm run test:pos-atomic-checkout && npm run test:talvo-create-supply-item",
+    "test": "npm run test:role-navigation && npm run test:context-reliability && npm run test:pos-interactions && npm run test:cash-movement-policy && npm run test:order-cancellation-security && npm run test:daily-close-flow && npm run test:pos-atomic-checkout && npm run test:reports-stabilization && npm run test:talvo-create-supply-item && npm run test:talvo-receive-supply-item && npm run test:talvo-staging-workflow",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
     "test:role-navigation": "node scripts/test-role-navigation.mjs",
     "test:context-reliability": "node scripts/test-context-reliability.mjs",
@@ -17,7 +17,10 @@
     "test:order-cancellation-security": "node scripts/test-order-cancellation-security.mjs",
     "test:daily-close-flow": "node scripts/test-daily-close-flow.mjs",
     "test:pos-atomic-checkout": "node scripts/test-pos-atomic-checkout.mjs",
-    "test:talvo-create-supply-item": "node scripts/test-talvo-create-supply-item.mjs"
+    "test:reports-stabilization": "node scripts/test-reports-stabilization.cjs",
+    "test:talvo-create-supply-item": "node scripts/test-talvo-create-supply-item.mjs",
+    "test:talvo-receive-supply-item": "node scripts/test-talvo-receive-supply-item.mjs",
+    "test:talvo-staging-workflow": "node scripts/test-talvo-staging-workflow.mjs"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",
@@ -32,7 +35,7 @@
     "next-auth": "^4.24.13",
     "react": "19.2.0",
     "react-day-picker": "^9.11.1",
-    "react-dom": "19.2.0",
+    "react-dom": "^19.2.0",
     "recharts": "^3.4.1",
     "uuid": "^13.0.0"
   },
