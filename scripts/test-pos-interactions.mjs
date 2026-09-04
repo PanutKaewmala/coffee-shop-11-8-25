@@ -15,6 +15,21 @@ function assertNotIncludes(haystack, needle, message) {
   assert.equal(haystack.includes(needle), false, message);
 }
 
+function extractButtonContaining(text, visibleText) {
+  const normalizedVisibleText = visibleText.replace(/\s+/g, " ").trim();
+  const matches = (text.match(/<button\b[\s\S]*?<\/button>/g) ?? []).filter(
+    (button) =>
+      button.replace(/\s+/g, " ").includes(normalizedVisibleText),
+  );
+
+  assert.equal(
+    matches.length,
+    1,
+    `Expected exactly one button containing: ${visibleText}`,
+  );
+  return matches[0];
+}
+
 const desktopCard = extractBetween(
   source,
   'title="เลือกอุณหภูมิและความหวาน แล้วกด + เพิ่ม"',
@@ -30,25 +45,25 @@ const sweetnessButton = extractBetween(
   'SWEETNESS_OPTIONS.map((option) => {',
   'ตัวเลือกปัจจุบัน',
 );
-const desktopAddButton = extractBetween(
-  desktopCard,
-  '<button\n                                        type="button"',
-  '+ เพิ่ม',
-);
+const desktopAddButton = extractButtonContaining(desktopCard, "+ เพิ่ม");
 const mobileConfigurator = extractBetween(
   source,
   'id="mobile-configurator-title"',
   '{mobileCartOpen && portalTarget',
 );
+const mobileAddButton = extractButtonContaining(
+  mobileConfigurator,
+  "เพิ่มลงตะกร้า",
+);
 const mobileOptions = extractBetween(
   mobileConfigurator,
   '<fieldset>',
-  '<button\n                type="button"',
+  mobileAddButton,
 );
-const mobileAddButton = extractBetween(
-  mobileConfigurator,
-  '<button\n                type="button"',
-  'เพิ่มลงตะกร้า',
+const keyboardShortcut = extractBetween(
+  source,
+  '/* -------------------- KEYBOARD SHORTCUTS -------------------- */',
+  'async function checkout()',
 );
 
 assertNotIncludes(desktopCard.slice(0, 500), 'onClick={() => addToCart(item)}', 'Desktop card container must not add to cart when blank card space is clicked.');
@@ -64,5 +79,9 @@ assert(source.includes('เลือกอุณหภูมิและคว�
 assertNotIncludes(mobileOptions, 'addToCart(', 'Mobile variant/sweetness options must not add to cart.');
 assert.equal((mobileAddButton.match(/addToCart\(configuredMenu\)/g) ?? []).length, 1, 'Mobile เพิ่มลงตะกร้า button should call addToCart(configuredMenu) once.');
 assert(mobileAddButton.includes('mobileAddLockRef.current'), 'Mobile rapid tap protection should remain on add button.');
+assert(source.includes('const checkoutRef = useRef<() => void>(() => {});'), 'POS must keep a ref for the latest checkout closure.');
+assert(source.includes('checkoutRef.current = checkout;'), 'POS must refresh the checkout ref from current render state.');
+assert(keyboardShortcut.includes('void checkoutRef.current();'), 'Enter shortcut must invoke the latest checkout closure.');
+assertNotIncludes(keyboardShortcut, 'void checkout();', 'Enter shortcut must not call a stale checkout closure directly.');
 
 console.log('POS interaction behavior checks passed.');
