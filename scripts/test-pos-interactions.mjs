@@ -15,6 +15,21 @@ function assertNotIncludes(haystack, needle, message) {
   assert.equal(haystack.includes(needle), false, message);
 }
 
+function extractButtonContaining(text, visibleText) {
+  const normalizedVisibleText = visibleText.replace(/\s+/g, " ").trim();
+  const matches = (text.match(/<button\b[\s\S]*?<\/button>/g) ?? []).filter(
+    (button) =>
+      button.replace(/\s+/g, " ").includes(normalizedVisibleText),
+  );
+
+  assert.equal(
+    matches.length,
+    1,
+    `Expected exactly one button containing: ${visibleText}`,
+  );
+  return matches[0];
+}
+
 const desktopCard = extractBetween(
   source,
   'title="เลือกอุณหภูมิและความหวาน แล้วกด + เพิ่ม"',
@@ -30,25 +45,20 @@ const sweetnessButton = extractBetween(
   'SWEETNESS_OPTIONS.map((option) => {',
   'ตัวเลือกปัจจุบัน',
 );
-const desktopAddButton = extractBetween(
-  desktopCard,
-  '<button\n                                        type="button"',
-  '+ เพิ่ม',
-);
+const desktopAddButton = extractButtonContaining(desktopCard, "+ เพิ่ม");
 const mobileConfigurator = extractBetween(
   source,
   'id="mobile-configurator-title"',
   '{mobileCartOpen && portalTarget',
 );
+const mobileAddButton = extractButtonContaining(
+  mobileConfigurator,
+  "เพิ่มลงตะกร้า",
+);
 const mobileOptions = extractBetween(
   mobileConfigurator,
   '<fieldset>',
-  '<button\n                type="button"',
-);
-const mobileAddButton = extractBetween(
-  mobileConfigurator,
-  '<button\n                type="button"',
-  'เพิ่มลงตะกร้า',
+  mobileAddButton,
 );
 
 assertNotIncludes(desktopCard.slice(0, 500), 'onClick={() => addToCart(item)}', 'Desktop card container must not add to cart when blank card space is clicked.');

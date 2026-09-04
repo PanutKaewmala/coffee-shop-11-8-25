@@ -606,6 +606,8 @@ export default function POSClient() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(false);
     const idempotencyKeyRef = useRef<string | null>(null);
+
+    const checkoutRef = useRef<() => void>(() => {});
     const [feedError, setFeedError] = useState<string | null>(null);
     const [feedbackText, setFeedbackText] = useState<string | null>(null);
   const [lastTouchedVariantId, setLastTouchedVariantId] = useState<
@@ -1128,7 +1130,28 @@ export default function POSClient() {
         return dailyCloseStatus === "closed" || dailyCloseStatus === "approved";
     }, [dailyCloseStatus]);
 
+    /* Keep the keyboard shortcut pointed at the latest checkout closure so
+
+
+       cash amount, payment method, cart quantity, and other current state are
+
+
+       never read from a stale render. */
+
+
+    useEffect(() => {
+
+
+        checkoutRef.current = checkout;
+
+
+    });
+
+
+
     /* -------------------- KEYBOARD SHORTCUTS -------------------- */
+
+
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
       if (!window.matchMedia("(min-width: 768px)").matches) return;
@@ -1147,7 +1170,7 @@ export default function POSClient() {
             }
             if (e.key === "Enter") {
         if (cart.length > 0 && !loading && !isBusinessDayClosed)
-          void checkout();
+          void checkoutRef.current();
             }
         }
         window.addEventListener("keydown", onKeyDown);
