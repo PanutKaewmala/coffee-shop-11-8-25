@@ -12,13 +12,9 @@ const runtimeRoot = path.join(root, ".talvo-local-runtime");
 const runtimeSupabaseDir = path.join(runtimeRoot, "supabase");
 const runtimeMigrationsDir = path.join(runtimeSupabaseDir, "migrations");
 
-// The globally installed CLI on the current Windows workstation is 2.72.x.
-// That release has a known SQL splitter bug: function names containing
-// "atomic" can cause valid multi-statement migrations to be sent as one
-// prepared statement (SQLSTATE 42601). Pin a newer CLI for this reproducible
-// local-runtime script instead of depending on whatever global CLI is installed.
+// Pin the CLI used by this reproducible local-runtime script instead of
+// depending on whatever global Supabase CLI happens to be installed.
 const supabaseCliVersion = "2.95.3";
-const npxExecutable = process.platform === "win32" ? "npx.cmd" : "npx";
 
 const postBaselineMigrations = [
   "20260807090000_atomic_pos_checkout.sql",
@@ -44,12 +40,23 @@ function runSupabase(args, { workdir } = {}) {
 
   const npxArgs = ["--yes", `supabase@${supabaseCliVersion}`, ...args];
   console.log(`\n> npx --yes supabase@${supabaseCliVersion} ${args.join(" ")}`);
-  const result = spawnSync(npxExecutable, npxArgs, {
-    cwd: root,
-    env,
-    stdio: "inherit",
-    shell: false,
-  });
+
+  // npm/npx are .cmd launchers on Windows. Node 24 can reject spawning a .cmd
+  // file directly with shell:false (EINVAL), so invoke it through cmd.exe.
+  // On non-Windows platforms, execute npx directly.
+  const result = process.platform === "win32"
+    ? spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npx ${npxArgs.join(" ")}`], {
+        cwd: root,
+        env,
+        stdio: "inherit",
+        shell: false,
+      })
+    : spawnSync("npx", npxArgs, {
+        cwd: root,
+        env,
+        stdio: "inherit",
+        shell: false,
+      });
 
   if (result.error) fail(result.error.message);
   if (result.status !== 0) {
@@ -86,9 +93,8 @@ const sanitizedBaseline = rawBaseline
   .filter((line) => !/^ALTER DEFAULT PRIVILEGES\b/.test(line))
   .join("\n");
 
-// Supabase CLI 2.95.x fixed the older multi-statement/"atomic" splitter bug,
-// but CREATE INDEX CONCURRENTLY is not safe in its migration pipeline. Refuse
-// that construct explicitly so this script fails closed if the chain changes.
+// CREATE INDEX CONCURRENTLY cannot run in the migration transaction path.
+// Refuse that construct explicitly so this script fails closed if the chain changes.
 const sqlToCheck = [
   sanitizedBaseline,
   ...postBaselineMigrations.map((migration) =>
