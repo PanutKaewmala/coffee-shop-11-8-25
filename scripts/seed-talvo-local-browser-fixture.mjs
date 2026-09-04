@@ -92,7 +92,7 @@ const PASSWORD = "123456";
 const SHOP_ID = "10000000-0000-4000-8000-000000000001";
 const FALLBACK_BRANCH_ID = "10000000-0000-4000-8000-000000000002";
 const CATEGORY_ID = "10000000-0000-4000-8000-000000000003";
-const FALLBACK_SERVE_ID = "10000000-0000-4000-8000-000000000004";
+const SERVE_ID = "10000000-0000-4000-8000-000000000004";
 const MENU_ID = "10000000-0000-4000-8000-000000000005";
 const VARIANT_ID = "10000000-0000-4000-8000-000000000006";
 const INGREDIENT_ID = "10000000-0000-4000-8000-000000000007";
@@ -183,18 +183,18 @@ await upsert("menu_categories", {
   name: "Coffee",
 });
 
-let serveTypes = await restGet("menu_serve_types", `shop_id=eq.${SHOP_ID}&system_key=eq.default&select=id&limit=1`);
-let serveTypeId = Array.isArray(serveTypes) && serveTypes[0]?.id ? serveTypes[0].id : null;
-if (!serveTypeId) {
-  await upsert("menu_serve_types", {
-    id: FALLBACK_SERVE_ID,
-    shop_id: SHOP_ID,
-    name: "Default",
-    is_system: true,
-    system_key: "default",
-  });
-  serveTypeId = FALLBACK_SERVE_ID;
-}
+// Production's runtime schema intentionally rejects system_key='default'.
+// The browser fixture does not need a privileged/system serve type, so seed a
+// normal user-defined serve type that satisfies both runtime guard constraints:
+// is_system=false, system_key=null, and a name other than the reserved "Default".
+await upsert("menu_serve_types", {
+  id: SERVE_ID,
+  shop_id: SHOP_ID,
+  name: "Local Test Serve",
+  is_system: false,
+  system_key: null,
+});
+const serveTypeId = SERVE_ID;
 
 await upsert("ingredients", {
   id: INGREDIENT_ID,
@@ -256,6 +256,7 @@ const verification = await Promise.all([
   restGet("shops", `id=eq.${SHOP_ID}&select=id,name`),
   restGet("branch", `id=eq.${branchId}&select=id,name,is_active`),
   restGet("shop_members", `shop_id=eq.${SHOP_ID}&user_id=eq.${userId}&select=shop_id,user_id,role`),
+  restGet("menu_serve_types", `id=eq.${SERVE_ID}&select=id,name,is_system,system_key`),
   restGet("menu", `id=eq.${MENU_ID}&select=id,name,price`),
   restGet("menu_variants", `id=eq.${VARIANT_ID}&select=id,menu_id,is_default`),
   restGet("recipe_items", `id=eq.${RECIPE_ITEM_ID}&select=id,ingredient_id,quantity`),
