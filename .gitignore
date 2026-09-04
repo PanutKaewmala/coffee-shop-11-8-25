@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# generated disposable TALVO local runtime
+/.talvo-local-runtime/
+
 # vercel
 .vercel
 
