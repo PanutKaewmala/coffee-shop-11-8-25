@@ -87,6 +87,14 @@ jobs:
 
           exit "$missing"
 
+      - name: Upload verified schema-only dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-public-schema-review
+          path: ${{ runner.temp }}/coffee-saas-schema/production-public-schema.sql
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Remove temporary schema dump
         if: always()
         run: rm -rf "$RUNNER_TEMP/coffee-saas-schema"
