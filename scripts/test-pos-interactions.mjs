@@ -60,6 +60,11 @@ const mobileOptions = extractBetween(
   '<fieldset>',
   mobileAddButton,
 );
+const keyboardShortcut = extractBetween(
+  source,
+  '/* -------------------- KEYBOARD SHORTCUTS -------------------- */',
+  'async function checkout()',
+);
 
 assertNotIncludes(desktopCard.slice(0, 500), 'onClick={() => addToCart(item)}', 'Desktop card container must not add to cart when blank card space is clicked.');
 assertNotIncludes(variantButton, 'addVariantToCart(', 'Desktop variant selection must not call cart-add function.');
@@ -74,5 +79,9 @@ assert(source.includes('เลือกอุณหภูมิและคว�
 assertNotIncludes(mobileOptions, 'addToCart(', 'Mobile variant/sweetness options must not add to cart.');
 assert.equal((mobileAddButton.match(/addToCart\(configuredMenu\)/g) ?? []).length, 1, 'Mobile เพิ่มลงตะกร้า button should call addToCart(configuredMenu) once.');
 assert(mobileAddButton.includes('mobileAddLockRef.current'), 'Mobile rapid tap protection should remain on add button.');
+assert(source.includes('const checkoutRef = useRef<() => void>(() => {});'), 'POS must keep a ref for the latest checkout closure.');
+assert(source.includes('checkoutRef.current = checkout;'), 'POS must refresh the checkout ref from current render state.');
+assert(keyboardShortcut.includes('void checkoutRef.current();'), 'Enter shortcut must invoke the latest checkout closure.');
+assertNotIncludes(keyboardShortcut, 'void checkout();', 'Enter shortcut must not call a stale checkout closure directly.');
 
 console.log('POS interaction behavior checks passed.');
