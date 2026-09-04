@@ -18,23 +18,28 @@ if (source.includes("checkoutRef.current()")) {
   process.exit(0);
 }
 
-const refAnchor = '    const idempotencyKeyRef = useRef<string | null>(null);\n';
-if (!source.includes(refAnchor)) fail("Could not find idempotencyKeyRef anchor");
+// Be tolerant of Windows CRLF and small indentation differences in the local file.
+const refPattern = /^(\s*const idempotencyKeyRef = useRef<string \| null>\(null\);)\r?$/m;
+const refMatch = source.match(refPattern);
+if (!refMatch) fail("Could not find idempotencyKeyRef anchor");
+const indent = refMatch[1].match(/^\s*/)?.[0] ?? "    ";
 source = source.replace(
-  refAnchor,
-  `${refAnchor}    const checkoutRef = useRef<() => void>(() => {});\n`,
+  refPattern,
+  `${refMatch[1]}\n${indent}const checkoutRef = useRef<() => void>(() => {});`,
 );
 
-const keyboardAnchor = `    /* -------------------- KEYBOARD SHORTCUTS -------------------- */\n    useEffect(() => {\n`;
-if (!source.includes(keyboardAnchor)) fail("Could not find keyboard shortcut anchor");
+const keyboardPattern = /^(\s*)\/\* -------------------- KEYBOARD SHORTCUTS -------------------- \*\/\r?\n\s*useEffect\(\(\) => \{/m;
+const keyboardMatch = source.match(keyboardPattern);
+if (!keyboardMatch) fail("Could not find keyboard shortcut anchor");
+const keyboardIndent = keyboardMatch[1] ?? "    ";
 source = source.replace(
-  keyboardAnchor,
-  `    /* Keep the keyboard shortcut pointed at the latest checkout closure so\n       cash amount, payment method, cart quantity, and other current state are\n       never read from a stale render. */\n    useEffect(() => {\n        checkoutRef.current = checkout;\n    });\n\n${keyboardAnchor}`,
+  keyboardPattern,
+  `${keyboardIndent}/* Keep the keyboard shortcut pointed at the latest checkout closure so\n${keyboardIndent}   cash amount, payment method, cart quantity, and other current state are\n${keyboardIndent}   never read from a stale render. */\n${keyboardIndent}useEffect(() => {\n${keyboardIndent}    checkoutRef.current = checkout;\n${keyboardIndent}});\n\n${keyboardIndent}/* -------------------- KEYBOARD SHORTCUTS -------------------- */\n${keyboardIndent}useEffect(() => {`,
 );
 
-const staleCall = "          void checkout();";
-if (!source.includes(staleCall)) fail("Could not find Enter shortcut checkout call");
-source = source.replace(staleCall, "          void checkoutRef.current();");
+const staleCallPattern = /void\s+checkout\(\);/;
+if (!staleCallPattern.test(source)) fail("Could not find Enter shortcut checkout call");
+source = source.replace(staleCallPattern, "void checkoutRef.current();");
 
 fs.writeFileSync(posPath, source);
 
