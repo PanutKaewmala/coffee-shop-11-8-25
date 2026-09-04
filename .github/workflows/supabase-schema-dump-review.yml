@@ -9,7 +9,7 @@ on:
       - .github/workflows/supabase-schema-dump-review.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   dump-schema:
@@ -92,6 +92,14 @@ jobs:
 
           exit "$missing"
 
+      - name: Record verified local-runtime baseline
+        run: |
+          mkdir -p supabase/local-runtime
+          cp "$RUNNER_TEMP/coffee-saas-schema/production-public-schema.sql" \
+            supabase/local-runtime/production-public-baseline.sql
+          sha256sum supabase/local-runtime/production-public-baseline.sql \
+            > supabase/local-runtime/production-public-baseline.sha256
+
       - name: Upload verified schema-only dump
         uses: actions/upload-artifact@v4
         with:
@@ -99,6 +107,19 @@ jobs:
           path: ${{ runner.temp }}/coffee-saas-schema/production-public-schema.sql
           retention-days: 1
           if-no-files-found: error
+
+      - name: Commit verified baseline to this review branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/local-runtime/production-public-baseline.sql \
+                  supabase/local-runtime/production-public-baseline.sha256
+          if git diff --cached --quiet; then
+            echo "Verified baseline unchanged"
+          else
+            git commit -m "chore: record verified production public baseline"
+            git push origin HEAD:chore/schema-baseline-artifact
+          fi
 
       - name: Remove temporary schema dump
         if: always()
