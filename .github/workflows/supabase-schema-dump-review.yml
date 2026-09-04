@@ -2,6 +2,11 @@ name: Supabase Schema Dump Review
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - chore/schema-baseline-artifact
+    paths:
+      - .github/workflows/supabase-schema-dump-review.yml
 
 permissions:
   contents: read
