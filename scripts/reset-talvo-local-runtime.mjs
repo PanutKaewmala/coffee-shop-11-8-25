@@ -15,6 +15,7 @@ const runtimeMigrationsDir = path.join(runtimeSupabaseDir, "migrations");
 // Pin the CLI used by this reproducible local-runtime script instead of
 // depending on whatever global Supabase CLI happens to be installed.
 const supabaseCliVersion = "2.95.3";
+const localProjectId = "coffee-saas-v1-local-runtime";
 
 const postBaselineMigrations = [
   "20260807090000_atomic_pos_checkout.sql",
@@ -34,34 +35,127 @@ function requireFile(filePath) {
   }
 }
 
-function runSupabase(args, { workdir } = {}) {
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function spawnNpxSupabase(args, { workdir, capture = false } = {}) {
   const env = { ...process.env };
   if (workdir) env.SUPABASE_WORKDIR = workdir;
 
   const npxArgs = ["--yes", `supabase@${supabaseCliVersion}`, ...args];
   console.log(`\n> npx --yes supabase@${supabaseCliVersion} ${args.join(" ")}`);
 
+  const options = {
+    cwd: root,
+    env,
+    shell: false,
+    ...(capture
+      ? { encoding: "utf8", stdio: ["inherit", "pipe", "pipe"] }
+      : { stdio: "inherit" }),
+  };
+
   // npm/npx are .cmd launchers on Windows. Node 24 can reject spawning a .cmd
   // file directly with shell:false (EINVAL), so invoke it through cmd.exe.
-  // On non-Windows platforms, execute npx directly.
-  const result = process.platform === "win32"
-    ? spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npx ${npxArgs.join(" ")}`], {
-        cwd: root,
-        env,
-        stdio: "inherit",
-        shell: false,
-      })
-    : spawnSync("npx", npxArgs, {
-        cwd: root,
-        env,
-        stdio: "inherit",
-        shell: false,
-      });
+  if (process.platform === "win32") {
+    return spawnSync(
+      process.env.ComSpec || "cmd.exe",
+      ["/d", "/s", "/c", `npx ${npxArgs.join(" ")}`],
+      options,
+    );
+  }
 
+  return spawnSync("npx", npxArgs, options);
+}
+
+function runSupabase(args, { workdir } = {}) {
+  const result = spawnNpxSupabase(args, { workdir });
   if (result.error) fail(result.error.message);
   if (result.status !== 0) {
     fail(`supabase ${args.join(" ")} exited with code ${result.status}`);
   }
+}
+
+function runResetWithWindowsStorageTolerance() {
+  const args = ["db", "reset", "--local", "--no-seed"];
+  const result = spawnNpxSupabase(args, { workdir: runtimeRoot, capture: true });
+
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) fail(result.error.message);
+  if (result.status === 0) return;
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  const allMigrationsApplied = [
+    "20260805083001_production_public_runtime_baseline.sql",
+    ...postBaselineMigrations,
+  ].every((migration) => output.includes(`Applying migration ${migration}...`));
+
+  const knownStorageRestartTimeout =
+    /storage\/v1\/bucket/i.test(output) &&
+    /context deadline exceeded|Client\.Timeout exceeded/i.test(output);
+
+  if (allMigrationsApplied && knownStorageRestartTimeout) {
+    console.warn(
+      "\nSupabase reported a Windows storage health-check timeout after every migration had applied.\n" +
+        "Treating this as a transient service restart issue and verifying the rebuilt database directly.",
+    );
+    sleep(5000);
+    return;
+  }
+
+  fail(`supabase ${args.join(" ")} exited with code ${result.status}`);
+}
+
+function verifyDatabaseMarkers() {
+  console.log("\nVerifying rebuilt database markers directly inside the local Postgres container...");
+
+  const findDb = spawnSync(
+    "docker",
+    [
+      "ps",
+      "--filter",
+      `label=com.supabase.cli.project=${localProjectId}`,
+      "--filter",
+      "name=supabase_db_",
+      "--format",
+      "{{.ID}}",
+    ],
+    { cwd: root, encoding: "utf8", shell: false },
+  );
+
+  if (findDb.error) fail(findDb.error.message);
+  if (findDb.status !== 0) fail("Could not inspect the local Supabase Postgres container");
+
+  const containerId = (findDb.stdout || "").trim().split(/\r?\n/).filter(Boolean)[0];
+  if (!containerId) fail("Local Supabase Postgres container was not found after reset");
+
+  const sql = [
+    "select",
+    "  exists (select 1 from pg_namespace where nspname = 'talvo')::int,",
+    "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'create_talvo_supply_item')::int,",
+    "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'receive_talvo_supply_item')::int,",
+    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'pos_idempotency' and column_name = 'request_hash')::int,",
+    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'branch' and column_name = 'is_active')::int;",
+  ].join(" ");
+
+  const verify = spawnSync(
+    "docker",
+    ["exec", containerId, "psql", "-U", "postgres", "-d", "postgres", "-At", "-F", "|", "-c", sql],
+    { cwd: root, encoding: "utf8", shell: false },
+  );
+
+  if (verify.stdout) process.stdout.write(verify.stdout);
+  if (verify.stderr) process.stderr.write(verify.stderr);
+  if (verify.error) fail(verify.error.message);
+  if (verify.status !== 0) fail("Could not query the rebuilt local database");
+
+  const markers = (verify.stdout || "").trim().split(/\r?\n/).filter(Boolean).at(-1);
+  if (markers !== "1|1|1|1|1") {
+    fail(`Rebuilt database marker verification failed: ${markers || "no result"}`);
+  }
+
+  console.log("Verified: talvo schema, TALVO create/receive RPCs, POS request_hash, and branch.is_active are present.");
 }
 
 requireFile(sourceConfigPath);
@@ -109,7 +203,7 @@ fs.rmSync(runtimeRoot, { recursive: true, force: true });
 fs.mkdirSync(runtimeMigrationsDir, { recursive: true });
 
 let config = fs.readFileSync(sourceConfigPath, "utf8");
-config = config.replace(/^project_id\s*=\s*"[^"]+"/m, 'project_id = "coffee-saas-v1-local-runtime"');
+config = config.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${localProjectId}"`);
 config = config.replace(/(\[db\.seed\][\s\S]*?^enabled\s*=\s*)true/m, "$1false");
 fs.writeFileSync(path.join(runtimeSupabaseDir, "config.toml"), config);
 fs.writeFileSync(path.join(runtimeSupabaseDir, "seed.sql"), "-- Intentionally empty. Local test fixtures are added separately.\n");
@@ -149,10 +243,11 @@ console.log("\nStarting isolated TALVO local runtime...");
 runSupabase(["start"], { workdir: runtimeRoot });
 
 console.log("\nProving the database can be recreated from scratch...");
-runSupabase(["db", "reset", "--local", "--no-seed"], { workdir: runtimeRoot });
+runResetWithWindowsStorageTolerance();
 
 console.log("\nFinal local runtime status:");
 runSupabase(["status"], { workdir: runtimeRoot });
+verifyDatabaseMarkers();
 
 console.log("\nTALVO_LOCAL_RUNTIME_READY");
 console.log("The disposable local database was rebuilt from the verified runtime baseline plus the four post-baseline migrations.");
