@@ -36,6 +36,7 @@ type PosMenuItem = {
    Checkout types
 ========================= */
 type PosCheckoutPayload = {
+    branch_id: string;
     items: { variant_id: string; qty: number; sweetness: SweetnessLevel }[];
     payment_method: "cash" | "promptpay";
     paid_amount?: number;
@@ -79,6 +80,36 @@ type CartItem = {
     qty: number;
 };
 
+type PendingCheckout = {
+    key: string;
+    shopId: string;
+    branchId: string;
+    payload: PosCheckoutPayload;
+    cart: CartItem[];
+};
+
+function pendingCheckoutStorageKey(shopId: string, branchId: string) {
+    return `talvo.pos.pendingCheckout.v1:${shopId}:${branchId}`;
+}
+
+function readPendingCheckout(raw: string | null, shopId: string, branchId: string): PendingCheckout | null {
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!isRecord(value) || typeof value.key !== "string" || value.key.length < 8 ||
+        value.shopId !== shopId || value.branchId !== branchId || !isRecord(value.payload) ||
+        value.payload.branch_id !== branchId || !Array.isArray(value.payload.items) ||
+        value.payload.items.length === 0 || !Array.isArray(value.cart) || value.cart.length === 0 ||
+        !["cash", "promptpay"].includes(String(value.payload.payment_method))) {
+        throw new Error("Invalid saved checkout");
+    }
+    for (const item of value.payload.items) {
+        if (!isRecord(item) || typeof item.variant_id !== "string" ||
+            !Number.isSafeInteger(item.qty) || Number(item.qty) < 1 ||
+            typeof item.sweetness !== "string") throw new Error("Invalid saved checkout item");
+    }
+    return value as unknown as PendingCheckout;
+}
+
 type ReceiptItem = {
     name: string;
     variantLabel: string;
@@ -115,10 +146,6 @@ function toNumber(v: unknown, fallback = 0): number {
 
 function toNonEmptyString(v: unknown): string | null {
     return typeof v === "string" && v.trim().length > 0 ? v : null;
-}
-
-function clamp(n: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, n));
 }
 
 function parseNumberInput(raw: string): number | null {
@@ -605,7 +632,11 @@ export default function POSClient() {
     const [menu, setMenu] = useState<PosMenuItem[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const idempotencyKeyRef = useRef<string | null>(null);
+    const checkoutInFlightRef = useRef(false);
+    const pendingCheckoutRef = useRef<PendingCheckout | null>(null);
+    const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(null);
+    const [pendingReady, setPendingReady] = useState(false);
+    const [pendingStorageError, setPendingStorageError] = useState<string | null>(null);
 
     const checkoutRef = useRef<() => void>(() => {});
     const [feedError, setFeedError] = useState<string | null>(null);
@@ -678,6 +709,27 @@ export default function POSClient() {
             alive = false;
         };
     }, []);
+
+    // A lost response must survive navigation/reload with its original key and payload.
+    useEffect(() => {
+        if (!context.shopId || !context.branchId) return;
+        try {
+            const saved = readPendingCheckout(
+                sessionStorage.getItem(pendingCheckoutStorageKey(context.shopId, context.branchId)),
+                context.shopId, context.branchId,
+            );
+            pendingCheckoutRef.current = saved;
+            setPendingCheckout(saved);
+            if (saved) {
+                setCart(saved.cart);
+                setPaymentMethod(saved.payload.payment_method);
+                setPaidAmount(saved.payload.paid_amount == null ? "" : String(saved.payload.paid_amount));
+            }
+            setPendingReady(true);
+        } catch {
+            setPendingStorageError("ไม่สามารถอ่านบิลที่รอยืนยันได้ กรุณาเปิดแท็บเดิมหรือติดต่อผู้ดูแลก่อนขายต่อ");
+        }
+    }, [context.shopId, context.branchId]);
 
     /* -------------------- LOAD RECEIPT DISPLAY SETTINGS -------------------- */
     useEffect(() => {
@@ -962,6 +1014,7 @@ export default function POSClient() {
       variantId: string,
       sweetness = getSelectedSweetness(item.id),
     ) => {
+            if (!pendingReady || pendingCheckoutRef.current) return;
             const variants = Array.isArray(item.variants) ? item.variants : [];
             const v = variants.find((x) => x.id === variantId) ?? null;
             if (!v) return;
@@ -1007,7 +1060,7 @@ export default function POSClient() {
 
             pushFeedback(`เพิ่ม ${item.name} (${variantLabel})`, lineId);
         },
-    [getSelectedSweetness, pushFeedback],
+    [getSelectedSweetness, pushFeedback, pendingReady],
     );
 
     const addToCart = useCallback(
@@ -1030,12 +1083,14 @@ export default function POSClient() {
     );
 
     const increaseQty = useCallback((lineId: string) => {
+        if (pendingCheckoutRef.current) return;
         setCart((prev) =>
       prev.map((c) => (c.id === lineId ? { ...c, qty: c.qty + 1 } : c)),
         );
     }, []);
 
     const decreaseQty = useCallback((lineId: string) => {
+        if (pendingCheckoutRef.current) return;
         setCart((prev) =>
             prev
                 .map((c) => (c.id === lineId ? { ...c, qty: c.qty - 1 } : c))
@@ -1044,10 +1099,13 @@ export default function POSClient() {
     }, []);
 
     const removeItem = useCallback((lineId: string) => {
+        if (pendingCheckoutRef.current) return;
         setCart((prev) => prev.filter((c) => c.id !== lineId));
     }, []);
 
-    const clearCart = useCallback(() => setCart([]), []);
+    const clearCart = useCallback(() => {
+        if (!pendingCheckoutRef.current) setCart([]);
+    }, []);
 
     /* -------------------- TOTAL -------------------- */
   const total = useMemo(
@@ -1169,7 +1227,7 @@ export default function POSClient() {
                 if (cart.length > 0 && !loading) clearCart();
             }
             if (e.key === "Enter") {
-        if (cart.length > 0 && !loading && !isBusinessDayClosed)
+        if (cart.length > 0 && !loading && (!isBusinessDayClosed || pendingCheckoutRef.current))
           void checkoutRef.current();
             }
         }
@@ -1179,149 +1237,97 @@ export default function POSClient() {
     }, [cart.length, loading, isBusinessDayClosed]);
 
     async function checkout() {
-        if (cart.length === 0) return;
-
-        if (paymentMethod === "cash") {
+        if (checkoutInFlightRef.current || !pendingReady || !context.shopId || !context.branchId) return;
+        let pending = pendingCheckoutRef.current;
+        if (!pending) {
+            if (cart.length === 0 || isBusinessDayClosed) return;
             const paid = parseNumberInput(paidAmount);
-            if (paid == null) {
-                alert("กรุณากรอกจำนวนเงินที่รับ (บาท)");
+            if (paymentMethod === "cash" && (paid == null || paid < total)) {
+                alert("กรุณากรอกจำนวนเงินที่รับให้ครบยอดขาย");
                 return;
             }
-            if (paid < total) {
-        alert(
-          `เงินไม่พอ\nยอดรวม: ${formatPrice(total)}\nได้รับ: ${formatPrice(paid)}\nขาดอีก: ${formatPrice(total - paid)}`,
-        );
-                return;
-            }
-        }
-
-        if (idempotencyKeyRef.current) return;
-        idempotencyKeyRef.current = generateIdempotencyKey();
-        setLoading(true);
-
-        try {
             const payload: PosCheckoutPayload = {
+                branch_id: context.branchId,
                 items: cart.map((c) => ({
                     variant_id: c.variant_id,
-                    qty: clamp(c.qty, 1, 999),
+                    qty: c.qty,
                     sweetness: normalizeSweetness(c.sweetness ?? c.variant_label),
                 })),
                 payment_method: paymentMethod,
+                ...(paymentMethod === "cash" && paid != null ? { paid_amount: paid } : {}),
             };
-            if (paymentMethod === "cash") {
-                const parsedPaidAmount = parseNumberInput(paidAmount);
-                if (parsedPaidAmount != null) {
-                    payload.paid_amount = parsedPaidAmount;
-                }
+            pending = { key: generateIdempotencyKey(), shopId: context.shopId, branchId: context.branchId, payload, cart };
+            try {
+                sessionStorage.setItem(pendingCheckoutStorageKey(pending.shopId, pending.branchId), JSON.stringify(pending));
+                setPendingStorageError(null);
+            } catch {
+                setPendingStorageError("ไม่สามารถบันทึกบิลเพื่อป้องกันการขายซ้ำได้ กรุณาเปิดใช้งานพื้นที่จัดเก็บของเบราว์เซอร์แล้วลองใหม่");
+                return;
             }
-
+            pendingCheckoutRef.current = pending;
+            setPendingCheckout(pending);
+        }
+        checkoutInFlightRef.current = true;
+        setLoading(true);
+        const clearPending = () => {
+            sessionStorage.removeItem(pendingCheckoutStorageKey(pending.shopId, pending.branchId));
+            pendingCheckoutRef.current = null;
+            setPendingCheckout(null);
+        };
+        try {
             const res = await fetch("/api/pos", {
                 method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKeyRef.current ?? "",
-        },
-                body: JSON.stringify(payload),
+                headers: { "Content-Type": "application/json", "Idempotency-Key": pending.key },
+                body: JSON.stringify(pending.payload),
             });
-      const debugText = await res
-        .clone()
-        .text()
-        .catch(() => "");
-
-            const raw: unknown = await res.json().catch(() => {
-                console.error("⚠️ /api/pos returned non-JSON:", debugText);
-                return null;
-            });
-
-      const data: PosCheckoutResponse = isRecord(raw)
-        ? (raw as PosCheckoutResponse)
-        : {};
-
+            const raw: unknown = await res.json().catch(() => null);
+            const data: PosCheckoutResponse = isRecord(raw) ? raw as PosCheckoutResponse : {};
             if (!res.ok) {
-                const rawDump = (() => {
-                    try {
-                        return JSON.stringify(raw);
-                    } catch {
-                        return String(raw);
-                    }
-                })();
-                console.error(
-                    `POS checkout failed: HTTP ${res.status} ${res.statusText}; data=${JSON.stringify(
-            data,
-          )}; raw=${rawDump}; text=${debugText}`,
-                );
-
-                if (data.code === "NO_RECIPE") {
-          alert(
-            "This item is not ready for sale. Ask the owner to add a recipe for this variant.",
-          );
-                    return;
-                }
-
-        if (
-          data.code === "BUSINESS_DAY_CLOSED" &&
-          typeof data.error === "string"
-        ) {
-                    alert(data.error);
-                    return;
-                }
-
-                const rawMessage =
-                    isRecord(raw) && typeof raw.message === "string" ? raw.message : "";
-                const msg =
-                    (typeof data.error === "string" && data.error) ||
-                    rawMessage ||
-                    (debugText.trim() ? debugText : "") ||
-                    (res.status === 400
-                        ? "ข้อมูลไม่ครบ/สต็อกไม่พอ/ไม่มีสูตร (เช็ค recipe_items)"
-                        : `ปิดบิลล้มเหลว (HTTP ${res.status})`);
-
-                alert(msg);
+                // These structured failures confirm the transaction did not commit.
+                // Authentication, conflicts, 5xx and unreadable responses remain pending.
+                const rejectedCodes = [
+                    "NO_RECIPE", "INVALID_RECIPE_QUANTITY", "RECIPE_INGREDIENT_OUTSIDE_BRANCH",
+                    "INGREDIENT_NOT_FOUND_FOR_BRANCH", "NOT_ENOUGH_STOCK", "INSUFFICIENT_PAYMENT",
+                    "INVALID_ITEMS", "INVALID_VARIANT_SWEETNESS_OR_QUANTITY", "INVALID_PAYMENT_METHOD",
+                    "INVALID_PAID_AMOUNT", "BUSINESS_DAY_CLOSED", "MENU_UNAVAILABLE", "INVALID_RECIPE",
+                    "INVALID_RECIPE_SUPPLY_ITEM", "INACTIVE_INVENTORY_BRANCH", "INVENTORY_LOCATION_MISSING", "INVALID_MENU_PRICE",
+                ];
+                if (res.status < 500 && data.code && rejectedCodes.includes(data.code)) clearPending();
+                alert(data.error || "ยังยืนยันผลการขายไม่ได้ กดตรวจสอบบิลเดิมอีกครั้ง");
                 return;
             }
-
-            // If server returned success flag, verify it before clearing cart
-            if (!data.success) {
-        const msg =
-          (typeof data.error === "string" && data.error) || "ปิดบิลล้มเหลว";
-                alert(msg);
+            const order = isRecord(data.order) ? data.order : null;
+            if (!data.success || !order || typeof order.id !== "string" || !Array.isArray(order.items) ||
+                typeof order.total !== "number" || typeof order.created_at !== "string") {
+                alert("ยังยืนยันผลการขายไม่ได้ กดตรวจสอบบิลเดิมอีกครั้ง");
                 return;
             }
-
-      const order = isRecord(data.order)
-        ? (data.order as Record<string, unknown>)
-        : null;
-      const orderIdRaw = order ? (order.id ?? order.order_id) : null;
-            const orderId = orderIdRaw ? String(orderIdRaw) : "";
-            const receiptPaidAmount =
-        paymentMethod === "cash" ? (parseNumberInput(paidAmount) ?? 0) : total;
-            const receiptChangeAmount =
-                paymentMethod === "cash" ? receiptPaidAmount - total : 0;
-
-            setReceiptData({
-                orderId,
-                createdAt: new Date().toISOString(),
-                items: cart.map((c) => ({
-                    name: c.menu_name,
-                    variantLabel: getCartVariantLabel(c),
-                    qty: c.qty,
-                    unitPrice: c.price,
-                    lineTotal: c.price * c.qty,
-                })),
-                total,
-                paymentMethod,
-                paidAmount: receiptPaidAmount,
-                changeAmount: receiptChangeAmount,
+            const receiptItems = order.items.map((item): ReceiptItem => {
+                if (!isRecord(item) || typeof item.name !== "string" || typeof item.price !== "number" || typeof item.qty !== "number") {
+                    throw new Error("Invalid checkout receipt");
+                }
+                return { name: item.name, variantLabel: String(item.variant_label ?? ""), qty: item.qty, unitPrice: item.price, lineTotal: item.qty * item.price };
             });
+            const serverPaymentMethod = order.payment_method === "promptpay" ? "promptpay" : "cash";
+            const receiptPaidAmount = toNumber(order.paid_amount, pending.payload.paid_amount ?? order.total);
+            setReceiptData({
+                orderId: order.id,
+                createdAt: order.created_at,
+                items: receiptItems,
+                total: order.total,
+                paymentMethod: serverPaymentMethod,
+                paidAmount: receiptPaidAmount,
+                changeAmount: toNumber(order.change_amount, serverPaymentMethod === "cash" ? receiptPaidAmount - order.total : 0),
+            });
+            clearPending();
             setCart([]);
             setPaidAmount("");
-      setMobileCartOpen(false);
+            setMobileCartOpen(false);
         } catch (err) {
-            console.error("ปิดบิลผิดพลาด:", err);
-            alert("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+            console.error("[pos] checkout_response_unconfirmed", err);
+            alert("ยังยืนยันผลการขายไม่ได้ กดตรวจสอบบิลเดิมอีกครั้ง ระบบจะไม่สร้างบิลซ้ำ");
         } finally {
-            // Clear active idempotency key only after request completes
-            idempotencyKeyRef.current = null;
+            checkoutInFlightRef.current = false;
             setLoading(false);
         }
     }
@@ -1423,6 +1429,8 @@ export default function POSClient() {
             {isBusinessDayClosed && businessDate ? <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/15 p-3 text-sm font-medium text-red-700">ปิดยอดวันนี้แล้ว ไม่สามารถสร้างบิลใหม่ได้</div> : null}
             {dailyCloseError && !dailyCloseLoading && !isBusinessDayClosed ? <div className="mb-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700">{dailyCloseError}</div> : null}
 
+            {pendingCheckout ? <p role="status" className="mb-3 rounded-xl bg-amber-500/15 p-3 text-sm">บิลนี้รอยืนยันผลการขาย กด “ตรวจสอบบิลเดิม” ก่อนเริ่มบิลใหม่</p> : null}
+            <fieldset disabled={!!pendingCheckout || !pendingReady} className="min-w-0">
             <div className="space-y-3">
               {groupedCart.map((group) => (
                 <div key={group.menu_id} className="rounded-lg border border-[var(--text-muted)]/20 bg-surface p-3">
@@ -1464,13 +1472,14 @@ export default function POSClient() {
                 </div>
               ) : null}
             </div>
+            </fieldset>
           </div>
 
           <footer className="flex-none border-t border-[var(--text-muted)]/20 bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4">
             <div className="mb-3 flex justify-between text-lg font-bold text-text-primary"><span>ยอดรวมทั้งหมด</span><span>{formatPrice(total)}</span></div>
             <div className="grid grid-cols-[auto_1fr] gap-2">
-              <button type="button" onClick={clearCart} disabled={loading} className="min-h-12 rounded-xl bg-[var(--text-muted)]/20 px-3 text-sm text-text-secondary disabled:opacity-50">ล้างตะกร้า</button>
-              <button type="button" onClick={() => void checkout()} disabled={loading || !canCashCheckout || isBusinessDayClosed} className="min-h-12 rounded-xl bg-accent px-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{loading ? "กำลังปิดบิล..." : "ปิดบิล"}</button>
+              <button type="button" onClick={clearCart} disabled={loading || !!pendingCheckout} className="min-h-12 rounded-xl bg-[var(--text-muted)]/20 px-3 text-sm text-text-secondary disabled:opacity-50">ล้างตะกร้า</button>
+              <button type="button" onClick={() => void checkout()} disabled={loading || !pendingReady || (!pendingCheckout && (!canCashCheckout || isBusinessDayClosed))} className="min-h-12 rounded-xl bg-accent px-4 text-lg font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">{loading ? "กำลังปิดบิล..." : pendingCheckout ? "ตรวจสอบบิลเดิม" : "ปิดบิล"}</button>
             </div>
           </footer>
         </>
@@ -1481,6 +1490,7 @@ export default function POSClient() {
     /* -------------------- RENDER -------------------- */
     return (
     <div className="flex min-h-full flex-col bg-background pb-24 md:h-screen md:flex-row md:pb-0 text-text-primary">
+            {pendingStorageError ? <p role="alert" className="fixed inset-x-3 top-3 z-50 rounded-xl bg-red-100 p-3 text-red-900">{pendingStorageError}</p> : null}
             {feedbackText ? (
                 <div className="fixed right-2 top-2 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 text-xs text-text-primary shadow-xl backdrop-blur pointer-events-none">
                     {feedbackText}

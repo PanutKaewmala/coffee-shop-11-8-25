@@ -22,6 +22,7 @@ const postBaselineMigrations = [
   "20260817100000_talvo_supply_item_vertical_slice.sql",
   "20260819180000_talvo_receive_supply_item.sql",
   "20260819180100_talvo_receive_history_hardening.sql",
+  "20260910042652_sale_recipe_inventory.sql",
 ];
 
 function fail(message) {
@@ -136,6 +137,7 @@ function verifyDatabaseMarkers() {
     "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'create_talvo_supply_item')::int,",
     "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'receive_talvo_supply_item')::int,",
     "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'pos_idempotency' and column_name = 'request_hash')::int,",
+    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'orders' and column_name = 'inventory_snapshot')::int,",
     "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'branch' and column_name = 'is_active')::int;",
   ].join(" ");
 
@@ -151,7 +153,7 @@ function verifyDatabaseMarkers() {
   if (verify.status !== 0) fail("Could not query the rebuilt local database");
 
   const markers = (verify.stdout || "").trim().split(/\r?\n/).filter(Boolean).at(-1);
-  if (markers !== "1|1|1|1|1") {
+  if (markers !== "1|1|1|1|1|1") {
     fail(`Rebuilt database marker verification failed: ${markers || "no result"}`);
   }
 
@@ -199,6 +201,9 @@ if (/\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b/i.test(sqlToCheck)) {
   fail("Runtime migration chain contains CREATE INDEX CONCURRENTLY, which this pinned CLI path does not support safely");
 }
 
+if (path.resolve(runtimeRoot) !== path.join(path.resolve(root), ".talvo-local-runtime")) {
+  fail("Runtime reset target is outside the workspace");
+}
 fs.rmSync(runtimeRoot, { recursive: true, force: true });
 fs.mkdirSync(runtimeMigrationsDir, { recursive: true });
 
@@ -233,7 +238,7 @@ for (const migration of postBaselineMigrations) {
 }
 
 console.log("\nPrepared isolated migration chain:");
-console.log("  baseline -> 20260807090000 -> 20260817100000 -> 20260819180000 -> 20260819180100");
+console.log(`  baseline -> ${postBaselineMigrations.join(" -> ")}`);
 console.log(`  baseline SHA-256: ${actualHash}`);
 console.log(`  Supabase CLI: ${supabaseCliVersion} (pinned via npx)`);
 console.log("\nStopping the existing local Supabase stack (local only; no remote operation)...");
@@ -250,5 +255,5 @@ runSupabase(["status"], { workdir: runtimeRoot });
 verifyDatabaseMarkers();
 
 console.log("\nTALVO_LOCAL_RUNTIME_READY");
-console.log("The disposable local database was rebuilt from the verified runtime baseline plus the four post-baseline migrations.");
+console.log("The disposable local database was rebuilt from the verified runtime baseline plus the post-baseline migrations.");
 console.log("No production row data was copied and no remote database was mutated by this script.");

@@ -45,3 +45,23 @@ assert.match(posRoute, /console\.error\("\[pos\] atomic_checkout_failed", atomic
 assert.match(posRoute, /error: "Unable to complete checkout", code: "CHECKOUT_FAILED"/);
 assert.doesNotMatch(migration, /failpoint|production[_ -]?fail/i, "migration contains no production failpoints");
 console.log("POS atomic checkout static contract passed");
+
+const ordersRoute = readFileSync("src/app/api/orders/route.ts", "utf8");
+assert.doesNotMatch(posPost, /from\("pos_idempotency"\)/, "HTTP route cannot bypass authenticated replay validation");
+assert.doesNotMatch(posPost, /from\("menu"\)|from\("menu_variants"\)/, "catalog changes cannot change or block a replay at the HTTP boundary");
+assert.match(posPost, /raw\.branch_id !== currentBranchId/, "caller branch cannot override selected context");
+assert.match(posPost, /p_branch_id: currentBranchId/);
+assert.match(posPost, /member\.role !== "owner" && member\.role !== "staff"/);
+assert.doesNotMatch(posPost, /Math\.floor|\.filter\(/, "invalid checkout lines cannot silently disappear");
+assert.match(posPost, /p_paid_amount: paidAmount/);
+assert.match(ordersRoute, /code: "USE_POS_CHECKOUT"/);
+assert.doesNotMatch(ordersRoute, /deductStock|\.insert\(/, "retired legacy sales route cannot write partial sales");
+
+const saleMigration = readFileSync("supabase/migrations/20260910042652_sale_recipe_inventory.sql", "utf8");
+const legacyCancel = saleMigration.slice(saleMigration.indexOf("CREATE OR REPLACE FUNCTION public.cancel_order_without_business_day_guard"));
+assert.match(legacyCancel, /ri\.shop_id = v_order\.shop_id/);
+assert.match(legacyCancel, /ri\.branch_id = v_order\.branch_id/, "new branch recipes cannot affect legacy sale cancellation in another branch");
+assert.match(legacyCancel, /i\.shop_id = v_order\.shop_id/);
+assert.match(legacyCancel, /i\.branch_id = v_order\.branch_id/);
+assert.match(legacyCancel, /created_at, shop_id, branch_id/);
+assert.match(legacyCancel, /revoke all on function public\.cancel_order_without_business_day_guard/, "legacy helper remains inaccessible as a public mutation");

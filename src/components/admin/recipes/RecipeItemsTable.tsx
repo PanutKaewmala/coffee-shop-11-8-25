@@ -2,26 +2,8 @@
 
 import Table from "@/components/admin/table/Table";
 import { Button } from "@/components/ui/button";
-
-type UUID = string;
-
-export type RecipeItemView = {
-    id: UUID;
-    variant_id: UUID;
-
-    menu_id: UUID | null;
-    menu_name: string | null;
-    serve_type_id: UUID | null;
-    serve_type_name: string | null;
-    size: string | null;
-
-    ingredient_id: UUID;
-    ingredient_name: string | null;
-    unit: string | null;
-
-    quantity: number;
-    created_at: string;
-};
+import type { RecipeItemView } from "@/lib/recipeTypes";
+export type { RecipeItemView } from "@/lib/recipeTypes";
 
 export default function RecipeItemsTable({
     rows,
@@ -37,8 +19,10 @@ export default function RecipeItemsTable({
     const data = rows.map((r) => {
         const nameCell = (
             <div key={`n-${r.id}`} className="flex flex-col">
-                <span className="font-medium">{r.ingredient_name ?? r.ingredient_id}</span>
+                <span className="font-medium">{r.ingredient_name ?? r.source_id}</span>
                 <span className="text-xs text-[var(--text-secondary)]">{r.unit ?? "-"}</span>
+                {r.source_type === "supply_item" ? <span className="text-xs text-[var(--text-secondary)]">TALVO Supply</span> : null}
+                {r.branch_id === null ? <span className="text-xs text-amber-600">ยังไม่กำหนดสาขา — แก้ไขหรือลบรายการนี้ก่อนขาย</span> : null}
             </div>
         );
 
