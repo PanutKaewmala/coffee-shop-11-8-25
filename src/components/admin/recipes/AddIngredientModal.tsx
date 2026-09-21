@@ -6,17 +6,7 @@ import IngredientCombobox from "@/components/admin/ingredients/IngredientCombobo
 import type { Ingredient } from "@/lib/types";
 import { BASE_UNIT_LABEL } from "@/lib/units";
 import type { VariantOption } from "./RecipesShell";
-
-type UUID = string;
-
-type EditDraft = {
-    id?: UUID;
-    variant_id: UUID;
-    ingredient_id: UUID;
-    quantity: number;
-    ingredient_name?: string | null;
-    ingredient_unit?: string | null;
-};
+import { isRecipeQuantityStepValid, type RecipeDraft, type RecipeSupplyItem } from "@/lib/recipeTypes";
 
 function sanitizeDecimalInput(raw: string): string {
     const v = raw.replace(",", ".").trim();
@@ -59,6 +49,8 @@ export default function AddIngredientModal({
     setDraft,
     variantsForMenu,
     ingredients,
+    supplyItems,
+    saving,
     disabledIds,
     recentIds,
     onPickRecent,
@@ -68,29 +60,34 @@ export default function AddIngredientModal({
     open: boolean;
     onClose: () => void;
     mode: "add" | "edit";
-    draft: EditDraft;
-    setDraft: (next: EditDraft) => void;
+    draft: RecipeDraft;
+    setDraft: (next: RecipeDraft) => void;
     variantsForMenu: VariantOption[];
     ingredients: Ingredient[];
+    supplyItems: RecipeSupplyItem[];
+    saving: boolean;
     disabledIds: Set<string>;
     recentIds: string[];
     onPickRecent: (id: string) => void;
-    onSave: (payload: { id?: string; variant_id: string; ingredient_id: string; quantity: number }) => void;
+    onSave: (payload: RecipeDraft) => void;
     lockIngredient?: boolean;
 }) {
     const [qtyInput, setQtyInput] = useState(String(draft.quantity ?? 1));
     const [qtyTouched, setQtyTouched] = useState(false);
 
     const isAdd = mode === "add";
-    const duplicateSelected = isAdd && draft.ingredient_id ? disabledIds.has(draft.ingredient_id) : false;
+    const duplicateSelected = isAdd && draft.ingredient_id ? disabledIds.has(`${draft.source_type}:${draft.ingredient_id}`) : false;
 
-    const selectedIngredient = ingredients.find((x) => x.id === draft.ingredient_id);
-    const selectedIngredientName = selectedIngredient?.name ?? draft.ingredient_name ?? draft.ingredient_id;
-    const selectedIngredientUnitLabel = unitLabelOf(selectedIngredient) || (draft.ingredient_unit ?? "").trim();
+    const selectedIngredient = draft.source_type === "ingredient" ? ingredients.find((x) => x.id === draft.ingredient_id) : undefined;
+    const selectedSupply = draft.source_type === "supply_item" ? supplyItems.find((x) => x.id === draft.ingredient_id) : undefined;
+    const selectedIngredientName = selectedSupply?.name ?? selectedIngredient?.name ?? draft.ingredient_name ?? draft.ingredient_id;
+    const selectedIngredientUnitLabel = selectedSupply?.base_unit || unitLabelOf(selectedIngredient) || (draft.ingredient_unit ?? "").trim();
 
     const qty = parsePositiveNumber(qtyInput);
-    const quantityError = qtyTouched && qty == null ? "ต้องมากกว่า 0" : null;
-    const canSave = Boolean(draft.variant_id && draft.ingredient_id && qty != null);
+    const step = selectedSupply?.quantity_step ?? (draft.source_type === "supply_item" ? draft.quantity_step : null);
+    const invalidStep = qty != null && step != null && !isRecipeQuantityStepValid(qty, step);
+    const quantityError = qtyTouched && qty == null ? "ต้องมากกว่า 0" : invalidStep ? `จำนวนต้องเป็นเท่าของ ${step} ${selectedIngredientUnitLabel}` : null;
+    const canSave = Boolean(draft.variant_id && draft.ingredient_id && qty != null && !invalidStep && !saving);
 
     if (!open) return null;
 
@@ -98,6 +95,11 @@ export default function AddIngredientModal({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="w-full max-w-lg rounded-2xl bg-[var(--surface)] border border-[var(--text-muted)]/20 shadow-xl p-5">
                 <div className="mb-4 text-lg font-semibold">{isAdd ? "เพิ่มวัตถุดิบ" : "แก้ไขวัตถุดิบ"}</div>
+                {draft.branch_id === null ? (
+                    <div role="alert" className="mb-3 rounded-lg border border-amber-500/30 p-3 text-sm text-amber-600">
+                        สูตรนี้ยังไม่กำหนดสาขา เลือกวัตถุดิบของสาขาปัจจุบันแล้วบันทึกเพื่อแก้ไข
+                    </div>
+                ) : null}
 
                 <label className="mb-1 block text-sm text-[var(--text-muted)]">ตัวเลือก</label>
                 <select
@@ -113,10 +115,41 @@ export default function AddIngredientModal({
                     ))}
                 </select>
 
+                {!lockIngredient ? (
+                    <>
+                        <label htmlFor="recipe-stock-source" className="mb-1 block text-sm text-[var(--text-muted)]">แหล่งสต็อก</label>
+                        <select
+                            id="recipe-stock-source"
+                            className="mb-3 w-full rounded-lg border border-text-muted/40 bg-background p-2"
+                            value={draft.source_type}
+                            onChange={(event) => setDraft({ ...draft, source_type: event.target.value as RecipeDraft["source_type"], ingredient_id: "" })}
+                        >
+                            <option value="ingredient">วัตถุดิบเดิม</option>
+                            <option value="supply_item">TALVO Supply</option>
+                        </select>
+                    </>
+                ) : null}
+
                 <label className="mb-1 block text-sm text-[var(--text-muted)]">วัตถุดิบ</label>
                 {lockIngredient ? (
                     <div className="mb-3 rounded-lg border border-[var(--text-muted)]/25 px-3 py-2 text-sm">
                         <div className="font-medium">{selectedIngredientName}</div>
+                    </div>
+                ) : draft.source_type === "supply_item" ? (
+                    <div className="mb-3">
+                        <select
+                            aria-label="TALVO Supply"
+                            className="w-full rounded-lg border border-text-muted/40 bg-background p-2"
+                            value={draft.ingredient_id}
+                            onChange={(event) => setDraft({ ...draft, ingredient_id: event.target.value })}
+                        >
+                            <option value="">เลือกวัตถุดิบ TALVO</option>
+                            {supplyItems.map((item) => (
+                                <option key={item.id} value={item.id}>{item.name} ({item.base_unit})</option>
+                            ))}
+                        </select>
+                        {selectedSupply ? <div className="mt-1 text-xs text-[var(--text-secondary)]">คงเหลือในสาขานี้: {selectedSupply.available_stock} {selectedSupply.base_unit}</div> : null}
+                        {!supplyItems.length ? <div className="mt-1 text-xs text-[var(--text-secondary)]">ยังไม่มีวัตถุดิบ TALVO ในร้านนี้</div> : null}
                     </div>
                 ) : (
                     <div className="mb-3">
@@ -127,7 +160,7 @@ export default function AddIngredientModal({
                                 setDraft({ ...draft, ingredient_id: id });
                                 if (id) onPickRecent(id);
                             }}
-                            disabledIds={disabledIds}
+                            disabledIds={new Set([...disabledIds].filter((id) => id.startsWith("ingredient:")).map((id) => id.slice("ingredient:".length)))}
                             recentIds={recentIds}
                             onPickRecent={onPickRecent}
                             emptyHint="ไม่พบวัตถุดิบ — สร้างได้ที่หน้าวัตถุดิบก่อน"
@@ -141,8 +174,9 @@ export default function AddIngredientModal({
                     </div>
                 ) : null}
 
-                <label className="mb-1 block text-sm text-[var(--text-muted)]">จำนวนต่อแก้ว</label>
+                <label htmlFor="recipe-quantity" className="mb-1 block text-sm text-[var(--text-muted)]">จำนวนต่อแก้ว</label>
                 <input
+                    id="recipe-quantity"
                     type="text"
                     inputMode="decimal"
                     placeholder="เช่น 1, 0.5, 12.5"
@@ -167,23 +201,24 @@ export default function AddIngredientModal({
                 {quantityError ? <div className="mb-2 text-xs text-red-400">{quantityError}</div> : null}
 
                 <div className="flex justify-end gap-2 pt-1">
-                    <Button variant="outline" onClick={onClose}>
+                    <Button variant="outline" onClick={onClose} disabled={saving}>
                         ยกเลิก
                     </Button>
                     <Button
                         disabled={!canSave}
                         onClick={() => {
                             setQtyTouched(true);
-                            if (!draft.variant_id || !draft.ingredient_id || qty == null) return;
+                            if (!canSave || qty == null) return;
                             onSave({
                                 id: draft.id,
                                 variant_id: draft.variant_id,
                                 ingredient_id: draft.ingredient_id,
+                                source_type: draft.source_type,
                                 quantity: qty,
                             });
                         }}
                     >
-                        บันทึก
+                        {saving ? "กำลังบันทึก..." : "บันทึก"}
                     </Button>
                 </div>
             </div>

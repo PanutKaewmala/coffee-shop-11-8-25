@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Card from "@/components/admin/Card";
 import type { Ingredient } from "@/lib/types";
+import { parseRecipeSupplies, type RecipeSupplyItem } from "@/lib/recipeTypes";
 import MenuPickerPanel from "./MenuPickerPanel";
 import RecipeEditorPanel from "./RecipeEditorPanel";
 
@@ -191,11 +192,14 @@ function extractVariants(raw: unknown): VariantView[] {
 
 function extractRecipeItems(raw: unknown): RecipeItemLite[] {
     const list = Array.isArray(raw) ? raw : (isRecord(raw) && Array.isArray(raw.items) ? raw.items : []);
+    const unassignedVariantIds = new Set(list
+        .filter((item) => isRecord(item) && item.branch_id === null)
+        .map((item) => asString((item as Record<string, unknown>).variant_id)));
     return extractArray<unknown>(list)
         .map((it): RecipeItemLite | null => {
             if (!isRecord(it)) return null;
             const variant_id = asString(it.variant_id);
-            if (!variant_id) return null;
+            if (!variant_id || unassignedVariantIds.has(variant_id)) return null;
             return {
                 variant_id,
                 menu_id: asString(it.menu_id, "") || null,
@@ -233,6 +237,7 @@ export default function RecipesShell() {
     const [permissionLoading, setPermissionLoading] = useState(true);
 
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+    const [supplyItems, setSupplyItems] = useState<RecipeSupplyItem[]>([]);
     const [menuItems, setMenuItems] = useState<MenuView[]>([]);
     const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
     const [recipeItems, setRecipeItems] = useState<RecipeItemLite[]>([]);
@@ -276,6 +281,7 @@ export default function RecipesShell() {
             const rList = extractRecipeItems(recipeRaw);
 
             setIngredients(ingList);
+            setSupplyItems(parseRecipeSupplies(isRecord(recipeRaw) ? recipeRaw.supply_items : []));
             setMenuItems(menus);
             setRecipeItems(rList);
 
@@ -303,6 +309,7 @@ export default function RecipesShell() {
             console.error("fetchBase:", e);
             setLoadError("โหลดข้อมูลสูตรไม่สำเร็จ");
             setIngredients([]);
+            setSupplyItems([]);
             setMenuItems([]);
             setVariantOptions([]);
             setRecipeItems([]);
@@ -475,6 +482,7 @@ export default function RecipesShell() {
                         <RecipeEditorPanel
                             loadingBase={loading}
                             ingredients={ingredients}
+                            supplyItems={supplyItems}
                             selectedMenuId={selectedMenuId}
                             variantsForMenu={variantsForSelectedMenu}
                             selectedVariantId={selectedVariantId}

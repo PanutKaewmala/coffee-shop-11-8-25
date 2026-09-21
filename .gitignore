@@ -35,6 +35,7 @@ yarn-error.log*
 
 # generated disposable TALVO local runtime
 /.talvo-local-runtime/
+/.talvo-local-*.log
 
 # vercel
 .vercel

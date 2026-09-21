@@ -53,7 +53,7 @@ type PosMenuFeedItem = {
 };
 
 type PosFeedResponse = { menu: PosMenuFeedItem[] };
-type RecipeItemRow = { variant_id: string; ingredient_id: string | null };
+type RecipeItemRow = { variant_id: string; ingredient_id: string | null; supply_item_id: string | null; quantity: number | null };
 type IngredientIdRow = { id: string };
 /* -------------------- Checkout types -------------------- */
 type IncomingItem = {
@@ -74,25 +74,6 @@ type RpcItem = {
     variant_id: string;
     qty: number; // int >= 1
     sweetness: SweetnessLevel;
-};
-
-type CheckoutVariantRow = {
-    id: string;
-    menu_id: string;
-    serve_type_id: string | null;
-    size: string | null;
-    price_override: number | null;
-};
-
-type CheckoutMenuRow = {
-    id: string;
-    name: string;
-    price: number | null;
-};
-
-type CheckoutServeTypeRow = {
-    id: string;
-    name: string;
 };
 
 /* -------------------- Json -------------------- */
@@ -127,28 +108,6 @@ function toStringOrNull(v: unknown): string | null {
     return null;
 }
 
-function toNumber(v: unknown, fallback = 0): number {
-    const n = typeof v === "number" ? v : Number(v);
-    return Number.isFinite(n) ? n : fallback;
-}
-
-function compactSpaces(s: string): string {
-    return s.replace(/\s+/g, " ").trim();
-}
-
-function cleanLabel(s: string | null | undefined): string | null {
-    if (!s) return null;
-    const cleaned = compactSpaces(String(s).replace(/\bdefault\b/gi, ""));
-    return cleaned || null;
-}
-
-function buildVariantLabel(opts: { serveTypeName?: string | null; size?: string | null }): string | null {
-    const a = cleanLabel(opts.serveTypeName);
-    const b = cleanLabel(opts.size);
-    const merged = compactSpaces([a, b].filter(Boolean).join(" / "));
-    return merged || null;
-}
-
 function normalizeSweetness(v: unknown): SweetnessLevel {
     const raw = toStringOrNull(v);
     if (!raw) return DEFAULT_SWEETNESS;
@@ -173,33 +132,6 @@ function normalizeSweetness(v: unknown): SweetnessLevel {
     return DEFAULT_SWEETNESS;
 }
 
-function isSweetnessLabelPart(value: string): boolean {
-    const raw = value.trim();
-    if (!raw) return false;
-    if (SWEETNESS_OPTIONS.some((option) => raw === option || raw.includes(option))) return true;
-    if (raw.startsWith("หวาน")) return true;
-    return Object.keys(LEGACY_SWEETNESS_MAP).some((legacy) => raw.includes(legacy));
-}
-
-function stripSweetnessFromVariantLabel(variantLabel: string | null): string | null {
-    const cleaned = cleanLabel(variantLabel);
-    if (!cleaned) return null;
-
-    const serveParts = cleaned
-        .split("/")
-        .map((part) => part.trim())
-        .filter((part) => part && !isSweetnessLabelPart(part));
-
-    const merged = compactSpaces(serveParts.join(" / "));
-    return merged || null;
-}
-
-function buildOrderItemVariantLabel(variantLabel: string | null, sweetness: SweetnessLevel): string {
-    const sweetnessLabel = `หวาน ${sweetness}`;
-    const merged = compactSpaces([stripSweetnessFromVariantLabel(variantLabel), sweetnessLabel].filter(Boolean).join(" / "));
-    return merged || sweetnessLabel;
-}
-
 type AtomicCheckoutError = { code: string; status: number; error: string };
 
 function mapAtomicCheckoutError(message: string): AtomicCheckoutError | null {
@@ -214,6 +146,11 @@ function mapAtomicCheckoutError(message: string): AtomicCheckoutError | null {
         ["INVALID_VARIANT_SWEETNESS_OR_QUANTITY", 400, "Invalid variant, sweetness, or quantity"],
         ["INVALID_PAYMENT_METHOD", 400, "Invalid payment method"],
         ["INVALID_RECIPE_QUANTITY", 400, "Invalid recipe quantity"],
+        ["INVALID_RECIPE_SUPPLY_ITEM", 400, "Recipe supply item is unavailable"],
+        ["INACTIVE_INVENTORY_BRANCH", 400, "Branch inventory is inactive"],
+        ["INVENTORY_LOCATION_MISSING", 400, "Branch inventory is not ready for sales"],
+        ["INVALID_MENU_PRICE", 400, "Menu price is invalid"],
+        ["MENU_UNAVAILABLE", 400, "Menu item is unavailable in this branch"],
         ["RECIPE_INGREDIENT_OUTSIDE_BRANCH", 400, "Recipe ingredient is unavailable for this branch"],
         ["INGREDIENT_NOT_FOUND_FOR_BRANCH", 400, "Recipe ingredient is unavailable for this branch"],
         ["NO_RECIPE", 400, "Recipe is required"],
@@ -242,57 +179,6 @@ function toJson(value: unknown): Json {
     } catch {
         return null;
     }
-}
-
-/**
- * Get branch id for checkout:
- * - if client provides branch_id -> use it
- * - else fallback to primary branch
- * - else fallback to any branch (latest)
- */
-async function resolveBranchId(
-    lookupClient: ReturnType<typeof getSupabaseAdmin>,
-    branchIdMaybe: string | null,
-    currentShopId: string
-): Promise<{ ok: true; id: string } | { ok: false; error: string; code: string }> {
-    if (branchIdMaybe) {
-        // validate exists
-        const { data, error } = await lookupClient
-            .from("branch")
-            .select("id")
-            .eq("id", branchIdMaybe)
-            .eq("shop_id", currentShopId)
-            .maybeSingle();
-
-        if (error) return { ok: false, error: error.message, code: "BRANCH_LOOKUP_FAILED" };
-        if (!data?.id) return { ok: false, error: "Invalid branch_id", code: "INVALID_BRANCH" };
-        return { ok: true, id: data.id as string };
-    }
-
-    // fallback primary
-    const { data: primary, error: pErr } = await lookupClient
-        .from("branch")
-        .select("id")
-        .eq("shop_id", currentShopId)
-        .eq("is_primary", true)
-        .order("created_at", { ascending: false })
-        .maybeSingle();
-
-    if (pErr) return { ok: false, error: pErr.message, code: "BRANCH_LOOKUP_FAILED" };
-    if (primary?.id) return { ok: true, id: primary.id as string };
-
-    // fallback any branch
-    const { data: anyB, error: aErr } = await lookupClient
-        .from("branch")
-        .select("id")
-        .eq("shop_id", currentShopId)
-        .order("created_at", { ascending: false })
-        .maybeSingle();
-
-    if (aErr) return { ok: false, error: aErr.message, code: "BRANCH_LOOKUP_FAILED" };
-    if (anyB?.id) return { ok: true, id: anyB.id as string };
-
-    return { ok: false, error: "No branch found. Please create a branch first.", code: "NO_BRANCH" };
 }
 
 /* =========================================================
@@ -327,6 +213,9 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
 
+        if (!currentBranchId) {
+            return NextResponse.json({ error: "Select a branch before using POS", code: "NO_BRANCH_CONTEXT" }, { status: 400 });
+        }
         const { searchParams } = new URL(req.url);
         const search = (searchParams.get("search") || "").trim();
         const categoryId = searchParams.get("category_id");
@@ -396,8 +285,9 @@ export async function GET(req: NextRequest) {
         if (allVariantIds.length > 0) {
             const { data: recipeRows, error: recipeErr } = await admin
                 .from("recipe_items")
-                .select("variant_id,ingredient_id")
+                .select("variant_id,ingredient_id,supply_item_id,quantity")
                 .eq("shop_id", currentShopId)
+                .eq("branch_id", currentBranchId)
                 .in("variant_id", allVariantIds);
 
             if (recipeErr) {
@@ -418,6 +308,7 @@ export async function GET(req: NextRequest) {
                 const { data: ingredientRows, error: ingredientErr } = await admin
                     .from("ingredients")
                     .select("id")
+                    .eq("is_active", true)
                     .eq("shop_id", currentShopId)
                     .filter("branch_id", "eq", currentBranchId)
                     .in("id", ingredientIds)
@@ -430,11 +321,24 @@ export async function GET(req: NextRequest) {
                 validIngredientIds = new Set((ingredientRows ?? []).map((r) => r.id));
             }
 
-            variantsWithRecipe = new Set(
-                parsedRecipeRows
-                    .filter((r) => !!r.ingredient_id && validIngredientIds.has(r.ingredient_id))
-                    .map((r) => r.variant_id)
-            );
+            const supplyIds = new Set(parsedRecipeRows.map((r) => r.supply_item_id).filter(Boolean));
+            const validSupplyIds = new Set<string>();
+            if (supplyIds.size > 0 && currentBranchId) {
+                const { data: supplyItems, error: supplyError } = await supabase.rpc("list_talvo_supply_items", {
+                    p_business_id: currentShopId, p_branch_id: currentBranchId,
+                });
+                if (supplyError) return NextResponse.json({ error: "Unable to check recipe supplies" }, { status: 500 });
+                for (const item of asArray<{ id: string }>(supplyItems)) validSupplyIds.add(item.id);
+            }
+            const ready = new Map<string, boolean>();
+            for (const row of parsedRecipeRows) {
+                const validSource = row.ingredient_id != null
+                    ? row.supply_item_id == null && validIngredientIds.has(row.ingredient_id)
+                    : row.supply_item_id != null && validSupplyIds.has(row.supply_item_id);
+                ready.set(row.variant_id, (ready.get(row.variant_id) ?? true) && validSource &&
+                    row.quantity != null && Number.isFinite(Number(row.quantity)) && Number(row.quantity) > 0);
+            }
+            variantsWithRecipe = new Set([...ready].filter(([, valid]) => valid).map(([id]) => id));
         }
 
         const feed: PosMenuFeedItem[] = menusByBranch
@@ -511,182 +415,58 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
 
+        if (!currentBranchId) {
+            return NextResponse.json(
+                { error: "Select a branch before checkout", code: "NO_BRANCH_CONTEXT" },
+                { status: 400 }
+            );
+        }
+        if (member.role !== "owner" && member.role !== "staff") {
+            return NextResponse.json({ error: "Owner or staff role required", code: "OWNER_OR_STAFF_REQUIRED" }, { status: 403 });
+        }
         const idempotencyKey = getIdempotencyKey(req);
-
-        // 1) Idempotency: return existing response
-        if (idempotencyKey) {
-            const { data: existing, error: exErr } = await admin
-                .from("pos_idempotency")
-                .select("key, response, created_at")
-                .eq("key", idempotencyKey)
-                .eq("shop_id", currentShopId)
-                .maybeSingle();
-
-            if (!exErr && existing?.response) {
-                return NextResponse.json(existing.response);
-            }
-        }
-
-        const raw = (await req.json().catch(() => null)) as IncomingBody | null;
-        const rawItems = raw?.items;
-
-        if (!Array.isArray(rawItems) || rawItems.length === 0) {
-            return NextResponse.json({ error: "No items provided", code: "NO_ITEMS" }, { status: 400 });
-        }
-
-        const items: RpcItem[] = (rawItems as IncomingItem[])
-            .map((i) => {
-                const variant_id = toStringOrNull(i.variant_id);
-                const qtyRaw = toNumber(i.qty, 0);
-                const qty = Math.floor(qtyRaw);
-                const sweetness = normalizeSweetness(i.sweetness ?? i.sweetness_label);
-                return variant_id ? { variant_id, qty, sweetness } : null;
-            })
-            .filter((i): i is RpcItem => !!i && i.qty >= 1);
-
-        if (items.length === 0) {
-            return NextResponse.json(
-                { error: "Invalid items: variant_id and qty are required.", code: "INVALID_ITEMS" },
-                { status: 400 }
-            );
-        }
-
-        const paymentMethodRaw = toStringOrNull(raw?.payment_method);
-        const paymentMethod = paymentMethodRaw === "promptpay" ? "promptpay" : "cash";
-
-        if (paymentMethodRaw && paymentMethodRaw !== "cash" && paymentMethodRaw !== "promptpay") {
-            return NextResponse.json(
-                { error: "Invalid payment_method. Use cash or promptpay.", code: "INVALID_PAYMENT_METHOD" },
-                { status: 400 }
-            );
-        }
-
-        // 2) Resolve branch id (always!)
-        const branchIdInput = toStringOrNull(raw?.branch_id) ?? currentBranchId;
-        const branchRes = await resolveBranchId(admin, branchIdInput, currentShopId);
-        if (!branchRes.ok) {
-            return NextResponse.json({ error: branchRes.error, code: branchRes.code }, { status: 400 });
-        }
-
-        // Checkout state changes begin only inside process_pos_checkout_atomic.
-
-        // 3) Build checkout in API directly (avoid legacy RPC that may miss shop_id).
-        const variantIds = Array.from(new Set(items.map((i) => i.variant_id)));
-        const { data: variants, error: vErr } = await admin
-            .from("menu_variants")
-            .select("id,menu_id,serve_type_id,size,price_override")
-            .eq("shop_id", currentShopId)
-            .in("id", variantIds)
-            .returns<CheckoutVariantRow[]>();
-
-        if (vErr) {
-            return NextResponse.json({ error: vErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
-        }
-
-        const variantMap = new Map<string, CheckoutVariantRow>(
-            (variants ?? []).map((v) => [v.id, v])
-        );
-
-        for (const it of items) {
-            if (!variantMap.has(it.variant_id)) {
-                return NextResponse.json(
-                    { error: `Variant not found: ${it.variant_id}`, code: "VARIANT_NOT_FOUND" },
-                    { status: 400 }
-                );
-            }
-        }
-
-        const menuIds = Array.from(new Set((variants ?? []).map((v) => v.menu_id)));
-        const { data: menus, error: mErr } = await admin
-            .from("menu")
-            .select("id,name,price")
-            .eq("shop_id", currentShopId)
-            .in("id", menuIds)
-            .returns<CheckoutMenuRow[]>();
-
-        if (mErr) {
-            return NextResponse.json({ error: mErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
-        }
-
-        const menuMap = new Map<string, CheckoutMenuRow>((menus ?? []).map((m) => [m.id, m]));
-        for (const v of variants ?? []) {
-            if (!menuMap.has(v.menu_id)) {
-                return NextResponse.json(
-                    { error: `Menu not found for variant: ${v.id}`, code: "CHECKOUT_FAILED" },
-                    { status: 400 }
-                );
-            }
-        }
-
-        const serveTypeIds = Array.from(
-            new Set((variants ?? []).map((v) => v.serve_type_id).filter(Boolean) as string[])
-        );
-        const serveTypeMap = new Map<string, string>();
-        if (serveTypeIds.length > 0) {
-            const { data: serves, error: sErr } = await admin
-                .from("menu_serve_types")
-                .select("id,name")
-                .eq("shop_id", currentShopId)
-                .in("id", serveTypeIds)
-                .returns<CheckoutServeTypeRow[]>();
-
-            if (sErr) {
-                return NextResponse.json({ error: sErr.message, code: "CHECKOUT_FAILED" }, { status: 500 });
-            }
-
-            for (const s of serves ?? []) serveTypeMap.set(s.id, s.name);
-        }
-
-        const itemsToInsert = items.map((it) => {
-            const v = variantMap.get(it.variant_id)!;
-            const m = menuMap.get(v.menu_id)!;
-            const basePrice = toNumber(m.price, 0);
-            const finalPrice = toNumber(v.price_override ?? basePrice, basePrice);
-            const variantLabel = buildVariantLabel({
-                serveTypeName: v.serve_type_id ? serveTypeMap.get(v.serve_type_id) ?? null : null,
-                size: v.size ?? null,
-            });
-            const orderVariantLabel = buildOrderItemVariantLabel(variantLabel, it.sweetness);
-
-            return {
-                menu_id: m.id,
-                variant_id: v.id,
-                variant_label: orderVariantLabel,
-                name: m.name,
-                price: finalPrice,
-                qty: it.qty,
-            };
-        });
-
-        const total = itemsToInsert.reduce((sum, i) => sum + i.price * i.qty, 0);
-        const paidAmountRaw = toNumber(raw?.paid_amount);
-        const paidAmount =
-            paymentMethod === "promptpay"
-                ? total
-                : paidAmountRaw != null
-                    ? paidAmountRaw
-                    : null;
-
-        if (paymentMethod === "cash" && paidAmount == null) {
-            return NextResponse.json(
-                { error: "paid_amount is required for cash payment.", code: "MISSING_PAID_AMOUNT" },
-                { status: 400 }
-            );
-        }
-
-        if (paymentMethod === "cash" && paidAmount != null && paidAmount < total) {
-            return NextResponse.json(
-                { error: `Insufficient payment. Total is ${total}, received ${paidAmount}.`, code: "INSUFFICIENT_PAYMENT" },
-                { status: 400 }
-            );
-        }
-
         if (!idempotencyKey) {
             return NextResponse.json(
                 { error: "Idempotency-Key header is required", code: "IDEMPOTENCY_KEY_REQUIRED" },
                 { status: 400 }
             );
         }
+        const raw = (await req.json().catch(() => null)) as IncomingBody | null;
+        if (!raw || typeof raw !== "object") {
+            return NextResponse.json({ error: "Invalid checkout request", code: "INVALID_ITEMS" }, { status: 400 });
+        }
+        if (raw.branch_id !== undefined && raw.branch_id !== currentBranchId) {
+            return NextResponse.json(
+                { error: "Checkout branch does not match the selected branch", code: "BRANCH_CONTEXT_MISMATCH" },
+                { status: 409 }
+            );
+        }
+        const rawItems = raw.items;
+        if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 500) {
+            return NextResponse.json({ error: "Checkout items are required", code: "INVALID_ITEMS" }, { status: 400 });
+        }
+        const items: RpcItem[] = [];
+        for (const candidate of rawItems) {
+            if (!candidate || typeof candidate !== "object") {
+                return NextResponse.json({ error: "Invalid checkout item", code: "INVALID_ITEMS" }, { status: 400 });
+            }
+            const item = candidate as IncomingItem;
+            const variant_id = toStringOrNull(item.variant_id);
+            if (!variant_id || typeof item.qty !== "number" || !Number.isSafeInteger(item.qty) || item.qty < 1 || item.qty > 999) {
+                return NextResponse.json({ error: "Each item requires a variant and a whole quantity from 1 to 999", code: "INVALID_ITEMS" }, { status: 400 });
+            }
+            items.push({ variant_id, qty: item.qty, sweetness: normalizeSweetness(item.sweetness ?? item.sweetness_label) });
+        }
+        const paymentMethod = raw.payment_method ?? "cash";
+        if (paymentMethod !== "cash" && paymentMethod !== "promptpay") {
+            return NextResponse.json({ error: "Invalid payment method", code: "INVALID_PAYMENT_METHOD" }, { status: 400 });
+        }
+        if (raw.paid_amount != null && (typeof raw.paid_amount !== "number" || !Number.isFinite(raw.paid_amount) || raw.paid_amount < 0)) {
+            return NextResponse.json({ error: "Invalid payment amount", code: "INVALID_PAID_AMOUNT" }, { status: 400 });
+        }
+        // Preserve the caller's payment input, including null for PromptPay.
+        // Replays must never depend on today's menu prices or recipes.
+        const paidAmount = typeof raw.paid_amount === "number" ? raw.paid_amount : null;
 
         // The RPC owns the complete write transaction (order, line items, stock,
         // stock logs, closed-day guard and idempotency response).
@@ -694,7 +474,7 @@ export async function POST(req: NextRequest) {
             "process_pos_checkout_atomic",
             {
                 p_shop_id: currentShopId,
-                p_branch_id: branchRes.id,
+                p_branch_id: currentBranchId,
                 p_items: toJson(items),
                 p_payment_method: paymentMethod,
                 p_paid_amount: paidAmount,

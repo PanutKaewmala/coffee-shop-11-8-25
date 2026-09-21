@@ -17,5 +17,14 @@ The reset script `scripts/reset-talvo-local-runtime.mjs` verifies the recorded S
 2. `20260817100000_talvo_supply_item_vertical_slice.sql`
 3. `20260819180000_talvo_receive_supply_item.sql`
 4. `20260819180100_talvo_receive_history_hardening.sql`
+5. `20260910042652_sale_recipe_inventory.sql`
+5. `20260910042652_sale_recipe_inventory.sql`
 
 No production application rows are copied.
+
+Run `node scripts/reset-talvo-local-runtime.mjs`, `node scripts/configure-talvo-local-env.mjs`,
+and `node scripts/seed-talvo-local-browser-fixture.mjs` to prepare disposable local validation.
+Then `npm run test:pos-sale-inventory` runs CreateSupplyItem, ReceiveSupplyItem, transactional
+sale contracts, and simultaneous checkout retries. Its Docker target is fixed to the labeled
+local runtime container; there is no remote connection option. It leaves isolated concurrency
+fixtures only in that disposable database. `npm run verify` remains independent of Docker.

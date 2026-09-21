@@ -8,6 +8,7 @@ import { ArrowLeft, Copy, Check, X, AlertTriangle, Printer } from "lucide-react"
 
 import Card from "@/components/admin/Card";
 import type { ReceiptSettings } from "@/lib/types";
+import { readInventorySnapshot, readRecipeSnapshot, type InventorySnapshot, type RecipeSnapshot } from "@/lib/saleSnapshot";
 
 /* =========================
    Type guards + readers
@@ -97,6 +98,7 @@ type UIOrderItem = {
     price: number;
     qty: number;
     variant_label: string | null;
+    recipe_snapshot: RecipeSnapshot | null;
 };
 
 type UIOrderDetail = {
@@ -104,6 +106,7 @@ type UIOrderDetail = {
     total: number;
     created_at: string;
     items: UIOrderItem[];
+    inventory_snapshot: InventorySnapshot | null;
 
     status?: string;
     payment_method?: string;
@@ -150,7 +153,7 @@ function parseUIOrderItem(v: unknown): UIOrderItem | null {
                 ? String((v as Record<string, unknown>).variant_name)
                 : null;
 
-    return { id, name, price, qty, variant_label };
+    return { id, name, price, qty, variant_label, recipe_snapshot: readRecipeSnapshot(v.recipe_snapshot) };
 }
 
 function parseCancelEligibility(v: unknown): UIOrderDetail["cancelEligibility"] {
@@ -216,6 +219,7 @@ function parseUIOrderDetail(raw: unknown): UIOrderDetail | null {
         total,
         created_at,
         items,
+        inventory_snapshot: readInventorySnapshot(raw.inventory_snapshot),
         status,
         payment_method,
         paid_amount,
@@ -1189,6 +1193,52 @@ export default function OrderDetailClient() {
                     </div>
                     <div className="break-words text-lg font-bold tabular-nums">{fmtMoney(order.total)} บาท</div>
                 </div>
+            </Card>
+
+            <Card title="สูตรและสต็อกที่ใช้ในการขาย">
+                {order.inventory_snapshot ? (
+                    <div className="space-y-5">
+                        <p className="text-sm text-text-secondary">
+                            สาขา {order.inventory_snapshot.branch_name} · บันทึก ณ เวลาขาย
+                        </p>
+                        {order.items.map((item) => item.recipe_snapshot ? (
+                            <div key={item.id} className="rounded-xl border border-white/10 p-4">
+                                <h3 className="font-semibold">{item.name} × {item.qty}</h3>
+                                <p className="mt-1 text-sm text-text-secondary">{cleanVariant(item.variant_label)}</p>
+                                <ul className="mt-3 space-y-1 text-sm">
+                                    {item.recipe_snapshot.ingredients.map((ingredient) => (
+                                        <li key={ingredient.recipe_item_id} className="flex justify-between gap-4">
+                                            <span>{ingredient.name}</span>
+                                            <span className="tabular-nums">{ingredient.quantity_per_item.toLocaleString("th-TH", { maximumFractionDigits: 6 })} × {item.qty} = {ingredient.quantity.toLocaleString("th-TH", { maximumFractionDigits: 6 })} {ingredient.unit}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <details className="mt-3 text-xs text-text-secondary">
+                                    <summary className="cursor-pointer">ข้อมูลอ้างอิงสูตร</summary>
+                                    <p className="mt-1 break-all">{item.recipe_snapshot.recipe_hash}</p>
+                                </details>
+                            </div>
+                        ) : null)}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <caption className="mb-3 text-left text-text-secondary">สต็อกที่ขายได้หลังการขายครั้งนี้ (ยอด ณ เวลาขาย)</caption>
+                                <thead><tr className="border-b border-white/10">
+                                    <th className="py-2 pr-4">วัตถุดิบ</th><th className="p-2 text-right">ก่อนขาย</th><th className="p-2 text-right">ใช้ไป</th><th className="p-2 text-right">คงเหลือ</th>
+                                </tr></thead>
+                                <tbody>{order.inventory_snapshot.ingredients.map((ingredient) => (
+                                    <tr key={ingredient.ingredient_id ?? ingredient.supply_item_id} className="border-b border-white/5">
+                                        <td className="py-3 pr-4">{ingredient.name} <span className="text-text-secondary">({ingredient.unit})</span></td>
+                                        <td className="p-2 text-right tabular-nums">{ingredient.before_stock.toLocaleString("th-TH", { maximumFractionDigits: 6 })}</td>
+                                        <td className="p-2 text-right tabular-nums">{ingredient.quantity.toLocaleString("th-TH", { maximumFractionDigits: 6 })}</td>
+                                        <td className="p-2 text-right tabular-nums">{ingredient.after_stock.toLocaleString("th-TH", { maximumFractionDigits: 6 })}</td>
+                                    </tr>
+                                ))}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-sm text-text-secondary">ออเดอร์เก่านี้ไม่มีบันทึกสูตร ณ เวลาขาย จึงไม่สามารถยืนยันปริมาณที่ใช้จากสูตรปัจจุบันได้</p>
+                )}
             </Card>
 
             {/* Cancel Modal */}

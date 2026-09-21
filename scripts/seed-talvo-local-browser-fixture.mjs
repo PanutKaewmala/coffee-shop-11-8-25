@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const envPath = path.join(root, ".env.local");
@@ -163,6 +164,23 @@ if (!branchId) {
   branchId = FALLBACK_BRANCH_ID;
 }
 
+// Activating a branch requires both canonical locations in the same transaction.
+// The private schema is deliberately unavailable through REST; fixture bootstrap
+// uses only the fixed, labeled disposable local Postgres container.
+const localContainer = "supabase_db_coffee-saas-v1-local-runtime";
+const inspected = spawnSync("docker", ["inspect", "--format", '{{index .Config.Labels "com.supabase.cli.project"}}', localContainer], { encoding: "utf8" });
+if (inspected.status !== 0 || inspected.stdout.trim() !== "coffee-saas-v1-local-runtime") fail("Disposable database container could not be verified");
+if (!/^[a-f0-9-]{36}$/.test(branchId)) fail("Fixture branch id is invalid");
+const bootstrap = spawnSync("docker", ["exec", "-i", localContainer, "psql", "-X", "-q", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], {
+  encoding: "utf8",
+  input: `begin;
+insert into talvo.inventory_locations(business_id,branch_id,kind)
+select '${SHOP_ID}','${branchId}',k.kind from (values('BRANCH_AVAILABLE'),('BRANCH_QUARANTINE')) k(kind)
+where not exists(select 1 from talvo.inventory_locations loc where loc.business_id='${SHOP_ID}' and loc.branch_id='${branchId}' and loc.kind=k.kind);
+update public.branch set is_active=true where shop_id='${SHOP_ID}' and id='${branchId}'; commit;`,
+});
+if (bootstrap.status !== 0) fail(`Canonical branch fixture failed: ${bootstrap.stderr}`);
+
 await upsert("profiles", {
   id: userId,
   email: EMAIL,
@@ -239,6 +257,7 @@ await upsert("menu_variants", {
 await upsert("recipe_items", {
   id: RECIPE_ITEM_ID,
   shop_id: SHOP_ID,
+  branch_id: branchId,
   variant_id: VARIANT_ID,
   ingredient_id: INGREDIENT_ID,
   quantity: 20,
@@ -251,6 +270,19 @@ await upsert("branch_menu_availability", {
   menu_id: MENU_ID,
   is_enabled: true,
 });
+
+const session = await request(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+  method: "POST", headers: commonHeaders, body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+}, "Authenticate local fixture owner");
+const actorHeaders = { ...commonHeaders, Authorization: `Bearer ${session.access_token}` };
+const supply = await request(`${supabaseUrl}/rest/v1/rpc/create_talvo_supply_item`, {
+  method: "POST", headers: actorHeaders, body: JSON.stringify({ p_business_id: SHOP_ID, p_name: "TALVO Browser Beans", p_base_unit_id: "10000000-0000-4000-8000-000000000002", p_quantity_step: 0.001, p_is_lot_tracked: false, p_initial_expiry_mode: "NON_EXPIRING", p_idempotency_key: "local-browser-create-beans-0001" }),
+}, "CreateSupplyItem browser fixture");
+if (!supply?.ok) fail(`CreateSupplyItem fixture rejected: ${JSON.stringify(supply)}`);
+const received = await request(`${supabaseUrl}/rest/v1/rpc/receive_talvo_supply_item`, {
+  method: "POST", headers: actorHeaders, body: JSON.stringify({ p_business_id: SHOP_ID, p_branch_id: branchId, p_supply_item_id: supply.data.supply_item_id, p_quantity_base: 1000, p_provenance_source_ref: "local-browser-fixture", p_external_batch_code: null, p_manufacturer_use_by_at: null, p_idempotency_key: "local-browser-receive-beans-0001" }),
+}, "ReceiveSupplyItem browser fixture");
+if (!received?.ok) fail(`ReceiveSupplyItem fixture rejected: ${JSON.stringify(received)}`);
 
 const verification = await Promise.all([
   restGet("shops", `id=eq.${SHOP_ID}&select=id,name`),
@@ -271,4 +303,5 @@ console.log(`Login: ${EMAIL} / ${PASSWORD}`);
 console.log("Shop: TALVO Local Demo");
 console.log("Branch: one local branch");
 console.log("POS menu: Local Test Americano (60 THB)");
+console.log("Canonical supply: TALVO Browser Beans, 1000 base units received; ready to add through recipe UI");
 console.log("All fixture data exists only in the disposable local Supabase instance.");

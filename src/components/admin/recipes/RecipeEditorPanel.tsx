@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import Pagination from "@/components/admin/Pagination";
 import SearchBox from "@/components/admin/search/SearchBox";
 import type { Ingredient } from "@/lib/types";
+import type { RecipeDraft, RecipeSupplyItem } from "@/lib/recipeTypes";
 
 import VariantSelector from "./VariantSelector";
 import RecipeItemsTable, { type RecipeItemView } from "./RecipeItemsTable";
@@ -42,25 +43,18 @@ function extractRecipeItems(raw: unknown): RecipeItemView[] {
         return (
             typeof x.id === "string" &&
             typeof x.variant_id === "string" &&
-            typeof x.ingredient_id === "string" &&
+            typeof x.source_id === "string" &&
+            (x.source_type === "ingredient" || x.source_type === "supply_item") &&
             typeof x.quantity === "number" &&
             typeof x.created_at === "string"
         );
     });
 }
 
-type Draft = {
-    id?: string;
-    variant_id: string;
-    ingredient_id: string;
-    quantity: number;
-    ingredient_name?: string | null;
-    ingredient_unit?: string | null;
-};
-
 export default function RecipeEditorPanel({
     loadingBase,
     ingredients,
+    supplyItems,
     selectedMenuId,
     variantsForMenu,
     selectedVariantId,
@@ -71,6 +65,7 @@ export default function RecipeEditorPanel({
 }: {
     loadingBase: boolean;
     ingredients: Ingredient[];
+    supplyItems: RecipeSupplyItem[];
     selectedMenuId: string;
     variantsForMenu: VariantOption[];
     selectedVariantId: string;
@@ -81,6 +76,8 @@ export default function RecipeEditorPanel({
 }) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
 
     const [items, setItems] = useState<RecipeItemView[]>([]);
     const [search, setSearch] = useState("");
@@ -120,9 +117,12 @@ export default function RecipeEditorPanel({
                 return;
             }
             setLoading(true);
+            setLoadError(null);
 
             const url = `/api/recipes/items?variant_id=${encodeURIComponent(selectedVariantId)}`;
-            const raw: unknown = await fetch(url, { cache: "no-store" }).then((r) => r.json());
+            const response = await fetch(url, { cache: "no-store" });
+            const raw: unknown = await response.json();
+            if (!response.ok) throw new Error(isRecord(raw) && typeof raw.error === "string" ? raw.error : "โหลดสูตรไม่สำเร็จ");
 
             setItems(extractRecipeItems(raw));
 
@@ -130,6 +130,7 @@ export default function RecipeEditorPanel({
             setInputPage("1");
         } catch (e) {
             console.error("fetchItems:", e);
+            setLoadError(e instanceof Error ? e.message : "โหลดสูตรไม่สำเร็จ");
             setItems([]);
         } finally {
             setLoading(false);
@@ -160,16 +161,17 @@ export default function RecipeEditorPanel({
     /* =========================
        used ingredient set
     ========================= */
-    const usedIngredientSet = useMemo(() => new Set(items.map((x) => x.ingredient_id)), [items]);
+    const usedIngredientSet = useMemo(() => new Set(items.map((x) => `${x.source_type}:${x.source_id}`)), [items]);
 
     /* =========================
        modal state
     ========================= */
     const [open, setOpen] = useState(false);
     const [mode, setMode] = useState<"add" | "edit">("add");
-    const [draft, setDraft] = useState<Draft>({
+    const [draft, setDraft] = useState<RecipeDraft>({
         variant_id: selectedVariantId,
         ingredient_id: "",
+        source_type: "ingredient",
         quantity: 1,
         ingredient_name: null,
         ingredient_unit: null,
@@ -189,6 +191,7 @@ export default function RecipeEditorPanel({
         setDraft({
             variant_id: selectedVariantId,
             ingredient_id: "",
+            source_type: "ingredient",
             quantity: 1,
             ingredient_name: null,
             ingredient_unit: null,
@@ -200,11 +203,14 @@ export default function RecipeEditorPanel({
         setMode("edit");
         setDraft({
             id: row.id,
+            branch_id: row.branch_id,
             variant_id: row.variant_id,
-            ingredient_id: row.ingredient_id,
+            ingredient_id: row.source_id,
+            source_type: row.source_type,
             quantity: row.quantity ?? 1,
             ingredient_name: row.ingredient_name,
             ingredient_unit: row.unit,
+            quantity_step: row.quantity_step,
         });
         setOpen(true);
     };
@@ -214,7 +220,9 @@ export default function RecipeEditorPanel({
     /* =========================
        save / delete
     ========================= */
-    const save = async (payload: { id?: string; variant_id: string; ingredient_id: string; quantity: number }) => {
+    const save = async (payload: RecipeDraft) => {
+        if (saving) return;
+        setSaving(true);
         try {
             const isEdit = Boolean(payload.id);
 
@@ -223,19 +231,27 @@ export default function RecipeEditorPanel({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(
                     isEdit
-                        ? { id: payload.id, quantity: payload.quantity }
-                        : { variant_id: payload.variant_id, ingredient_id: payload.ingredient_id, quantity: payload.quantity }
+                        ? {
+                            id: payload.id,
+                            [payload.source_type === "supply_item" ? "supply_item_id" : "ingredient_id"]: payload.ingredient_id,
+                            quantity: payload.quantity,
+                        }
+                        : {
+                            variant_id: payload.variant_id,
+                            [payload.source_type === "supply_item" ? "supply_item_id" : "ingredient_id"]: payload.ingredient_id,
+                            quantity: payload.quantity,
+                        }
                 ),
             });
 
             if (!res.ok) {
-                const raw = await res.text().catch(() => "");
+                const raw: unknown = await res.json().catch(() => null);
                 console.error("save failed:", res.status, raw);
-                alert("บันทึกสูตรไม่สำเร็จ");
+                alert(isRecord(raw) && typeof raw.error === "string" ? raw.error : "บันทึกสูตรไม่สำเร็จ");
                 return;
             }
 
-            if (!isEdit) pushRecent(payload.ingredient_id);
+            if (!isEdit && payload.source_type === "ingredient") pushRecent(payload.ingredient_id);
 
             close();
             void fetchItems();
@@ -243,6 +259,8 @@ export default function RecipeEditorPanel({
         } catch (e) {
             console.error(e);
             alert("บันทึกสูตรไม่สำเร็จ");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -327,7 +345,9 @@ export default function RecipeEditorPanel({
             <SearchBox value={search} setValue={setSearch} placeholder="ค้นหาวัตถุดิบในสูตร..." />
 
             {/* body */}
-            {loading ? (
+            {loadError ? (
+                <div role="alert" className="rounded-xl border border-red-500/30 p-4 text-red-500">{loadError}</div>
+            ) : loading ? (
                 <div className="text-sm text-[var(--text-secondary)]">กำลังโหลดสูตร...</div>
             ) : filtered.length === 0 ? (
                 <div className="rounded-xl border border-[var(--text-muted)]/20 p-6 text-center text-[var(--text-secondary)]">
@@ -354,7 +374,7 @@ export default function RecipeEditorPanel({
             )}
 
             <AddIngredientModal
-                key={`${mode}-${draft.id ?? "new"}-${draft.variant_id}-${draft.ingredient_id}-${open ? "open" : "closed"}`}
+                key={`${mode}-${draft.id ?? "new"}-${open ? "open" : "closed"}`}
                 open={open}
                 onClose={close}
                 mode={mode}
@@ -362,15 +382,17 @@ export default function RecipeEditorPanel({
                 setDraft={setDraft}
                 variantsForMenu={variantsForMenu}
                 ingredients={ingredients}
+                supplyItems={supplyItems}
+                saving={saving}
                 disabledIds={
                     mode === "add"
                         ? usedIngredientSet
-                        : new Set([...usedIngredientSet].filter((x) => x !== draft.ingredient_id))
+                        : new Set([...usedIngredientSet].filter((x) => x !== `${draft.source_type}:${draft.ingredient_id}`))
                 }
                 recentIds={recentIngredientIds}
                 onPickRecent={pushRecent}
                 onSave={(p) => void save(p)}
-                lockIngredient={mode === "edit"}
+                lockIngredient={mode === "edit" && draft.branch_id !== null}
             />
         </div>
     );

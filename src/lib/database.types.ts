@@ -788,6 +788,7 @@ export type Database = {
       }
       order_items: {
         Row: {
+          recipe_snapshot: Json | null
           created_at: string
           id: string
           menu_id: string | null
@@ -800,6 +801,7 @@ export type Database = {
           variant_label: string | null
         }
         Insert: {
+          recipe_snapshot?: Json | null
           created_at?: string
           id?: string
           menu_id?: string | null
@@ -812,6 +814,7 @@ export type Database = {
           variant_label?: string | null
         }
         Update: {
+          recipe_snapshot?: Json | null
           created_at?: string
           id?: string
           menu_id?: string | null
@@ -849,6 +852,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          inventory_snapshot: Json | null
           branch_id: string
           cancel_note: string | null
           cancel_reason: string | null
@@ -868,6 +872,7 @@ export type Database = {
           total: number
         }
         Insert: {
+          inventory_snapshot?: Json | null
           branch_id?: string
           cancel_note?: string | null
           cancel_reason?: string | null
@@ -887,6 +892,7 @@ export type Database = {
           total: number
         }
         Update: {
+          inventory_snapshot?: Json | null
           branch_id?: string
           cancel_note?: string | null
           cancel_reason?: string | null
@@ -994,25 +1000,31 @@ export type Database = {
       }
       recipe_items: {
         Row: {
+          branch_id: string | null
           created_at: string
           id: string
-          ingredient_id: string
+          ingredient_id: string | null
+          supply_item_id: string | null
           quantity: number
           shop_id: string
           variant_id: string
         }
         Insert: {
+          branch_id: string
           created_at?: string
           id?: string
-          ingredient_id: string
+          ingredient_id?: string | null
+          supply_item_id?: string | null
           quantity: number
           shop_id?: string
           variant_id: string
         }
         Update: {
+          branch_id?: string
           created_at?: string
           id?: string
-          ingredient_id?: string
+          ingredient_id?: string | null
+          supply_item_id?: string | null
           quantity?: number
           shop_id?: string
           variant_id?: string
@@ -1550,6 +1562,10 @@ export type Database = {
       }
     }
     Functions: {
+      list_talvo_supply_items: {
+        Args: { p_business_id: string; p_branch_id: string }
+        Returns: Json
+      }
       adjust_stock: {
         Args: { diff: number; ing_id: string; note?: string }
         Returns: undefined

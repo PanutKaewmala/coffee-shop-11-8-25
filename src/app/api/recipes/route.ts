@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentContextFromCookies, getSupabaseServer } from "@/lib/supabaseServer";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { GET as getVariantRecipes, POST as postVariantRecipe, PUT as putVariantRecipe, DELETE as deleteVariantRecipe } from "./items/route";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,12 @@ function returnAsc() {
    - variant: ?variant_id=...
 ============================================================ */
 export async function GET(req: NextRequest) {
+    if (getSource(req) === "variant") {
+        const response = await getVariantRecipes(req);
+        if (!response.ok) return response;
+        const body = await response.json();
+        return NextResponse.json(body.items ?? (body.item ? [body.item] : []));
+    }
     const supabase = await getSupabaseServer();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
@@ -58,49 +65,8 @@ export async function GET(req: NextRequest) {
     if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
     if (!member) return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
 
-    const source = getSource(req);
 
     try {
-        if (source === "variant") {
-            const variant_id = req.nextUrl.searchParams.get("variant_id");
-            const menu_id = req.nextUrl.searchParams.get("menu_id");
-
-            let q = supabase
-                .from("recipe_items")
-                .select("*")
-                .eq("shop_id", currentShopId)
-                .order("variant_id", returnAsc());
-
-            if (isNonEmptyString(variant_id)) {
-                q = q.eq("variant_id", variant_id.trim());
-            }
-
-            if (isNonEmptyString(menu_id)) {
-                const { data: vars, error: vErr } = await supabase
-                    .from("menu_variants")
-                    .select("id")
-                    .eq("shop_id", currentShopId)
-                    .eq("menu_id", menu_id.trim());
-
-                if (vErr) {
-                    console.error("GET /api/recipes?source=variant (load variants):", vErr);
-                    return NextResponse.json({ error: vErr.message }, { status: 500 });
-                }
-
-                const ids = (vars ?? []).map((x) => x.id).filter(isNonEmptyString);
-                if (ids.length === 0) return NextResponse.json([]);
-
-                q = q.in("variant_id", ids);
-            }
-
-            const { data, error } = await q;
-            if (error) {
-                console.error("GET /api/recipes?source=variant:", error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
-            }
-
-            return NextResponse.json(data ?? []);
-        }
 
         const menu_id = req.nextUrl.searchParams.get("menu_id");
 
@@ -134,6 +100,7 @@ export async function GET(req: NextRequest) {
      variant: { variant_id, ingredient_id, quantity }
 ============================================================ */
 export async function POST(req: NextRequest) {
+    if (getSource(req) === "variant") return postVariantRecipe(req);
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
@@ -158,7 +125,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Owner only" }, { status: 403 });
     }
 
-    const source = getSource(req);
 
     try {
         const bodyUnknown: unknown = await req.json().catch(() => null);
@@ -169,7 +135,6 @@ export async function POST(req: NextRequest) {
         const body = bodyUnknown as Record<string, unknown>;
         const ingredient_id = body.ingredient_id;
         const menu_id = body.menu_id;
-        const variant_id = body.variant_id;
         const qty = parseQty(body.quantity);
 
         if (!isNonEmptyString(ingredient_id) || qty === null) {
@@ -177,86 +142,6 @@ export async function POST(req: NextRequest) {
                 { error: "ingredient_id(string) and quantity(number>0) are required" },
                 { status: 400 }
             );
-        }
-
-        if (source === "variant") {
-            if (!isNonEmptyString(variant_id)) {
-                return NextResponse.json(
-                    { error: "variant_id is required for source=variant" },
-                    { status: 400 }
-                );
-            }
-
-            const vId = variant_id.trim();
-            const ingId = ingredient_id.trim();
-
-            // verify variant belongs to current shop
-            const { data: variantRow, error: varErr } = await supabase
-                .from("menu_variants")
-                .select("id")
-                .eq("id", vId)
-                .eq("shop_id", currentShopId)
-                .maybeSingle();
-
-            if (varErr) return NextResponse.json({ error: varErr.message }, { status: 500 });
-            if (!variantRow) {
-                return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
-            }
-
-            // verify ingredient belongs to current shop
-            const { data: ingredientRow, error: ingErr } = await supabase
-                .from("ingredients")
-                .select("id")
-                .eq("id", ingId)
-                .eq("shop_id", currentShopId)
-                .maybeSingle();
-
-            if (ingErr) return NextResponse.json({ error: ingErr.message }, { status: 500 });
-            if (!ingredientRow) {
-                return NextResponse.json({ error: "Ingredient not found in current shop" }, { status: 404 });
-            }
-
-            // 1) เช็คก่อนว่ามีอยู่แล้วไหม เพื่อบอก mode ให้ UI
-            const { data: existing, error: exErr } = await supabase
-                .from("recipe_items")
-                .select("id")
-                .eq("variant_id", vId)
-                .eq("ingredient_id", ingId)
-                .eq("shop_id", currentShopId)
-                .maybeSingle();
-
-            if (exErr) {
-                console.error("POST /api/recipes?source=variant (precheck):", exErr);
-                return NextResponse.json({ error: exErr.message }, { status: 500 });
-            }
-
-            // 2) UPSERT (Replace policy)
-            // ต้องมี unique(variant_id, ingredient_id) แล้ว -> onConflict ใช้ได้
-            const { data, error } = await supabase
-                .from("recipe_items")
-                .upsert(
-                    [
-                        {
-                            variant_id: vId,
-                            ingredient_id: ingId,
-                            quantity: qty,
-                            shop_id: currentShopId,
-                        },
-                    ],
-                    { onConflict: "variant_id,ingredient_id" }
-                )
-                .select()
-                .single();
-
-            if (error) {
-                console.error("POST /api/recipes?source=variant (upsert):", error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
-            }
-
-            return NextResponse.json({
-                mode: existing?.id ? "update" : "insert",
-                item: data,
-            });
         }
 
         // source === "menu"
@@ -324,6 +209,7 @@ export async function POST(req: NextRequest) {
    - ?source=variant updates recipe_items
 ============================================================ */
 export async function PUT(req: NextRequest) {
+    if (getSource(req) === "variant") return putVariantRecipe(req);
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
@@ -348,7 +234,6 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "Owner only" }, { status: 403 });
     }
 
-    const source = getSource(req);
 
     try {
         const id = req.nextUrl.searchParams.get("id");
@@ -394,60 +279,6 @@ export async function PUT(req: NextRequest) {
                 );
             }
             updateData.quantity = qty;
-        }
-
-        if (source === "variant") {
-            if (body.variant_id !== undefined) {
-                if (!isNonEmptyString(body.variant_id)) {
-                    return NextResponse.json({ error: "variant_id must be string" }, { status: 400 });
-                }
-                const vId = body.variant_id.trim();
-
-                const { data: varRow, error: varErr } = await supabase
-                    .from("menu_variants")
-                    .select("id")
-                    .eq("id", vId)
-                    .eq("shop_id", currentShopId)
-                    .maybeSingle();
-
-                if (varErr) return NextResponse.json({ error: varErr.message }, { status: 500 });
-                if (!varRow) {
-                    return NextResponse.json({ error: "Variant not found in current shop" }, { status: 404 });
-                }
-
-                updateData.variant_id = vId;
-            }
-
-            if (Object.keys(updateData).length === 0) {
-                return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-            }
-
-            const { data: targetItem, error: targetErr } = await supabase
-                .from("recipe_items")
-                .select("id")
-                .eq("id", id.trim())
-                .eq("shop_id", currentShopId)
-                .maybeSingle();
-
-            if (targetErr) return NextResponse.json({ error: targetErr.message }, { status: 500 });
-            if (!targetItem) {
-                return NextResponse.json({ error: "Recipe item not found in current shop" }, { status: 404 });
-            }
-
-            const { data, error } = await supabase
-                .from("recipe_items")
-                .update(updateData)
-                .eq("id", id.trim())
-                .eq("shop_id", currentShopId)
-                .select()
-                .single();
-
-            if (error) {
-                console.error("PUT /api/recipes?source=variant:", error);
-                return NextResponse.json({ error: error.message }, { status: 500 });
-            }
-
-            return NextResponse.json({ mode: "update", item: data });
         }
 
         // source === "menu"
@@ -514,6 +345,7 @@ export async function PUT(req: NextRequest) {
     - ?source=variant deletes from recipe_items
 ============================================================ */
 export async function DELETE(req: NextRequest) {
+    if (getSource(req) === "variant") return deleteVariantRecipe(req);
     const supabase = await getSupabaseServer();
     const admin = getSupabaseAdmin();
     const { data: auth, error: authErr } = await supabase.auth.getUser();
@@ -538,7 +370,6 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: "Owner only" }, { status: 403 });
     }
 
-    const source = getSource(req);
 
     try {
         const id = req.nextUrl.searchParams.get("id");
@@ -546,7 +377,7 @@ export async function DELETE(req: NextRequest) {
             return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
         }
 
-        const table = source === "variant" ? "recipe_items" : "recipes";
+        const table = "recipes";
 
         const { data: targetRow, error: targetErr } = await supabase
             .from(table)
