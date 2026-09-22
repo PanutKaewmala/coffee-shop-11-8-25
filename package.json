@@ -19,6 +19,7 @@
     "test:pos-atomic-checkout": "node scripts/test-pos-atomic-checkout.mjs",
     "test:pos-sale-inventory": "node scripts/test-pos-sale-inventory.mjs",
     "test:recipe-inventory": "node scripts/test-recipe-inventory.mjs",
+    "test:pre-talvo-branch-bootstrap:integration": "node scripts/test-pre-talvo-branch-bootstrap.mjs",
     "test:reports-stabilization": "node scripts/test-reports-stabilization.cjs",
     "test:talvo-create-supply-item": "node scripts/test-talvo-create-supply-item.mjs",
     "test:talvo-receive-supply-item": "node scripts/test-talvo-receive-supply-item.mjs",
