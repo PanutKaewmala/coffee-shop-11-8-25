@@ -6,6 +6,8 @@ import { getServerIdentity } from "@/lib/supabaseServer";
 import { computeDailyCloseReport } from "@/lib/dailyCloseReport";
 import { dashboardDates, type DashboardTodayResponse } from "@/lib/dashboardToday";
 import { getDaysToExpiry, getExpiryAlertTone } from "@/lib/ingredientExpiry";
+import { loadUsableStock } from "@/lib/usableStockServer";
+import { stockStatus } from "@/lib/usableStock";
 
 type DailyCloseRow = {
     status: string;
@@ -53,20 +55,21 @@ export async function GET() {
     if (!branch) return NextResponse.json({ error: "Branch not in current shop" }, { status: 403 });
 
     const dates = dashboardDates();
-    const [report, closeResult, ingredientsResult, lotsResult, orderEventsResult, stockEventsResult] = await Promise.all([
+    const [report, closeResult, stockResult, lotsResult, orderEventsResult, stockEventsResult] = await Promise.all([
         computeDailyCloseReport(admin, currentShopId, currentBranchId, dates.yesterday.date),
         admin.from("daily_closes" as never).select("status,net_sales,cash_difference,counted_cash,expected_cash,closed_at").eq("shop_id", currentShopId).eq("branch_id", currentBranchId).eq("business_date", dates.yesterday.date).maybeSingle(),
-        admin.from("ingredients").select("id,name,stock,min_stock,unit").eq("shop_id", currentShopId).eq("branch_id", currentBranchId).eq("is_active", true).order("stock", { ascending: true }),
+        loadUsableStock(currentShopId, currentBranchId).then((stock) => ({ stock, error: null }), () => ({ stock: null, error: { message: "ไม่สามารถโหลดสต็อกพร้อมใช้ได้ กรุณาลองใหม่" } })),
         admin.from("ingredient_lot_expiry_status").select("id,ingredient_id,ingredient_name,lot_code,qty_remaining,unit,effective_expiry_at,expires_at").eq("shop_id", currentShopId).eq("branch_id", currentBranchId).gt("qty_remaining", 0).limit(250),
         admin.from("orders").select("id,status,total,created_at").eq("shop_id", currentShopId).eq("branch_id", currentBranchId).in("status", ["cancelled", "void", "refunded"]).gte("created_at", dates.yesterday.start).lt("created_at", dates.yesterday.end).order("created_at", { ascending: false }),
         admin.from("stock_logs").select("id,ingredient_id,type,amount,note,created_at,ingredient:ingredients!stock_logs_ingredient_id_fkey(name)").eq("shop_id", currentShopId).eq("branch_id", currentBranchId).in("type", ["adjust", "waste"]).gte("created_at", dates.yesterday.start).lt("created_at", dates.yesterday.end).order("created_at", { ascending: false }),
     ]);
 
-    const firstError = [closeResult.error, ingredientsResult.error, lotsResult.error, orderEventsResult.error, stockEventsResult.error].find(Boolean);
+    const firstError = [closeResult.error, stockResult.error, lotsResult.error, orderEventsResult.error, stockEventsResult.error].find(Boolean);
     if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
     const close = closeResult.data as unknown as DailyCloseRow | null;
-    const ingredients = ingredientsResult.data ?? [];
+    if (!stockResult.stock) return NextResponse.json({ error: "ไม่สามารถตรวจสอบสต็อกพร้อมใช้ได้" }, { status: 503 });
+    const ingredients = stockResult.stock.items;
     const lots = (lotsResult.data ?? []) as unknown as ExpiryRow[];
     const expiringLots = lots.flatMap((lot) => {
         const days = getDaysToExpiry(lot.effective_expiry_at ?? lot.expires_at);
@@ -78,6 +81,7 @@ export async function GET() {
     const response: DashboardTodayResponse = {
         context: { shopId: currentShopId, branchId: currentBranchId, branchName: branch.name },
         dates,
+        stockAsOf: stockResult.stock.as_of,
         yesterdayClose: close ? {
             status: close.status,
             netSales: numberOrZero(close.net_sales),
@@ -87,8 +91,9 @@ export async function GET() {
             closedAt: close.closed_at,
         } : null,
         tasks: {
-            outOfStock: ingredients.filter((row) => numberOrZero(row.stock) <= 0).map((row) => ({ id: row.id, name: row.name, stock: numberOrZero(row.stock), unit: row.unit })),
-            lowStock: ingredients.filter((row) => numberOrZero(row.stock) > 0 && numberOrZero(row.stock) <= numberOrZero(row.min_stock)).map((row) => ({ id: row.id, name: row.name, stock: numberOrZero(row.stock), minStock: numberOrZero(row.min_stock), unit: row.unit })),
+            outOfStock: ingredients.filter((row) => stockStatus(row) === "out").map((row) => ({ id: `${row.source_type}:${row.id}`, name: row.name, stock: row.usable_stock!, unit: row.unit })),
+            lowStock: ingredients.filter((row) => stockStatus(row) === "low").map((row) => ({ id: `${row.source_type}:${row.id}`, name: row.name, stock: row.usable_stock!, minStock: row.minimum_stock!, unit: row.unit })),
+            unavailableStock: ingredients.filter((row) => stockStatus(row) === "unavailable").map((row) => ({ id: `${row.source_type}:${row.id}`, name: row.name })),
             expiringLots,
         },
         reviewEvents: {

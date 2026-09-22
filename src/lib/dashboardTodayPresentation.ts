@@ -1,7 +1,7 @@
 import type { DashboardTodayResponse } from "@/lib/dashboardToday";
 
 export type DashboardActionGroup = {
-    id: "out-of-stock" | "expired-lots" | "cash-variance" | "daily-close" | "low-stock" | "near-expiry";
+    id: "out-of-stock" | "expired-lots" | "cash-variance" | "daily-close" | "low-stock" | "near-expiry" | "stock-unavailable";
     title: string;
     description: string;
     itemCount: number;
@@ -63,8 +63,8 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             description: `วัตถุดิบคงเหลือ 0 หรือต่ำกว่า ${data.tasks.outOfStock.length} รายการ`,
             itemCount: data.tasks.outOfStock.length,
             examples: uniqueNames(data.tasks.outOfStock.map((item) => item.name)),
-            href: "/admin/ingredients",
-            linkLabel: "จัดการวัตถุดิบ",
+            href: "/admin/stock/usable",
+            linkLabel: "ตรวจสต็อกพร้อมใช้",
             tone: "critical",
         });
     }
@@ -121,8 +121,8 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             description: `วัตถุดิบคงเหลือต่ำกว่าหรือเท่ากับขั้นต่ำ ${data.tasks.lowStock.length} รายการ`,
             itemCount: data.tasks.lowStock.length,
             examples: uniqueNames(data.tasks.lowStock.map((item) => item.name)),
-            href: "/admin/ingredients",
-            linkLabel: "ตรวจวัตถุดิบ",
+            href: "/admin/stock/usable",
+            linkLabel: "ตรวจสต็อกพร้อมใช้",
             tone: "warning",
         });
     }
@@ -137,6 +137,13 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             linkLabel: "ตรวจล็อตวัตถุดิบ",
             tone: "warning",
         });
+    }
+
+    if (data.tasks.unavailableStock?.length) {
+        actions.push({ id: "stock-unavailable", title: "มีสต็อกที่ยังประเมินไม่ได้",
+            description: `ไม่สามารถระบุยอดพร้อมใช้ ${data.tasks.unavailableStock.length} รายการ จึงยังสรุปว่าปกติไม่ได้`,
+            itemCount: data.tasks.unavailableStock.length, examples: uniqueNames(data.tasks.unavailableStock.map((item) => item.name)),
+            href: "/admin/stock/usable", linkLabel: "ตรวจรายการที่ไม่พร้อมใช้", tone: "warning" });
     }
 
     const reviews: DashboardReviewGroup[] = [];
@@ -183,6 +190,9 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             ? "ไม่พบกลุ่มปัญหาที่ต้องจัดการทันที แต่มีข้อมูลจริงที่ควรตรวจเพิ่มเติม"
             : "ตอนนี้ยังไม่มีเรื่องที่ต้องจัดการหรือรายการที่ต้องตรวจเพิ่มเติม";
 
+    const visibleActions = actions.filter((action, index) => index < 3 ||
+        action.id === "out-of-stock" || action.id === "low-stock" || action.id === "stock-unavailable");
+
     return {
         overview: {
             title: overviewTitle,
@@ -195,8 +205,8 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
                     : null,
         },
         actions,
-        visibleActions: actions.slice(0, 3),
-        hiddenActionCount: Math.max(0, actions.length - 3),
+        visibleActions,
+        hiddenActionCount: actions.length - visibleActions.length,
         reviews,
         reviewCount,
         hasPaidSales: data.sales.paidOrderCount > 0,
