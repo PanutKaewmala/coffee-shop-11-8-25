@@ -1,0 +1,304 @@
+name: TALVO production rollout preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type PREFLIGHT_TALVO_PRODUCTION"
+        required: true
+        type: string
+      target_sha:
+        description: "Exact PR commit SHA to audit"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: talvo-production-database-rollout
+  cancel-in-progress: false
+
+env:
+  TRUSTED_ROLLOUT_BASE_SHA: cb01ad6499c154b26fc172fa9dbb9c29a40ad081
+  PRODUCTION_PROJECT_REF: udgxrvtbhytqncmyhmiv
+  STAGING_PROJECT_REF: vgsrqrirtxxxnccactsb
+  POSTGRES_17_IMAGE: postgres:17.11-trixie@sha256:f86c774c7a51d0f05133f2ab70e4c384b589170458ab1df1ba83426d7cc30da7
+
+jobs:
+  verify-target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.guard.outputs.target_sha }}
+    steps:
+      - name: Require trusted main dispatch
+        id: guard
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RAW_CONFIRMATION: ${{ inputs.confirmation }}
+          RAW_TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          trim() {
+            local v="$1"
+            v="${v#"${v%%[![:space:]]*}"}"
+            v="${v%"${v##*[![:space:]]}"}"
+            printf '%s' "$v"
+          }
+          confirmation="$(trim "$RAW_CONFIRMATION")"
+          target_sha="$(trim "$RAW_TARGET_SHA")"
+          [[ "$REF_NAME" == "main" ]] || { echo "::error::Dispatch branch must be main"; exit 1; }
+          [[ "$confirmation" == "PREFLIGHT_TALVO_PRODUCTION" ]] || { echo "::error::Confirmation mismatch"; exit 1; }
+          [[ "$target_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be 40 lowercase hex characters"; exit 1; }
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact target
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.guard.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable target and migration manifest
+        shell: bash
+        env:
+          TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]] || { echo "::error::Checkout differs from target SHA"; exit 1; }
+          git cat-file -e "$TRUSTED_ROLLOUT_BASE_SHA^{commit}"
+          git merge-base --is-ancestor "$TRUSTED_ROLLOUT_BASE_SHA" "$TARGET_SHA" || {
+            echo "::error::Target must descend from the reviewed production-rollout base"
+            exit 1
+          }
+
+          migrations=(
+            supabase/migrations/20260807090000_atomic_pos_checkout.sql
+            supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql
+            supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql
+            supabase/migrations/20260819180000_talvo_receive_supply_item.sql
+            supabase/migrations/20260819180100_talvo_receive_history_hardening.sql
+            supabase/migrations/20260910042652_sale_recipe_inventory.sql
+            supabase/migrations/20260921142010_current_usable_stock.sql
+          )
+          for f in "${migrations[@]}"; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "::error::Missing regular migration file: $f"; exit 1; }
+          done
+
+          grep -Fq "Review only: do not apply to staging or production from this repository task."             supabase/migrations/20260807090000_atomic_pos_checkout.sql || {
+              echo "::error::Atomic POS review-only safety marker is missing"
+              exit 1
+            }
+
+          python3 - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+
+          ordered = [
+              "supabase/migrations/20260807090000_atomic_pos_checkout.sql",
+              "supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql",
+              "supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql",
+              "supabase/migrations/20260819180000_talvo_receive_supply_item.sql",
+              "supabase/migrations/20260819180100_talvo_receive_history_hardening.sql",
+              "supabase/migrations/20260910042652_sale_recipe_inventory.sql",
+              "supabase/migrations/20260921142010_current_usable_stock.sql",
+          ]
+          print("Reviewed rollout order and exact target-byte SHA-256 manifest:")
+          for path_string in ordered:
+              path = Path(path_string)
+              lines = path.read_text().splitlines()
+              for line_number, line in enumerate(lines, 1):
+                  if line.strip().lower() in {"commit;", "rollback;"}:
+                      raise SystemExit(f"FAIL forbidden top-level transaction control {path}:{line_number}")
+              print(f"{sha256(path.read_bytes()).hexdigest()}  {path}")
+          PY
+
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+            echo "::error::Target verification mutated checkout"
+            exit 1
+          }
+
+  production-read-only-preflight:
+    needs: verify-target
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: talvo-production
+    env:
+      APPROVED_TALVO_TARGET_SHA: ${{ vars.APPROVED_TALVO_TARGET_SHA }}
+      PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      TARGET_SHA: ${{ needs.verify-target.outputs.target_sha }}
+    steps:
+      - name: Require exact approved target and production identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$APPROVED_TALVO_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::APPROVED_TALVO_TARGET_SHA missing or invalid"
+            exit 1
+          }
+          [[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]] || {
+            echo "::error::Target SHA is not the protected approved SHA"
+            exit 1
+          }
+          python3 - <<'PY'
+          import os
+          from urllib.parse import unquote, urlparse
+
+          p = urlparse(os.environ["PRODUCTION_DATABASE_URL"])
+          project_ref = os.environ["PRODUCTION_PROJECT_REF"]
+          staging_ref = os.environ["STAGING_PROJECT_REF"]
+          host = (p.hostname or "").lower()
+          user = unquote(p.username or "")
+
+          if p.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit("FAIL production database URL scheme")
+          if staging_ref in host or staging_ref in user:
+              raise SystemExit("FAIL staging project supplied as production")
+          if host == f"db.{project_ref}.supabase.co":
+              if user != "postgres" or (p.port or 5432) != 5432:
+                  raise SystemExit("FAIL production direct connection identity")
+          elif host == "aws-1-ap-southeast-1.pooler.supabase.com":
+              if user != f"postgres.{project_ref}" or (p.port or 5432) != 5432:
+                  raise SystemExit("FAIL production pooler connection identity")
+          else:
+              raise SystemExit(f"FAIL unexpected production database host: {host}")
+          PY
+
+      - name: Check out exact target for local byte audit only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.verify-target.outputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prove database session is read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select current_setting('transaction_read_only');
+          SQL
+          )"
+          [[ "$result" == "on" ]] || { echo "::error::Production session is not read-only"; exit 1; }
+
+      - name: Verify current production is the expected pre-TALVO schema state
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (to_regnamespace('talvo') is null)::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='branch' and column_name='is_active'))::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='pos_idempotency' and column_name='request_hash'))::text,
+            (to_regprocedure('public.process_pos_checkout_atomic(uuid,uuid,jsonb,text,numeric,text)') is null)::text,
+            (to_regprocedure('public.assert_business_day_open(uuid,uuid,date)') is null)::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='recipe_items' and column_name='supply_item_id'))::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='recipe_items' and column_name='branch_id'))::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='orders' and column_name='inventory_snapshot'))::text,
+            (not exists(select 1 from information_schema.columns
+              where table_schema='public' and table_name='order_items' and column_name='recipe_snapshot'))::text,
+            (to_regclass('supabase_migrations.schema_migrations') is null)::text;
+          SQL
+          )"
+          expected="true|true|true|true|true|true|true|true|true|true"
+          [[ "$state" == "$expected" ]] || {
+            echo "::error::Production no longer matches the reviewed pre-TALVO starting state: $state"
+            exit 1
+          }
+
+      - name: Verify required base contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (exists(select 1 from pg_extension where extname='pgcrypto'))::text,
+            (to_regprocedure('auth.uid()') is not null)::text,
+            (to_regclass('public.shops') is not null)::text,
+            (to_regclass('public.branch') is not null)::text,
+            (to_regclass('public.shop_members') is not null)::text,
+            (to_regclass('public.ingredients') is not null)::text,
+            (to_regclass('public.recipe_items') is not null)::text,
+            (to_regclass('public.menu_variants') is not null)::text,
+            (to_regclass('public.orders') is not null)::text,
+            (to_regclass('public.order_items') is not null)::text,
+            (to_regclass('public.pos_idempotency') is not null)::text,
+            (to_regclass('public.daily_closes') is not null)::text,
+            (to_regclass('public.cash_movements') is not null)::text;
+          SQL
+          )"
+          expected="true|true|true|true|true|true|true|true|true|true|true|true|true"
+          [[ "$state" == "$expected" ]] || {
+            echo "::error::Required production base contract is incomplete: $state"
+            exit 1
+          }
+
+      - name: Verify branch, POS and recipe data invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (select count(*) from public.branch where shop_id is null),
+            (select count(*) from (
+              select shop_id,id from public.branch group by shop_id,id having count(*) > 1
+            ) x),
+            (select count(*) from (
+              select shop_id,key from public.pos_idempotency group by shop_id,key having count(*) > 1
+            ) x),
+            (select count(*) from public.recipe_items r where r.quantity is null or r.quantity <= 0),
+            (select count(*) from public.recipe_items r where not exists (
+              select 1 from public.ingredients i where i.id=r.ingredient_id and i.shop_id=r.shop_id
+            )),
+            (select count(*) from public.recipe_items r where exists (
+              select 1 from public.ingredients i
+              where i.id=r.ingredient_id and i.shop_id=r.shop_id and i.branch_id is null
+            )),
+            (select count(*) from public.recipe_items r where not exists (
+              select 1 from public.menu_variants v where v.id=r.variant_id and v.shop_id=r.shop_id
+            )),
+            (select count(*) from public.recipe_items r where exists (
+              select 1 from public.ingredients i
+              where i.id=r.ingredient_id and i.shop_id=r.shop_id
+                and (not i.is_active or i.archived_at is not null)
+            ));
+          SQL
+          )"
+          expected="0|0|0|0|0|0|0|0"
+          [[ "$state" == "$expected" ]] || {
+            echo "::error::Production data violates rollout prerequisites: $state"
+            exit 1
+          }
+
+      - name: Record production row-count snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          counts="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (select count(*) from public.shops),
+            (select count(*) from public.branch),
+            (select count(*) from public.shop_members),
+            (select count(*) from public.recipe_items),
+            (select count(*) from public.orders),
+            (select count(*) from public.order_items),
+            (select count(*) from public.pos_idempotency),
+            (select count(*) from public.daily_closes),
+            (select count(*) from public.cash_movements);
+          SQL
+          )"
+          echo "Production rows shops|branches|members|recipe_items|orders|order_items|pos_idempotency|daily_closes|cash_movements = $counts"
+
+      - name: Preflight completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PASS production rollout preflight is read-only and the reviewed pre-TALVO starting state still holds"
+          echo "NO PRODUCTION MUTATION WAS PERFORMED"
