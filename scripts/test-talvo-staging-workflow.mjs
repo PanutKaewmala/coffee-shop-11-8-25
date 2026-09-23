@@ -86,4 +86,65 @@ assert.ok(
   "Pre-TALVO bootstrap validator must prove rollback residue is absent",
 );
 
-console.log("TALVO staging workflow static contract passed");
+
+const productionPreflightPath = ".github/workflows/talvo-production-rollout-preflight.yml";
+const productionPreflight = readFileSync(productionPreflightPath, "utf8");
+
+for (const marker of [
+  "workflow_dispatch:",
+  "group: talvo-production-database-rollout",
+  "environment: talvo-production",
+  "APPROVED_TALVO_TARGET_SHA",
+  "PRODUCTION_DATABASE_URL",
+  "TRUSTED_ROLLOUT_BASE_SHA: cb01ad6499c154b26fc172fa9dbb9c29a40ad081",
+  "PRODUCTION_PROJECT_REF: udgxrvtbhytqncmyhmiv",
+  "STAGING_PROJECT_REF: vgsrqrirtxxxnccactsb",
+  "default_transaction_read_only=on",
+  "20260807090000_atomic_pos_checkout.sql",
+  "20260817100000_talvo_supply_item_vertical_slice.sql",
+  "20260922193511_bootstrap_pre_talvo_branches.sql",
+  "20260819180000_talvo_receive_supply_item.sql",
+  "20260819180100_talvo_receive_history_hardening.sql",
+  "20260910042652_sale_recipe_inventory.sql",
+  "20260921142010_current_usable_stock.sql",
+  "NO PRODUCTION MUTATION WAS PERFORMED",
+]) {
+  assert.ok(
+    productionPreflight.includes(marker),
+    `Production rollout preflight must include: ${marker}`,
+  );
+}
+assert.ok(
+  productionPreflight.includes('[[ "$REF_NAME" == "main" ]]'),
+  "Production rollout preflight must dispatch from main only",
+);
+assert.ok(
+  productionPreflight.includes('[[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]]'),
+  "Production rollout preflight must require the protected exact target SHA",
+);
+assert.ok(
+  productionPreflight.includes('git merge-base --is-ancestor "$TRUSTED_ROLLOUT_BASE_SHA" "$TARGET_SHA"'),
+  "Production rollout preflight must pin the reviewed rollout base",
+);
+assert.ok(
+  !productionPreflight.includes("supabase db push"),
+  "Production rollout preflight must never push migrations",
+);
+assert.ok(
+  !productionPreflight.includes("apply_migration"),
+  "Production rollout preflight must never apply migrations",
+);
+assert.ok(
+  !productionPreflight.includes("STAGING_DATABASE_URL"),
+  "Production rollout preflight must never receive staging database credentials",
+);
+assert.ok(
+  !/psql[^\n]*-f\s+supabase\/migrations/i.test(productionPreflight),
+  "Production rollout preflight must never execute a migration file against production",
+);
+assert.ok(
+  productionPreflight.includes("to_regclass('supabase_migrations.schema_migrations') is null"),
+  "Production rollout preflight must fail closed if migration history unexpectedly appears",
+);
+
+console.log("TALVO staging and production workflow static contracts passed");
