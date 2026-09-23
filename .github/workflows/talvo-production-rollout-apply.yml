@@ -135,6 +135,7 @@ jobs:
           else:
               raise SystemExit(f"FAIL unexpected production host: {host}")
           PY
+          echo "TALVO_IDENTITY_VALIDATED=true" >> "$GITHUB_ENV"
 
       - name: Check out exact target as rollout input
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -176,6 +177,27 @@ jobs:
           )"
           expected="true|true|true|true|true|true|0|0|0|0|0|0|0|0"
           [[ "$result" == "$expected" ]] || { echo "::error::Production preconditions changed: $result"; exit 1; }
+          counts="$(docker run --rm -i \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (select count(*) from public.shops),
+            (select count(*) from public.branch),
+            (select count(*) from public.shop_members),
+            (select count(*) from public.recipe_items),
+            (select count(*) from public.orders),
+            (select count(*) from public.order_items),
+            (select count(*) from public.pos_idempotency),
+            (select count(*) from public.daily_closes),
+            (select count(*) from public.cash_movements);
+          SQL
+          )"
+          [[ "$counts" =~ ^[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+\|[0-9]+$ ]] || {
+            echo "::error::Invalid production count snapshot: $counts"
+            exit 1
+          }
+          echo "TALVO_EXPECTED_COUNTS=$counts" >> "$GITHUB_ENV"
           echo "TALVO_PRESTATE_CONFIRMED=true" >> "$GITHUB_ENV"
 
       - name: Build committed rollout transaction
@@ -197,6 +219,7 @@ jobs:
 
           cat > /tmp/talvo-production-rollout.sql <<'SQL'
           \set ON_ERROR_STOP on
+          set transaction isolation level read committed;
           set local lock_timeout = '3s';
           set local statement_timeout = '180s';
 
@@ -315,7 +338,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          IFS='|' read -r expected_shops expected_branches expected_members expected_recipes expected_orders expected_order_items expected_pos expected_closes expected_cash <<< "$TALVO_EXPECTED_COUNTS"
+          expected_locations=$((expected_branches * 2))
+          state="$(docker run --rm -i \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
           select
             (to_regnamespace('talvo') is not null)::text,
             (exists(select 1 from information_schema.columns where table_schema='public' and table_name='branch' and column_name='is_active'))::text,
@@ -333,13 +361,17 @@ jobs:
             (select count(*) from talvo.schema_revisions),
             (select count(*) from public.recipe_items where branch_id is null),
             (select count(*) from public.shops),
+            (select count(*) from public.branch),
+            (select count(*) from public.shop_members),
             (select count(*) from public.recipe_items),
             (select count(*) from public.orders),
             (select count(*) from public.order_items),
-            (select count(*) from public.pos_idempotency);
+            (select count(*) from public.pos_idempotency),
+            (select count(*) from public.daily_closes),
+            (select count(*) from public.cash_movements);
           SQL
           )"
-          expected="true|true|true|true|true|true|true|true|true|9|9|18|0|7|0|4|153|1174|1503|90"
+          expected="true|true|true|true|true|true|true|true|true|$expected_branches|$expected_branches|$expected_locations|0|7|0|$TALVO_EXPECTED_COUNTS"
           [[ "$state" == "$expected" ]] || { echo "::error::Committed production state mismatch: $state"; exit 1; }
 
           actual="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
@@ -363,25 +395,51 @@ Actual:
         shell: bash
         run: |
           set -euo pipefail
-          state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          if [[ "${TALVO_IDENTITY_VALIDATED:-}" != "true" ]]; then
+            echo "Production identity was not validated; no rollout mutation was authorized."
+            exit 0
+          fi
+
+          base="$(docker run --rm -i \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
           select
             (to_regnamespace('talvo') is null)::text,
             (to_regnamespace('talvo') is not null)::text,
             (not exists(select 1 from information_schema.columns where table_schema='public' and table_name='branch' and column_name='is_active'))::text,
             (exists(select 1 from information_schema.columns where table_schema='public' and table_name='branch' and column_name='is_active'))::text,
-            coalesce((select count(*) from public.branch where is_active),0),
-            (select count(*) from public.branch),
-            coalesce((select count(*) from talvo.inventory_locations),0),
-            coalesce((select count(*) from talvo.schema_revisions),0);
+            (select count(*) from public.branch);
           SQL
           )"
-          if [[ "$state" == "true|false|true|false|0|9|0|0" ]]; then
+          IFS='|' read -r talvo_absent talvo_present branch_col_absent branch_col_present branch_count <<< "$base"
+
+          if [[ "$talvo_absent|$talvo_present|$branch_col_absent|$branch_col_present" == "true|false|true|false" ]]; then
             echo "PASS failure left production in the original pre-TALVO state"
             exit 0
           fi
-          if [[ "$state" == "false|true|false|true|9|9|18|7" ]]; then
+
+          if [[ "$talvo_absent|$talvo_present|$branch_col_absent|$branch_col_present" != "false|true|false|true" ]]; then
+            echo "::error::Production is in a partial or unknown schema state: $base"
+            exit 1
+          fi
+
+          migrated="$(docker run --rm -i \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          select
+            (select count(*) from public.branch where is_active),
+            (select count(*) from public.branch),
+            (select count(*) from talvo.inventory_locations),
+            (select count(*) from talvo.schema_revisions),
+            (select count(*) from talvo.supply_items);
+          SQL
+          )"
+          IFS='|' read -r active_branches total_branches locations revisions supply_items <<< "$migrated"
+          if [[ "$active_branches" == "$total_branches" && "$locations" -eq $((total_branches * 2)) && "$revisions" == "7" && "$supply_items" == "0" ]]; then
             echo "PASS production is in the expected fully migrated TALVO state"
             exit 0
           fi
-          echo "::error::Production is in a partial or unknown TALVO rollout state: $state"
+          echo "::error::Production is in a partial or unknown TALVO rollout state: $base | $migrated"
           exit 1
