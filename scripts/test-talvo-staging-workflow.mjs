@@ -212,4 +212,75 @@ assert.ok(
   "Production rehearsal must keep the reviewed explicit rollout order",
 );
 
-console.log("TALVO staging, production preflight, and production rehearsal static contracts passed");
+
+const productionApplyPath = ".github/workflows/talvo-production-rollout-apply.yml";
+const productionApply = readFileSync(productionApplyPath, "utf8");
+
+for (const marker of [
+  "workflow_dispatch:",
+  "group: talvo-production-database-rollout",
+  "environment: talvo-production",
+  "APPLY_TALVO_PRODUCTION",
+  "APPROVED_TALVO_TARGET_SHA",
+  "PRODUCTION_DATABASE_URL",
+  "TRUSTED_ROLLOUT_BASE_SHA: be51e0f0b7541ef2f2a8dd63c8df0bfeb43be79b",
+  "--single-transaction",
+  "set transaction isolation level read committed;",
+  "set local lock_timeout = '3s';",
+  "in share row exclusive mode nowait;",
+  "TALVO_EXPECTED_COUNTS",
+  "insert into talvo.schema_revisions",
+  "PASS TALVO production rollout transaction verified before commit",
+  "PASS TALVO production rollout committed and verified",
+  "Classify production state after any failure",
+]) {
+  assert.ok(
+    productionApply.includes(marker),
+    `Production rollout apply workflow must include: ${marker}`,
+  );
+}
+assert.ok(
+  productionApply.includes('[[ "$REF_NAME" == "main" ]]'),
+  "Production rollout apply must dispatch from main only",
+);
+assert.ok(
+  productionApply.includes('[[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]]'),
+  "Production rollout apply must require the protected exact target SHA",
+);
+assert.ok(
+  productionApply.includes('echo "TALVO_IDENTITY_VALIDATED=true" >> "$GITHUB_ENV"'),
+  "Production rollout apply must classify post-state only after exact production identity validation",
+);
+assert.ok(
+  !productionApply.includes("supabase db push"),
+  "Production rollout apply must not use unbounded db push",
+);
+assert.ok(
+  !productionApply.includes("apply_migration"),
+  "Production rollout apply must not use an unreviewed migration action",
+);
+assert.ok(
+  !productionApply.includes("STAGING_DATABASE_URL"),
+  "Production rollout apply must never receive staging database credentials",
+);
+assert.ok(
+  !/^\s*commit;\s*$/mi.test(productionApply),
+  "Production rollout apply must rely on psql --single-transaction rather than embedded COMMIT statements",
+);
+assert.ok(
+  productionApply.indexOf("20260807090000_atomic_pos_checkout.sql") <
+    productionApply.indexOf("20260817100000_talvo_supply_item_vertical_slice.sql") &&
+    productionApply.indexOf("20260817100000_talvo_supply_item_vertical_slice.sql") <
+    productionApply.indexOf("20260922193511_bootstrap_pre_talvo_branches.sql") &&
+    productionApply.indexOf("20260922193511_bootstrap_pre_talvo_branches.sql") <
+    productionApply.indexOf("20260819180000_talvo_receive_supply_item.sql") &&
+    productionApply.indexOf("20260819180000_talvo_receive_supply_item.sql") <
+    productionApply.indexOf("20260819180100_talvo_receive_history_hardening.sql") &&
+    productionApply.indexOf("20260819180100_talvo_receive_history_hardening.sql") <
+    productionApply.indexOf("20260910042652_sale_recipe_inventory.sql") &&
+    productionApply.indexOf("20260910042652_sale_recipe_inventory.sql") <
+    productionApply.indexOf("20260921142010_current_usable_stock.sql"),
+  "Production rollout apply must keep the reviewed explicit rollout order",
+);
+
+console.log("TALVO staging, production preflight, rehearsal, and apply workflow static contracts passed");
