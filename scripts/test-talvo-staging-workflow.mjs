@@ -147,4 +147,69 @@ assert.ok(
   "Production rollout preflight must fail closed if migration history unexpectedly appears",
 );
 
-console.log("TALVO staging and production workflow static contracts passed");
+
+const productionRehearsalPath = ".github/workflows/talvo-production-rollout-rehearsal.yml";
+const productionRehearsal = readFileSync(productionRehearsalPath, "utf8");
+
+for (const marker of [
+  "workflow_dispatch:",
+  "group: talvo-production-database-rollout",
+  "environment: talvo-production",
+  "REHEARSE_TALVO_PRODUCTION",
+  "APPROVED_TALVO_TARGET_SHA",
+  "PRODUCTION_DATABASE_URL",
+  "TRUSTED_ROLLOUT_BASE_SHA: d46a7cb276dddf0b135b2681e1fc1eb0207b8005",
+  "begin isolation level read committed;",
+  "set local lock_timeout = '3s';",
+  "in share row exclusive mode nowait;",
+  "insert into talvo.schema_revisions",
+  "rollback;",
+  "PASS TALVO production rollout rehearsal rolled back cleanly",
+  "PASS production returned to reviewed pre-TALVO state",
+]) {
+  assert.ok(
+    productionRehearsal.includes(marker),
+    `Production rollout rehearsal must include: ${marker}`,
+  );
+}
+assert.ok(
+  productionRehearsal.includes('[[ "$REF_NAME" == "main" ]]'),
+  "Production rehearsal must dispatch from main only",
+);
+assert.ok(
+  productionRehearsal.includes('[[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]]'),
+  "Production rehearsal must require the protected exact target SHA",
+);
+assert.ok(
+  !productionRehearsal.includes("supabase db push"),
+  "Production rehearsal must not use db push",
+);
+assert.ok(
+  !productionRehearsal.includes("apply_migration"),
+  "Production rehearsal must not use the Supabase apply-migration action",
+);
+assert.ok(
+  !productionRehearsal.includes("STAGING_DATABASE_URL"),
+  "Production rehearsal must never receive staging database credentials",
+);
+assert.ok(
+  !/^\s*commit;\s*$/mi.test(productionRehearsal),
+  "Production rehearsal must never commit its transaction",
+);
+assert.ok(
+  productionRehearsal.indexOf("20260807090000_atomic_pos_checkout.sql") <
+    productionRehearsal.indexOf("20260817100000_talvo_supply_item_vertical_slice.sql") &&
+    productionRehearsal.indexOf("20260817100000_talvo_supply_item_vertical_slice.sql") <
+    productionRehearsal.indexOf("20260922193511_bootstrap_pre_talvo_branches.sql") &&
+    productionRehearsal.indexOf("20260922193511_bootstrap_pre_talvo_branches.sql") <
+    productionRehearsal.indexOf("20260819180000_talvo_receive_supply_item.sql") &&
+    productionRehearsal.indexOf("20260819180000_talvo_receive_supply_item.sql") <
+    productionRehearsal.indexOf("20260819180100_talvo_receive_history_hardening.sql") &&
+    productionRehearsal.indexOf("20260819180100_talvo_receive_history_hardening.sql") <
+    productionRehearsal.indexOf("20260910042652_sale_recipe_inventory.sql") &&
+    productionRehearsal.indexOf("20260910042652_sale_recipe_inventory.sql") <
+    productionRehearsal.indexOf("20260921142010_current_usable_stock.sql"),
+  "Production rehearsal must keep the reviewed explicit rollout order",
+);
+
+console.log("TALVO staging, production preflight, and production rehearsal static contracts passed");
