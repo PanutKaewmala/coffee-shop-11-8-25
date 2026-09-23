@@ -1562,6 +1562,14 @@ export type Database = {
       }
     }
     Functions: {
+      get_recipe_usable_stock: {
+        Args: { p_business_id: string; p_branch_id: string }
+        Returns: Json
+      }
+      set_recipe_stock_minimum: {
+        Args: { p_business_id: string; p_branch_id: string; p_source_type: string; p_item_id: string; p_minimum_stock: number }
+        Returns: undefined
+      }
       list_talvo_supply_items: {
         Args: { p_business_id: string; p_branch_id: string }
         Returns: Json

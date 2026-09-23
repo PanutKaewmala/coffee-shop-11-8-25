@@ -301,6 +301,7 @@ export default function StockHistoryPage() {
 
     return (
         <div className="p-6 space-y-6">
+            <Link href="/admin/stock/usable" className="inline-flex rounded-xl bg-[var(--accent)] px-5 py-3 font-semibold text-white">ดูสต็อกพร้อมใช้และตั้งขั้นต่ำ →</Link>
             {/* =========================
                KPI + Critical (Decision Area)
             ========================= */}

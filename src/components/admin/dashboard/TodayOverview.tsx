@@ -22,6 +22,8 @@ export default function TodayOverview() {
     const [data, setData] = useState<DashboardTodayResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [revision, setRevision] = useState(0);
+    const refresh = () => { setLoading(true); setError(null); setRevision((value) => value + 1); };
 
     useEffect(() => {
         let active = true;
@@ -32,10 +34,10 @@ export default function TodayOverview() {
         }).catch((reason: unknown) => active && setError(reason instanceof Error ? reason.message : "โหลดภาพรวมวันนี้ไม่สำเร็จ"))
           .finally(() => active && setLoading(false));
         return () => { active = false; };
-    }, []);
+    }, [revision]);
 
     if (loading) return <div className="space-y-5 animate-pulse"><div className="h-44 rounded-2xl bg-[var(--surface)]"/><div className="h-48 rounded-2xl bg-[var(--surface)]"/><div className="h-48 rounded-2xl bg-[var(--surface)]"/></div>;
-    if (error) return <Card><div className="flex gap-3 text-red-600 dark:text-red-300"><AlertTriangle className="shrink-0"/><div><h1 className="font-bold">เปิดภาพรวมวันนี้ไม่ได้</h1><p className="mt-1 text-sm">{error}</p></div></div></Card>;
+    if (error) return <Card><div role="alert" className="flex gap-3 text-red-600 dark:text-red-300"><AlertTriangle className="shrink-0"/><div><h1 className="font-bold">เปิดภาพรวมวันนี้ไม่ได้</h1><p className="mt-1 text-sm">{error}</p><p className="mt-1 text-sm">ยังสรุปไม่ได้ว่าสต็อกปกติหรือขาด</p><button onClick={refresh} className="mt-3 rounded-lg border px-4 py-2">ลองใหม่</button></div></div></Card>;
     if (!data) return null;
 
     const view = buildDashboardTodayPresentation(data);
@@ -45,6 +47,8 @@ export default function TodayOverview() {
             <p className="text-sm font-medium text-[var(--accent)]">สำหรับ Owner · {data.context.branchName}</p>
             <h1 className="mt-1 text-2xl font-bold text-[var(--text-primary)] md:text-3xl">ภาพรวมวันนี้</h1>
             <p className="mt-2 text-sm text-[var(--text-muted)]">ข้อมูลของสาขาที่เลือก · อ้างอิงเวลาไทย</p>
+            {data.stockAsOf ? <p className="mt-2 text-sm text-[var(--text-muted)]">สต็อกตามที่ระบบบันทึก ไม่ใช่ยอดตรวจนับจริง · ข้อมูล ณ {new Date(data.stockAsOf).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-4 text-sm"><Link href="/admin/stock/usable" className="font-semibold text-[var(--accent)] hover:underline">ดูสต็อกพร้อมใช้</Link><button onClick={refresh} className="font-semibold text-[var(--accent)] hover:underline">รีเฟรชภาพรวม</button></div>
         </header>
 
         <section aria-labelledby="situation-title">

@@ -44,6 +44,7 @@ export function dashboardDates(now = new Date()) {
 export type DashboardTodayResponse = {
     context: { shopId: string; branchId: string; branchName: string };
     dates: ReturnType<typeof dashboardDates>;
+    stockAsOf?: string;
     yesterdayClose: null | {
         status: string;
         netSales: number;
@@ -53,6 +54,7 @@ export type DashboardTodayResponse = {
         closedAt: string | null;
     };
     tasks: {
+        unavailableStock?: Array<{ id: string; name: string }>;
         outOfStock: Array<{ id: string; name: string; stock: number; unit: string }>;
         lowStock: Array<{ id: string; name: string; stock: number; minStock: number; unit: string }>;
         expiringLots: Array<{

@@ -23,6 +23,7 @@ const postBaselineMigrations = [
   "20260819180000_talvo_receive_supply_item.sql",
   "20260819180100_talvo_receive_history_hardening.sql",
   "20260910042652_sale_recipe_inventory.sql",
+  "20260921142010_current_usable_stock.sql",
 ];
 
 function fail(message) {
