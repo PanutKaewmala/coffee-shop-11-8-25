@@ -1,0 +1,371 @@
+name: Validate pre-TALVO branch bootstrap on staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type VALIDATE_PRE_TALVO_BRANCH_BOOTSTRAP"
+        required: true
+        type: string
+      target_sha:
+        description: "Exact approved bootstrap commit SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-database-mutation
+  cancel-in-progress: false
+
+env:
+  TRUSTED_BOOTSTRAP_BASE_SHA: 81cf7e0506baeb664f7c3794c987f05bf5d2ad64
+  POSTGRES_17_IMAGE: postgres:17.11-trixie@sha256:f86c774c7a51d0f05133f2ab70e4c384b589170458ab1df1ba83426d7cc30da7
+  SHOP_A_ID: 35400000-0000-4000-8000-000000000001
+  SHOP_B_ID: 35400000-0000-4000-8000-000000000002
+  BRANCH_A1_ID: 35400000-0000-4000-8000-000000000003
+  BRANCH_A2_ID: 35400000-0000-4000-8000-000000000004
+  BRANCH_B1_ID: 35400000-0000-4000-8000-000000000005
+
+jobs:
+  verify-target:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      target_sha: ${{ steps.guard.outputs.target_sha }}
+    steps:
+      - name: Require trusted main dispatch
+        id: guard
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RAW_CONFIRMATION: ${{ inputs.confirmation }}
+          RAW_TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          trim() {
+            local v="$1"
+            v="${v#"${v%%[![:space:]]*}"}"
+            v="${v%"${v##*[![:space:]]}"}"
+            printf '%s' "$v"
+          }
+          confirmation="$(trim "$RAW_CONFIRMATION")"
+          target_sha="$(trim "$RAW_TARGET_SHA")"
+          [[ "$REF_NAME" == "main" ]] || { echo "::error::Dispatch branch must be main"; exit 1; }
+          [[ "$confirmation" == "VALIDATE_PRE_TALVO_BRANCH_BOOTSTRAP" ]] || { echo "::error::Confirmation mismatch"; exit 1; }
+          [[ "$target_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be 40 lowercase hex characters"; exit 1; }
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact target
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.guard.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable target and bootstrap contract
+        shell: bash
+        env:
+          TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$TARGET_SHA" ]] || { echo "::error::Checkout differs from target SHA"; exit 1; }
+          git cat-file -e "$TRUSTED_BOOTSTRAP_BASE_SHA^{commit}"
+          git merge-base --is-ancestor "$TRUSTED_BOOTSTRAP_BASE_SHA" "$TARGET_SHA" || { echo "::error::Target must descend from the reviewed pre-bootstrap base"; exit 1; }
+          for f in             supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql             supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql; do
+            [[ -f "$f" && ! -L "$f" ]] || { echo "::error::Missing regular file: $f"; exit 1; }
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql")
+          lines = path.read_text().splitlines()
+          for n, line in enumerate(lines, 1):
+              stripped = line.strip().lower()
+              if stripped in {"commit;", "rollback;"}:
+                  raise SystemExit(f"FAIL forbidden transaction control {path}:{n}")
+              if "`" in line:
+                  raise SystemExit(f"FAIL forbidden backtick {path}:{n}")
+          text = "\n".join(lines).lower()
+          required = [
+              "lock table public.branch, talvo.supply_items, talvo.inventory_locations",
+              "in share row exclusive mode nowait",
+              "talvo_branch_bootstrap_supply_items_exist",
+              "talvo_branch_bootstrap_partial_or_unknown_state",
+              "update public.branch set is_active=true where not is_active",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"FAIL missing bootstrap marker: {marker}")
+          PY
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || { echo "::error::Static validation mutated checkout"; exit 1; }
+
+  validate-staging:
+    needs: verify-target
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: talvo-staging
+    env:
+      APPROVED_TALVO_TARGET_SHA: ${{ vars.APPROVED_TALVO_TARGET_SHA }}
+      EXPECTED_STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      TARGET_SHA: ${{ needs.verify-target.outputs.target_sha }}
+    steps:
+      - name: Require protected target and exact staging identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$APPROVED_TALVO_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::APPROVED_TALVO_TARGET_SHA missing or invalid"; exit 1; }
+          [[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]] || { echo "::error::Target SHA is not the protected approved SHA"; exit 1; }
+          [[ "$EXPECTED_STAGING_PROJECT_REF" =~ ^[a-z0-9]+$ ]] || { echo "::error::STAGING_PROJECT_REF missing or invalid"; exit 1; }
+          python3 - <<'PY'
+          import os
+          from urllib.parse import unquote, urlparse
+          p = urlparse(os.environ["STAGING_DATABASE_URL"])
+          host = (p.hostname or "").lower()
+          if p.scheme not in {"postgres", "postgresql"}:
+              raise SystemExit("FAIL staging scheme")
+          if host != "aws-0-ap-southeast-2.pooler.supabase.com":
+              raise SystemExit("FAIL staging host")
+          if host == "aws-1-ap-southeast-1.pooler.supabase.com":
+              raise SystemExit("FAIL production host")
+          if (p.port or 5432) != 5432 or p.path.lstrip("/") != "postgres":
+              raise SystemExit("FAIL staging endpoint")
+          if unquote(p.username or "") != "postgres." + os.environ["EXPECTED_STAGING_PROJECT_REF"]:
+              raise SystemExit("FAIL staging project ref")
+          PY
+          echo "STAGING_IDENTITY_VALIDATED=true" >> "$GITHUB_ENV"
+
+      - name: Check out exact target as database input only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.verify-target.outputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify approved TALVO baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql
+          expected="$(sha256sum "$baseline" | awk '{print $1}')"
+          actual="$(docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select coalesce((select source_sha256 from talvo.schema_revisions where version='20260817100000'),'');
+          SQL
+          )"
+          [[ "$actual" == "$expected" ]] || { echo "::error::Staging TALVO baseline checksum mismatch"; exit 1; }
+
+      - name: Require data-empty staging baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$(docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (select count(*) from public.shops),
+            (select count(*) from public.branch),
+            (select count(*) from talvo.command_executions),
+            (select count(*) from talvo.supply_items),
+            (select count(*) from talvo.ingredient_lots),
+            (select count(*) from talvo.inventory_locations),
+            (select count(*) from talvo.inventory_balances),
+            (select count(*) from talvo.audit_events)
+          );
+          SQL
+          )"
+          [[ "$state" == "0|0|0|0|0|0|0|0" ]] || { echo "::error::Staging is not the approved data-empty TALVO baseline: $state"; exit 1; }
+          echo "STAGING_PREFLIGHT_EMPTY=true" >> "$GITHUB_ENV"
+
+      - name: Build rollback-only bootstrap rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/bootstrap-runtime.sql <<'SQL'
+          \set ON_ERROR_STOP on
+          begin;
+          select set_config('bootstrap.shop_a', :'shop_a', true);
+          select set_config('bootstrap.shop_b', :'shop_b', true);
+          select set_config('bootstrap.branch_a1', :'branch_a1', true);
+          select set_config('bootstrap.branch_a2', :'branch_a2', true);
+          select set_config('bootstrap.branch_b1', :'branch_b1', true);
+
+          do $namespace_guard$
+          begin
+            if exists(select 1 from public.shops where id in (
+              current_setting('bootstrap.shop_a')::uuid,
+              current_setting('bootstrap.shop_b')::uuid
+            )) or exists(select 1 from public.branch where id in (
+              current_setting('bootstrap.branch_a1')::uuid,
+              current_setting('bootstrap.branch_a2')::uuid,
+              current_setting('bootstrap.branch_b1')::uuid
+            )) or to_regprocedure('public.assert_pre_talvo_bootstrap_order()') is not null then
+              raise exception 'PRE_TALVO_BOOTSTRAP_FIXTURE_NAMESPACE_COLLISION';
+            end if;
+          end
+          $namespace_guard$;
+
+          insert into public.shops(id,name,slug) values
+            (current_setting('bootstrap.shop_a')::uuid,'Bootstrap shop A','bootstrap-shop-a'),
+            (current_setting('bootstrap.shop_b')::uuid,'Bootstrap shop B','bootstrap-shop-b');
+
+          do $normalize_primary_branches$
+          declare
+            generated uuid;
+          begin
+            select id into generated from public.branch
+              where shop_id=current_setting('bootstrap.shop_a')::uuid order by id limit 1;
+            if generated is null then raise exception 'BOOTSTRAP_SHOP_A_PRIMARY_BRANCH_MISSING'; end if;
+            update public.branch
+              set id=current_setting('bootstrap.branch_a1')::uuid,
+                  name='Legacy primary A',
+                  is_primary=true,
+                  is_active=false
+              where id=generated;
+
+            select id into generated from public.branch
+              where shop_id=current_setting('bootstrap.shop_b')::uuid order by id limit 1;
+            if generated is null then raise exception 'BOOTSTRAP_SHOP_B_PRIMARY_BRANCH_MISSING'; end if;
+            update public.branch
+              set id=current_setting('bootstrap.branch_b1')::uuid,
+                  name='Legacy primary B',
+                  is_primary=true,
+                  is_active=false
+              where id=generated;
+          end
+          $normalize_primary_branches$;
+
+          insert into public.branch(id,shop_id,name,is_primary,is_active)
+          values(
+            current_setting('bootstrap.branch_a2')::uuid,
+            current_setting('bootstrap.shop_a')::uuid,
+            'Legacy secondary A',
+            false,
+            false
+          );
+
+          create function public.assert_pre_talvo_bootstrap_order()
+          returns trigger language plpgsql as $order$
+          begin
+            if new.is_active and (
+              select count(distinct kind)
+              from talvo.inventory_locations
+              where business_id=new.shop_id
+                and branch_id=new.id
+                and kind in ('BRANCH_AVAILABLE','BRANCH_QUARANTINE')
+            ) <> 2 then
+              raise exception 'BOOTSTRAP_ACTIVATED_TOO_EARLY';
+            end if;
+            return new;
+          end
+          $order$;
+          create trigger assert_pre_talvo_bootstrap_order
+            before update on public.branch
+            for each row execute function public.assert_pre_talvo_bootstrap_order();
+          SQL
+          cat supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql >> /tmp/bootstrap-runtime.sql
+          cat >> /tmp/bootstrap-runtime.sql <<'SQL'
+
+          do $verify$
+          begin
+            if (select count(*) from public.branch where is_active) <> 3 then
+              raise exception 'BOOTSTRAP_ACTIVE_BRANCH_COUNT';
+            end if;
+            if (select count(*) from talvo.inventory_locations) <> 6 then
+              raise exception 'BOOTSTRAP_LOCATION_COUNT';
+            end if;
+            if exists(
+              select 1
+              from public.branch b
+              cross join (values ('BRANCH_AVAILABLE'),('BRANCH_QUARANTINE')) k(kind)
+              where (
+                select count(*) from talvo.inventory_locations l
+                where l.business_id=b.shop_id and l.branch_id=b.id and l.kind=k.kind
+              ) <> 1
+            ) then
+              raise exception 'BOOTSTRAP_CANONICAL_LOCATION_INVARIANT';
+            end if;
+            if exists(
+              select 1 from talvo.inventory_locations l
+              join public.branch b on b.id=l.branch_id
+              where b.shop_id<>l.business_id
+            ) then
+              raise exception 'BOOTSTRAP_TENANT_MISMATCH';
+            end if;
+            if not exists(
+              select 1 from public.branch
+              where id=current_setting('bootstrap.branch_a1')::uuid
+                and name='Legacy primary A' and is_primary
+            ) or not exists(
+              select 1 from public.branch
+              where id=current_setting('bootstrap.branch_a2')::uuid
+                and name='Legacy secondary A' and not is_primary
+            ) or not exists(
+              select 1 from public.branch
+              where id=current_setting('bootstrap.branch_b1')::uuid
+                and name='Legacy primary B' and is_primary
+            ) then
+              raise exception 'BOOTSTRAP_BRANCH_METADATA_CHANGED';
+            end if;
+          end
+          $verify$;
+
+          create temporary table bootstrap_snapshot(value jsonb) on commit drop;
+          insert into bootstrap_snapshot(value)
+          select jsonb_build_object(
+            'branches',(select jsonb_agg(to_jsonb(b) order by id) from public.branch b),
+            'locations',(select jsonb_agg(to_jsonb(l) order by id) from talvo.inventory_locations l)
+          );
+          SQL
+          cat supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql >> /tmp/bootstrap-runtime.sql
+          cat >> /tmp/bootstrap-runtime.sql <<'SQL'
+
+          do $retry_verify$
+          declare current_value jsonb;
+          begin
+            select jsonb_build_object(
+              'branches',(select jsonb_agg(to_jsonb(b) order by id) from public.branch b),
+              'locations',(select jsonb_agg(to_jsonb(l) order by id) from talvo.inventory_locations l)
+            ) into current_value;
+            if (select value from bootstrap_snapshot) is distinct from current_value then
+              raise exception 'BOOTSTRAP_RETRY_CHANGED_STATE';
+            end if;
+          end
+          $retry_verify$;
+          rollback;
+          \echo PASS pre-TALVO branch bootstrap staging rehearsal rolled back cleanly
+          SQL
+
+      - name: Run bootstrap rehearsal and roll back everything
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(docker run --rm -i             -e DATABASE_URL="$STAGING_DATABASE_URL"             -v /tmp/bootstrap-runtime.sql:/runtime.sql:ro             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1               -v shop_a="$1" -v shop_b="$2"               -v branch_a1="$3" -v branch_a2="$4" -v branch_b1="$5"               -f /runtime.sql' sh               "$SHOP_A_ID" "$SHOP_B_ID" "$BRANCH_A1_ID" "$BRANCH_A2_ID" "$BRANCH_B1_ID")"
+          printf '%s\n' "$output"
+          [[ "$(printf '%s\n' "$output" | tail -n1)" == "PASS pre-TALVO branch bootstrap staging rehearsal rolled back cleanly" ]] || {
+            echo "::error::Bootstrap rehearsal completion marker missing"
+            exit 1
+          }
+
+      - name: Prove staging unchanged
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${STAGING_IDENTITY_VALIDATED:-}" == "true" ]] || { echo "Identity not validated; no DB mutation was authorized"; exit 0; }
+          [[ "${STAGING_PREFLIGHT_EMPTY:-}" == "true" ]] || { echo "Data-empty preflight did not pass; rehearsal mutation was not authorized"; exit 0; }
+          result="$(docker run --rm -i -e DATABASE_URL="$STAGING_DATABASE_URL" "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          select concat_ws('|',
+            (select count(*) from public.shops),
+            (select count(*) from public.branch),
+            (select count(*) from talvo.command_executions),
+            (select count(*) from talvo.supply_items),
+            (select count(*) from talvo.ingredient_lots),
+            (select count(*) from talvo.inventory_locations),
+            (select count(*) from talvo.inventory_balances),
+            (select count(*) from talvo.audit_events),
+            (to_regprocedure('public.assert_pre_talvo_bootstrap_order()') is null)::text,
+            (not exists(select 1 from pg_trigger where tgname='assert_pre_talvo_bootstrap_order'))::text
+          );
+          SQL
+          )"
+          [[ "$result" == "0|0|0|0|0|0|0|0|true|true" ]] || { echo "::error::Rollback residue detected: $result"; exit 1; }
+          echo "PASS staging unchanged after bootstrap rehearsal"
