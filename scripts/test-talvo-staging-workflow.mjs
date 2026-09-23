@@ -53,7 +53,8 @@ for (const marker of [
   "environment: talvo-staging",
   "APPROVED_TALVO_TARGET_SHA",
   "STAGING_DATABASE_URL",
-  'git merge-base --is-ancestor "$GITHUB_SHA" "$TARGET_SHA"',
+  "TRUSTED_BOOTSTRAP_BASE_SHA: 81cf7e0506baeb664f7c3794c987f05bf5d2ad64",
+  'git merge-base --is-ancestor "$TRUSTED_BOOTSTRAP_BASE_SHA" "$TARGET_SHA"',
   "20260922193511_bootstrap_pre_talvo_branches.sql",
   "Require data-empty staging baseline",
   "rollback;",
@@ -75,6 +76,10 @@ assert.ok(
 assert.ok(
   bootstrapWorkflow.includes('[[ "$TARGET_SHA" == "$APPROVED_TALVO_TARGET_SHA" ]]'),
   "Pre-TALVO bootstrap validator must require the protected exact target SHA",
+);
+assert.ok(
+  !bootstrapWorkflow.includes('git merge-base --is-ancestor "$GITHUB_SHA" "$TARGET_SHA"'),
+  "Validator must not require the feature SHA to descend from the validator merge commit",
 );
 assert.ok(
   bootstrapWorkflow.includes("PASS staging unchanged after bootstrap rehearsal"),
