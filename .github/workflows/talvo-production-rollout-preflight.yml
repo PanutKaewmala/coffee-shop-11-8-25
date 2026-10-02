@@ -178,7 +178,9 @@ jobs:
         run: |
           set -euo pipefail
           result="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          begin read only;
           select current_setting('transaction_read_only');
+          rollback;
           SQL
           )"
           [[ "$result" == "on" ]] || { echo "::error::Production session is not read-only"; exit 1; }
@@ -188,6 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          begin read only;
           select
             (to_regnamespace('talvo') is null)::text,
             (not exists(select 1 from information_schema.columns
@@ -205,6 +208,7 @@ jobs:
             (not exists(select 1 from information_schema.columns
               where table_schema='public' and table_name='order_items' and column_name='recipe_snapshot'))::text,
             (to_regclass('supabase_migrations.schema_migrations') is null)::text;
+          rollback;
           SQL
           )"
           expected="true|true|true|true|true|true|true|true|true|true"
@@ -218,6 +222,7 @@ jobs:
         run: |
           set -euo pipefail
           state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          begin read only;
           select
             (exists(select 1 from pg_extension where extname='pgcrypto'))::text,
             (to_regprocedure('auth.uid()') is not null)::text,
@@ -232,6 +237,7 @@ jobs:
             (to_regclass('public.pos_idempotency') is not null)::text,
             (to_regclass('public.daily_closes') is not null)::text,
             (to_regclass('public.cash_movements') is not null)::text;
+          rollback;
           SQL
           )"
           expected="true|true|true|true|true|true|true|true|true|true|true|true|true"
@@ -245,6 +251,7 @@ jobs:
         run: |
           set -euo pipefail
           state="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          begin read only;
           select
             (select count(*) from public.branch where shop_id is null),
             (select count(*) from (
@@ -269,6 +276,7 @@ jobs:
               where i.id=r.ingredient_id and i.shop_id=r.shop_id
                 and (not i.is_active or i.archived_at is not null)
             ));
+          rollback;
           SQL
           )"
           expected="0|0|0|0|0|0|0|0"
@@ -282,6 +290,7 @@ jobs:
         run: |
           set -euo pipefail
           counts="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -e PGOPTIONS="-c default_transaction_read_only=on"             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|" ' <<'SQL'
+          begin read only;
           select
             (select count(*) from public.shops),
             (select count(*) from public.branch),
@@ -292,6 +301,7 @@ jobs:
             (select count(*) from public.pos_idempotency),
             (select count(*) from public.daily_closes),
             (select count(*) from public.cash_movements);
+          rollback;
           SQL
           )"
           echo "Production rows shops|branches|members|recipe_items|orders|order_items|pos_idempotency|daily_closes|cash_movements = $counts"
