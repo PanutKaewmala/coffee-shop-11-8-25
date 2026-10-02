@@ -317,18 +317,15 @@ jobs:
           \echo PASS TALVO production rollout transaction verified before commit
           SQL
 
-          printf '%s
-'             "20260807090000|$sha_atomic"             "20260817100000|$sha_baseline"             "20260922193511|$sha_bootstrap"             "20260819180000|$sha_receive"             "20260819180100|$sha_hardening"             "20260910042652|$sha_sale"             "20260921142010|$sha_usable"             > /tmp/talvo-expected-revisions.txt
+          printf '%s\n'             "20260807090000|$sha_atomic"             "20260817100000|$sha_baseline"             "20260922193511|$sha_bootstrap"             "20260819180000|$sha_receive"             "20260819180100|$sha_hardening"             "20260910042652|$sha_sale"             "20260921142010|$sha_usable"             > /tmp/talvo-expected-revisions.txt
 
       - name: Apply rollout in one transaction
         shell: bash
         run: |
           set -euo pipefail
           output="$(docker run --rm -i             -e DATABASE_URL="$PRODUCTION_DATABASE_URL"             -v /tmp/talvo-production-rollout.sql:/runtime.sql:ro             "$POSTGRES_17_IMAGE" sh -euc 'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f /runtime.sql')"
-          printf '%s
-' "$output"
-          [[ "$(printf '%s
-' "$output" | tail -n1)" == "PASS TALVO production rollout transaction verified before commit" ]] || {
+          printf '%s\n' "$output"
+          [[ "$(printf '%s\n' "$output" | tail -n1)" == "PASS TALVO production rollout transaction verified before commit" ]] || {
             echo "::error::Rollout completion marker missing"
             exit 1
           }
@@ -381,11 +378,7 @@ jobs:
           expected_revisions="$(sort /tmp/talvo-expected-revisions.txt)"
           [[ "$actual" == "$expected_revisions" ]] || {
             echo "::error::Committed migration checksum ledger mismatch"
-            printf 'Expected:
-%s
-Actual:
-%s
-' "$expected_revisions" "$actual"
+            printf 'Expected:\n%s\nActual:\n%s\n' "$expected_revisions" "$actual"
             exit 1
           }
           echo "PASS TALVO production rollout committed and verified"
