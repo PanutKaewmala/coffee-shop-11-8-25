@@ -1,13 +1,12 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { loadBootstrap, buildBootstrap, freshTargetSql, postconditionsSql } from "./lib/talvo-bootstrap.mjs";
+import { assertLocalEngine, localSql } from "./lib/talvo-bootstrap-local.mjs";
 
 const root = process.cwd();
 const sourceSupabaseDir = path.join(root, "supabase");
 const sourceConfigPath = path.join(sourceSupabaseDir, "config.toml");
-const baselinePath = path.join(sourceSupabaseDir, "local-runtime", "production-public-baseline.sql");
-const baselineHashPath = path.join(sourceSupabaseDir, "local-runtime", "production-public-baseline.sha256");
 const runtimeRoot = path.join(root, ".talvo-local-runtime");
 const runtimeSupabaseDir = path.join(runtimeRoot, "supabase");
 const runtimeMigrationsDir = path.join(runtimeSupabaseDir, "migrations");
@@ -16,15 +15,7 @@ const runtimeMigrationsDir = path.join(runtimeSupabaseDir, "migrations");
 // depending on whatever global Supabase CLI happens to be installed.
 const supabaseCliVersion = "2.95.3";
 const localProjectId = "coffee-saas-v1-local-runtime";
-
-const postBaselineMigrations = [
-  "20260807090000_atomic_pos_checkout.sql",
-  "20260817100000_talvo_supply_item_vertical_slice.sql",
-  "20260819180000_talvo_receive_supply_item.sql",
-  "20260819180100_talvo_receive_history_hardening.sql",
-  "20260910042652_sale_recipe_inventory.sql",
-  "20260921142010_current_usable_stock.sql",
-];
+if (process.argv.slice(2).some((arg) => arg !== "--prepare-only")) throw new Error("Only --prepare-only is supported; no remote target options");
 
 function fail(message) {
   console.error(`\nTALVO local runtime setup failed: ${message}`);
@@ -71,7 +62,8 @@ function spawnNpxSupabase(args, { workdir, capture = false } = {}) {
 }
 
 function runSupabase(args, { workdir } = {}) {
-  const result = spawnNpxSupabase(args, { workdir });
+  // start/status output contains local API keys; never forward it to logs.
+  const result = spawnNpxSupabase(args, { workdir, capture: true });
   if (result.error) fail(result.error.message);
   if (result.status !== 0) {
     fail(`supabase ${args.join(" ")} exited with code ${result.status}`);
@@ -88,19 +80,14 @@ function runResetWithWindowsStorageTolerance() {
   if (result.status === 0) return;
 
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
-  const allMigrationsApplied = [
-    "20260805083001_production_public_runtime_baseline.sql",
-    ...postBaselineMigrations,
-  ].every((migration) => output.includes(`Applying migration ${migration}...`));
-
   const knownStorageRestartTimeout =
     /storage\/v1\/bucket/i.test(output) &&
     /context deadline exceeded|Client\.Timeout exceeded/i.test(output);
 
-  if (allMigrationsApplied && knownStorageRestartTimeout) {
+  if (knownStorageRestartTimeout) {
     console.warn(
-      "\nSupabase reported a Windows storage health-check timeout after every migration had applied.\n" +
-        "Treating this as a transient service restart issue and verifying the rebuilt database directly.",
+      "\nSupabase reported a Windows storage health-check timeout after platform reset.\n" +
+        "Continuing only if the shared empty-platform gate succeeds before application DDL.",
     );
     sleep(5000);
     return;
@@ -109,98 +96,11 @@ function runResetWithWindowsStorageTolerance() {
   fail(`supabase ${args.join(" ")} exited with code ${result.status}`);
 }
 
-function verifyDatabaseMarkers() {
-  console.log("\nVerifying rebuilt database markers directly inside the local Postgres container...");
-
-  const findDb = spawnSync(
-    "docker",
-    [
-      "ps",
-      "--filter",
-      `label=com.supabase.cli.project=${localProjectId}`,
-      "--filter",
-      "name=supabase_db_",
-      "--format",
-      "{{.ID}}",
-    ],
-    { cwd: root, encoding: "utf8", shell: false },
-  );
-
-  if (findDb.error) fail(findDb.error.message);
-  if (findDb.status !== 0) fail("Could not inspect the local Supabase Postgres container");
-
-  const containerId = (findDb.stdout || "").trim().split(/\r?\n/).filter(Boolean)[0];
-  if (!containerId) fail("Local Supabase Postgres container was not found after reset");
-
-  const sql = [
-    "select",
-    "  exists (select 1 from pg_namespace where nspname = 'talvo')::int,",
-    "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'create_talvo_supply_item')::int,",
-    "  exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'receive_talvo_supply_item')::int,",
-    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'pos_idempotency' and column_name = 'request_hash')::int,",
-    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'orders' and column_name = 'inventory_snapshot')::int,",
-    "  exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'branch' and column_name = 'is_active')::int;",
-  ].join(" ");
-
-  const verify = spawnSync(
-    "docker",
-    ["exec", containerId, "psql", "-U", "postgres", "-d", "postgres", "-At", "-F", "|", "-c", sql],
-    { cwd: root, encoding: "utf8", shell: false },
-  );
-
-  if (verify.stdout) process.stdout.write(verify.stdout);
-  if (verify.stderr) process.stderr.write(verify.stderr);
-  if (verify.error) fail(verify.error.message);
-  if (verify.status !== 0) fail("Could not query the rebuilt local database");
-
-  const markers = (verify.stdout || "").trim().split(/\r?\n/).filter(Boolean).at(-1);
-  if (markers !== "1|1|1|1|1|1") {
-    fail(`Rebuilt database marker verification failed: ${markers || "no result"}`);
-  }
-
-  console.log("Verified: talvo schema, TALVO create/receive RPCs, POS request_hash, and branch.is_active are present.");
-}
-
 requireFile(sourceConfigPath);
-requireFile(baselinePath);
-requireFile(baselineHashPath);
-for (const migration of postBaselineMigrations) {
-  requireFile(path.join(sourceSupabaseDir, "migrations", migration));
-}
-
-const rawBaseline = fs.readFileSync(baselinePath, "utf8");
-const expectedHash = fs.readFileSync(baselineHashPath, "utf8").trim().split(/\s+/)[0];
-const actualHash = crypto.createHash("sha256").update(rawBaseline).digest("hex");
-if (!/^[0-9a-f]{64}$/.test(expectedHash) || actualHash !== expectedHash) {
-  fail("Verified production baseline SHA-256 does not match its recorded checksum");
-}
-
-if (/^(COPY|INSERT INTO) /m.test(rawBaseline)) {
-  fail("Baseline unexpectedly contains top-level row-data statements");
-}
-
-// pg_dump emits psql-only guard commands and CREATE SCHEMA public, while a
-// Supabase local stack already owns the public schema. Default privileges are
-// role-state, not application schema, and are intentionally left to the local
-// Supabase stack. Remove only those bootstrap-incompatible statements.
-const sanitizedBaseline = rawBaseline
-  .split(/\r?\n/)
-  .filter((line) => !/^\\(?:restrict|unrestrict)\b/.test(line))
-  .filter((line) => line.trim() !== "CREATE SCHEMA public;")
-  .filter((line) => !/^ALTER DEFAULT PRIVILEGES\b/.test(line))
-  .join("\n");
-
-// CREATE INDEX CONCURRENTLY cannot run in the migration transaction path.
-// Refuse that construct explicitly so this script fails closed if the chain changes.
-const sqlToCheck = [
-  sanitizedBaseline,
-  ...postBaselineMigrations.map((migration) =>
-    fs.readFileSync(path.join(sourceSupabaseDir, "migrations", migration), "utf8"),
-  ),
-].join("\n");
-if (/\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b/i.test(sqlToCheck)) {
-  fail("Runtime migration chain contains CREATE INDEX CONCURRENTLY, which this pinned CLI path does not support safely");
-}
+// Verify every source before any local reset. Never consume connection URLs.
+const plan = loadBootstrap(root);
+const built = buildBootstrap(plan);
+assertLocalEngine();
 
 if (path.resolve(runtimeRoot) !== path.join(path.resolve(root), ".talvo-local-runtime")) {
   fail("Runtime reset target is outside the workspace");
@@ -214,47 +114,26 @@ config = config.replace(/(\[db\.seed\][\s\S]*?^enabled\s*=\s*)true/m, "$1false")
 fs.writeFileSync(path.join(runtimeSupabaseDir, "config.toml"), config);
 fs.writeFileSync(path.join(runtimeSupabaseDir, "seed.sql"), "-- Intentionally empty. Local test fixtures are added separately.\n");
 
-const runtimeBaselinePath = path.join(
-  runtimeMigrationsDir,
-  "20260805083001_production_public_runtime_baseline.sql",
-);
-fs.writeFileSync(
-  runtimeBaselinePath,
-  [
-    "-- TALVO local runtime baseline only.",
-    "-- Source: verified schema-only production public dump.",
-    `-- Source SHA-256: ${actualHash}`,
-    "-- This is not the canonical future TALVO schema.",
-    "",
-    sanitizedBaseline,
-    "",
-  ].join("\n"),
-);
-
-for (const migration of postBaselineMigrations) {
-  fs.copyFileSync(
-    path.join(sourceSupabaseDir, "migrations", migration),
-    path.join(runtimeMigrationsDir, migration),
-  );
-}
-
-console.log("\nPrepared isolated migration chain:");
-console.log(`  baseline -> ${postBaselineMigrations.join(" -> ")}`);
-console.log(`  baseline SHA-256: ${actualHash}`);
-console.log(`  Supabase CLI: ${supabaseCliVersion} (pinned via npx)`);
-console.log("\nStopping the existing local Supabase stack (local only; no remote operation)...");
-runSupabase(["stop"]);
-
-console.log("\nStarting isolated TALVO local runtime...");
+console.log(`Canonical bootstrap source commit: ${plan.commit}`);
+console.log(`Payload SHA-256: ${built.payloadSha256}`);
+console.log("Preparing an empty disposable local Supabase platform (no application migrations)...");
 runSupabase(["start"], { workdir: runtimeRoot });
-
-console.log("\nProving the database can be recreated from scratch...");
 runResetWithWindowsStorageTolerance();
 
-console.log("\nFinal local runtime status:");
-runSupabase(["status"], { workdir: runtimeRoot });
-verifyDatabaseMarkers();
-
-console.log("\nTALVO_LOCAL_RUNTIME_READY");
-console.log("The disposable local database was rebuilt from the verified runtime baseline plus the post-baseline migrations.");
-console.log("No production row data was copied and no remote database was mutated by this script.");
+const fresh = localSql(`begin read only; ${freshTargetSql} rollback;`);
+if (fresh.status !== 0) fail(fresh.stderr || "Local platform is not empty");
+if (process.argv.includes("--prepare-only")) {
+  console.log("TALVO_LOCAL_EMPTY_PLATFORM_READY");
+  process.exit(0);
+}
+const applied = localSql(built.payload, { transaction: true });
+if (applied.status !== 0) fail(applied.stderr || "Local bootstrap transaction failed");
+process.stdout.write(applied.stdout);
+const verified = localSql(`begin read only; ${postconditionsSql(plan)} rollback;`);
+if (verified.status !== 0) fail(verified.stderr || "Local post-commit verification failed");
+fs.writeFileSync(path.join(runtimeRoot, "bootstrap-receipt.json"), JSON.stringify({
+  sourceCommit: plan.commit, baselineSourceSha256: plan.manifest.baseline.sha256,
+  adaptation: plan.manifest.adaptation, adaptedBaselineSha256: built.adaptedBaselineSha256,
+  payloadSha256: built.payloadSha256, ledger: [plan.manifest.baseline, ...plan.manifest.migrations],
+}, null, 2) + "\n");
+console.log("TALVO_LOCAL_RUNTIME_READY: exact eight-row ledger, empty application tables, current schema verified");

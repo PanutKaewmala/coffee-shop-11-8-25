@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "adaptation": "supabase-public-v1",
+  "baseline": {
+    "kind": "baseline-artifact",
+    "path": "supabase/local-runtime/production-public-baseline.sql",
+    "cutoff": "20260805083000",
+    "version": "20260805083001",
+    "sha256": "f02f683252c165e7508a640d5d6e01f17f3f73c28b76a33e8e5c3e341a2e520c"
+  },
+  "migrations": [
+    {
+      "version": "20260807090000",
+      "path": "supabase/migrations/20260807090000_atomic_pos_checkout.sql",
+      "sha256": "17f19355d9ef1681ba374a5f2ed07304607e4964777fecb84a282685ed87b006"
+    },
+    {
+      "version": "20260817100000",
+      "path": "supabase/migrations/20260817100000_talvo_supply_item_vertical_slice.sql",
+      "sha256": "109705010dd9d4fbd9f24c9be9a0bd615494b92951633385dc62fb454feb9736"
+    },
+    {
+      "version": "20260922193511",
+      "path": "supabase/migrations/20260922193511_bootstrap_pre_talvo_branches.sql",
+      "sha256": "6a7bccee319da70a4ef4e14257099ef305e16313bfd76eca4b46d229058d8034"
+    },
+    {
+      "version": "20260819180000",
+      "path": "supabase/migrations/20260819180000_talvo_receive_supply_item.sql",
+      "sha256": "b52151062450c6f194b83f5d98fb23ddac14a7dd6f4841091a16577247c70e6a"
+    },
+    {
+      "version": "20260819180100",
+      "path": "supabase/migrations/20260819180100_talvo_receive_history_hardening.sql",
+      "sha256": "fe92837d8d3cf5e406b79cdee94b17f12e80cef078936c5ed8da1bc897907592"
+    },
+    {
+      "version": "20260910042652",
+      "path": "supabase/migrations/20260910042652_sale_recipe_inventory.sql",
+      "sha256": "a9c06a15ce74be5ff3f5e914838407701cbe6045931bee9ab2a4bb1298498acb"
+    },
+    {
+      "version": "20260921142010",
+      "path": "supabase/migrations/20260921142010_current_usable_stock.sql",
+      "sha256": "ba8f58f592620ef2c7644ba5a1c24741c32ba377990b40ea0072b6ec3db814e9"
+    }
+  ]
+}
