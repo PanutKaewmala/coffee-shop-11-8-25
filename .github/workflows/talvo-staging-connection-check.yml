@@ -1,0 +1,115 @@
+name: TALVO fresh staging connection check
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: staging-database-mutation
+  cancel-in-progress: false
+
+jobs:
+  verify-fresh-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: talvo-staging
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
+      POSTGRES_17_IMAGE: postgres:17.11-trixie@sha256:f86c774c7a51d0f05133f2ab70e4c384b589170458ab1df1ba83426d7cc30da7
+    steps:
+      - name: Validate staging identity without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Dispatch from main only"; exit 1; }
+          python3 - <<'PY'
+          import os
+          import re
+          from urllib.parse import parse_qsl, unquote, urlparse
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit("FAIL " + message)
+
+          staging_ref = os.environ["STAGING_PROJECT_REF"]
+          production_ref = os.environ["PRODUCTION_PROJECT_REF"]
+          require(staging_ref == "qyospaplvrfpdoyiwpoy", "unexpected staging project ref")
+          require(production_ref == "udgxrvtbhytqncmyhmiv", "unexpected production project ref")
+          require(staging_ref != production_ref, "staging and production refs must differ")
+          raw = os.environ["STAGING_DATABASE_URL"]
+          require(bool(raw) and not any(c.isspace() for c in raw), "missing or malformed staging URI")
+          require(raw.count("@") == 1 and not re.search(r"%(?![0-9a-fA-F]{2})", raw), "URI credentials must be percent-encoded")
+          require(not re.search(r"%00", raw, re.IGNORECASE), "URI encoded NUL is not allowed")
+          production_pattern = "".join(f"(?:{c}|%{ord(c):02x})" for c in production_ref)
+          require(not re.search(production_pattern, raw, re.IGNORECASE), "production ref found in staging URI")
+          try:
+              p = urlparse(raw)
+              require(p.scheme in {"postgres", "postgresql"}, "staging URI scheme")
+              require(unquote(p.username or "") == "postgres." + staging_ref, "staging pooler username")
+              require(bool(p.password), "staging database password missing")
+              require(bool(re.fullmatch(r"aws-[0-9]+-ap-southeast-1\.pooler\.supabase\.com", p.hostname or "")), "staging Session Pooler host")
+              require(p.port == 5432, "staging Session Pooler port must be 5432")
+              require(p.path == "/postgres", "staging database must be postgres")
+              require(not p.fragment, "URI fragments are not allowed")
+              options = parse_qsl(p.query, keep_blank_values=True, strict_parsing=True)
+              require(all(k == "sslmode" and v in {"require", "verify-ca", "verify-full"} for k, v in options), "URI connection overrides are not allowed")
+          except (ValueError, UnicodeError):
+              raise SystemExit("FAIL malformed staging URI") from None
+          PY
+
+      - name: Prove read-only connection and fresh staging state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! state="$(docker run --rm -i \
+            -e STAGING_DATABASE_URL \
+            -e PGOPTIONS="-c default_transaction_read_only=on" \
+            -e PGSSLMODE=require \
+            -e PGCONNECT_TIMEOUT=15 \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq -F "|"' 2>/dev/null <<'SQL'
+          begin read only;
+          with recursive extension_objects(classid, objid) as (
+            select d.classid, d.objid
+            from pg_depend d
+            where d.refclassid='pg_extension'::regclass and d.deptype='e'
+            union
+            select d.classid, d.objid
+            from pg_depend d
+            join extension_objects e on e.classid=d.refclassid and e.objid=d.refobjid
+            where d.deptype='i'
+          ), public_objects(classid, objid) as (
+            select 'pg_class'::regclass, c.oid from pg_class c
+            where c.relnamespace='public'::regnamespace
+            union all
+            select 'pg_proc'::regclass, p.oid from pg_proc p
+            where p.pronamespace='public'::regnamespace
+            union all
+            select 'pg_type'::regclass, t.oid from pg_type t
+            where t.typnamespace='public'::regnamespace
+          ), application_objects as (
+            select o.classid, o.objid from public_objects o
+            where not exists (
+              select 1 from extension_objects e where e.classid=o.classid and e.objid=o.objid
+            )
+          )
+          select
+            current_setting('transaction_read_only'),
+            current_database(),
+            (to_regnamespace('talvo') is null)::text,
+            (select count(*) from application_objects where classid='pg_class'::regclass),
+            (select count(*) from application_objects where classid='pg_proc'::regclass),
+            (select count(*) from application_objects where classid='pg_type'::regclass);
+          rollback;
+          SQL
+          )"; then
+            echo "::error::Staging database connection failed"
+            exit 1
+          fi
+          [[ "$state" == "on|postgres|true|0|0|0" ]] || {
+            echo "::error::Staging must be read-only, use postgres, and have no TALVO schema or public application objects"
+            exit 1
+          }
+          echo "PASS fresh staging connection verified read-only; no TALVO schema or public application objects"
