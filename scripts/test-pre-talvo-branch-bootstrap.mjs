@@ -43,10 +43,22 @@ try {
     create table public.shops(id uuid primary key);
     create table public.branch(id uuid primary key,shop_id uuid references public.shops(id),name text not null,is_primary boolean default false);
     create table public.shop_members(shop_id uuid,user_id uuid,role text);
+    ${baseline}`);
+  // Execute the real migration even with zero shops/branches. Its locks prove
+  // the DO block ran; it must leave no business rows or inventory locations.
+  assert.equal(sql(`begin isolation level read committed;
+    ${migration}
+    select (select count(*) from public.shops), (select count(*) from public.branch),
+      (select count(*) from talvo.inventory_locations),
+      (select count(*) from pg_locks where pid=pg_backend_pid() and granted and mode='ShareRowExclusiveLock'
+        and relation in ('public.branch'::regclass,'talvo.supply_items'::regclass,'talvo.inventory_locations'::regclass));
+    rollback;`), "0|0|0|3");
+  console.log("PASS real branch bootstrap executes successfully with zero shops/branches");
+  sql(`
     insert into public.shops values('${shopA}'),('${shopB}');
     insert into public.branch(id,shop_id,name,is_primary) values
       ('${branchA}','${shopA}','Legacy primary',true),('${branchB}','${shopA}','Legacy secondary',false),('${branchC}','${shopB}','Other tenant',true);
-    ${baseline}`);
+    `);
   const original = snapshot();
   const rejects = (setup, error) => {
     sql(`begin; ${setup} ${migration} commit;`, error);

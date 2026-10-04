@@ -39,8 +39,8 @@ migration directory into an existing production database.
 Execute it through the approved migration runner, with fail-on-error and migration
 history/checksum recording in the same transaction. Verify the branch/location
 invariants before releasing writes. PR #53 additionally requires its own usable-stock
-migration and RPC verification before the application is deployed. Existing supply
-and receiving staging workflows do not automatically apply this new migration.
+migration and RPC verification before the application is deployed. The obsolete supply/receiving staging workflows have been removed. Phase 1
+provides only local reconstruction, with no remote bootstrap authorization.
 
 Do not deactivate branches as an automatic rollback after TALVO writes begin.
 Before commit, rollback removes activation and new locations together; after commit,
@@ -56,5 +56,24 @@ and drops only that temporary database afterward. It tests multi-tenant branches
 activation order, unchanged retries, partial/unsafe states, archived supply items,
 rollback, and a concurrent writer. It does not reset the existing local fixture DB.
 
-This test is intentionally separate from `npm run verify`, which remains Docker-free.
+This test is separate from `npm run verify`. The latter includes workflow
+behavioral tests requiring Python and Docker (fake credentials, no network),
+but not destructive database integration tests.
 No remote rollout is authorized or performed by this proposal.
+
+## Canonical empty reconstruction
+
+The shared contract is `supabase/bootstrap/manifest.json`: public baseline, atomic
+POS, supply slice, **branch bootstrap**, receive, receive hardening, sale/recipe,
+then usable stock. See `supabase/local-runtime/README.md` for exact paths, reviewed
+baseline adaptation, Git-blob provenance and the eight-row source ledger.
+
+The real branch DO block executes even with zero shops/branches. Its READ COMMITTED
+check and locks run before returning without rows. The focused test proves this
+with its three actual relation locks. The full local bootstrap test also detects
+removal of this block and checks rollback, partial targets and exact source hashes.
+
+The shared runner records seven migrations plus synthetic baseline artifact
+`20260805083001`, never historical cutoff migration `20260805083000`. Committed
+Git blobs supply hashed AND executed migration bytes, independent of checkout
+line endings. No production ledger or database is a provenance source.
