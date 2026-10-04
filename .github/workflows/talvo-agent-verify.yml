@@ -4,12 +4,13 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: talvo-agent-verify-${{ github.event.pull_request.number }}
+  group: talvo-agent-verify-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
