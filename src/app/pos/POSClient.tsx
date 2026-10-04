@@ -1116,6 +1116,16 @@ export default function POSClient() {
     () => cart.reduce((sum, item) => sum + item.qty, 0),
     [cart],
   );
+  const cartGroups = useMemo(() => {
+    const groups = new Map<string, { menuId: string; menuName: string; items: CartItem[] }>();
+    for (const item of cart) {
+      const key = item.menu_id || item.menu_name;
+      const existing = groups.get(key);
+      if (existing) existing.items.push(item);
+      else groups.set(key, { menuId: item.menu_id, menuName: item.menu_name, items: [item] });
+    }
+    return Array.from(groups.values());
+  }, [cart]);
 
     /* -------------------- CASH TENDER HELPERS -------------------- */
   const addCashAmount = useCallback(
@@ -1137,45 +1147,6 @@ export default function POSClient() {
     const clearPaidAmount = useCallback(() => {
         setPaidAmount("");
     }, []);
-
-    /* -------------------- GROUPED CART -------------------- */
-    type CartGroup = {
-        menu_id: string;
-        menu_name: string;
-        lines: CartItem[];
-        groupQty: number;
-        groupTotal: number;
-    };
-
-    const groupedCart: CartGroup[] = useMemo(() => {
-        const map = new Map<string, CartGroup>();
-        const lastIndex = new Map<string, number>();
-
-        for (let i = 0; i < cart.length; i++) {
-            const it = cart[i];
-            lastIndex.set(it.menu_id, i);
-
-            const prev = map.get(it.menu_id);
-            if (!prev) {
-                map.set(it.menu_id, {
-                    menu_id: it.menu_id,
-                    menu_name: it.menu_name,
-                    lines: [it],
-                    groupQty: it.qty,
-                    groupTotal: it.qty * it.price,
-                });
-            } else {
-                prev.lines.push(it);
-                prev.groupQty += it.qty;
-                prev.groupTotal += it.qty * it.price;
-            }
-        }
-
-        return Array.from(map.values()).sort(
-      (a, b) =>
-        (lastIndex.get(b.menu_id) ?? 0) - (lastIndex.get(a.menu_id) ?? 0),
-        );
-    }, [cart]);
 
     /* -------------------- CHECKOUT -------------------- */
     const canCashCheckout = useMemo(() => {
@@ -1405,7 +1376,7 @@ export default function POSClient() {
 
   const cartPanel = (
     <section
-      className={`${mobileCartOpen ? "flex h-[100dvh]" : "hidden"} fixed inset-0 z-[10000] flex-col bg-background text-text-primary md:static md:z-auto md:flex md:h-auto md:min-h-0 md:w-[42%] md:flex-none`}
+      className={`${mobileCartOpen ? "flex h-[100dvh]" : "hidden"} fixed inset-0 z-[10000] flex-col bg-background text-text-primary md:static md:z-auto md:flex md:h-full md:min-h-0 md:w-[40%] md:flex-none xl:w-[36%]`}
       role={mobileCartOpen ? "dialog" : undefined}
       aria-modal={mobileCartOpen ? "true" : undefined}
       aria-labelledby="cart-title"
@@ -1431,47 +1402,65 @@ export default function POSClient() {
 
             {pendingCheckout ? <p role="status" className="mb-3 rounded-xl bg-amber-500/15 p-3 text-sm">บิลนี้รอยืนยันผลการขาย กด “ตรวจสอบบิลเดิม” ก่อนเริ่มบิลใหม่</p> : null}
             <fieldset disabled={!!pendingCheckout || !pendingReady} className="min-w-0">
-            <div className="space-y-3">
-              {groupedCart.map((group) => (
-                <div key={group.menu_id} className="rounded-lg border border-[var(--text-muted)]/20 bg-surface p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0"><div className="break-words font-semibold text-text-primary">{group.menu_name}</div><div className="text-xs text-text-muted">รวม {group.groupQty} ชิ้น</div></div>
-                    <div className="font-bold text-text-primary">{formatPrice(group.groupTotal)}</div>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    {group.lines.slice().sort((a, b) => getCartVariantLabel(a).localeCompare(getCartVariantLabel(b))).map((item) => (
-                      <div key={item.id} className={["flex items-center justify-between gap-2 rounded-md px-2 py-2 transition", lastTouchedVariantId === item.id ? "bg-accent/15 ring-1 ring-accent/50" : ""].join(" ")}>
-                        <div className="min-w-0"><div className="break-words text-sm text-text-secondary">• {item.menu_name} / {getCartVariantLabel(item)}</div><div className="text-xs text-text-muted">{item.qty} × {formatPrice(item.price)}</div></div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <button type="button" onClick={() => decreaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/20 text-text-primary" aria-label={`ลดจำนวน ${item.menu_name}`}>−</button>
-                          <span className="min-w-7 text-center text-sm text-text-primary">{item.qty}</span>
-                          <button type="button" onClick={() => increaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/20 text-text-primary" aria-label={`เพิ่มจำนวน ${item.menu_name}`}>+</button>
-                          <button type="button" onClick={() => removeItem(item.id)} className="h-11 rounded-md bg-[var(--text-muted)]/20 px-3 text-sm text-text-secondary">ลบ</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 space-y-3 border-t border-[var(--text-muted)]/20 pt-4">
-              <div className="text-xs text-text-muted">วิธีจ่ายเงิน</div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setPaymentMethod("cash")} aria-pressed={paymentMethod === "cash"} className={["min-h-11 flex-1 rounded-lg border text-sm", paymentMethod === "cash" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>เงินสด</button>
-                <button type="button" onClick={() => setPaymentMethod("promptpay")} aria-pressed={paymentMethod === "promptpay"} className={["min-h-11 flex-1 rounded-lg border text-sm", paymentMethod === "promptpay" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>พร้อมเพย์ / QR</button>
+              <div aria-label="รายการในตะกร้า" className="space-y-2">
+                {cartGroups.map((group) => (
+                  <section key={group.menuId || group.menuName} className="overflow-hidden rounded-lg border border-[var(--text-muted)]/20 bg-surface/40">
+                    <div className="flex items-center justify-between gap-2 border-b border-[var(--text-muted)]/15 px-2 py-1.5">
+                      <div className="min-w-0 truncate text-sm font-semibold text-text-primary">{group.menuName}</div>
+                      <div className="shrink-0 text-xs text-text-muted">{group.items.reduce((sum, item) => sum + item.qty, 0)} ชิ้น</div>
+                    </div>
+                    <ul aria-label={`ตัวเลือก ${group.menuName}`} className="divide-y divide-[var(--text-muted)]/15">
+                      {group.items.map((item) => (
+                        <li
+                          key={item.id}
+                          data-cart-line
+                          className={[
+                            "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 px-2 py-1.5 transition",
+                            lastTouchedVariantId === item.id ? "bg-accent/10" : "",
+                          ].join(" ")}
+                        >
+                          <div className="min-w-0 truncate text-xs text-text-secondary" title={getCartVariantLabel(item)}>
+                            {getCartVariantLabel(item).replace(/ \/ /g, " • ")}
+                          </div>
+                          <div className="flex items-center justify-end gap-1">
+                            <button type="button" onClick={() => decreaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/15 text-text-primary md:h-7 md:w-7" aria-label={`ลดจำนวน ${item.menu_name} ${getCartVariantLabel(item)}`}>−</button>
+                            <span className="min-w-5 text-center text-sm font-semibold tabular-nums text-text-primary" aria-label={`จำนวน ${item.qty}`}>{item.qty}</span>
+                            <button type="button" onClick={() => increaseQty(item.id)} className="h-11 w-11 rounded-md bg-accent/15 text-text-primary md:h-7 md:w-7" aria-label={`เพิ่มจำนวน ${item.menu_name} ${getCartVariantLabel(item)}`}>+</button>
+                            <button type="button" onClick={() => removeItem(item.id)} className="h-11 rounded-md px-2 text-xs text-text-muted hover:bg-[var(--text-muted)]/10 md:h-7" aria-label={`ลบ ${item.menu_name} ${getCartVariantLabel(item)}`}>ลบ</button>
+                          </div>
+                          <div className="min-w-[4.5rem] text-right text-sm font-bold tabular-nums text-text-primary">{formatPrice(item.qty * item.price)}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
               </div>
-              {paymentMethod === "cash" ? (
-                <div className="space-y-3">
-                  <label className="block text-xs text-text-muted" htmlFor="pos-paid-amount">รับเงิน (บาท)</label>
-                  <input id="pos-paid-amount" type="number" inputMode="decimal" min="0" step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} placeholder="กรอกจำนวนเงินที่รับ" className="min-h-11 w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-text-primary" />
-                  {(() => { const paid = parseNumberInput(paidAmount); if (paid == null) return null; return paid >= total ? <div className="text-sm text-green-600">เงินทอน: {formatPrice(paid - total)}</div> : <div className="text-sm text-red-600">เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}</div>; })()}
-                  <div><div className="mb-2 text-xs text-text-muted">รับเงินอย่างรวดเร็ว</div><div className="flex flex-wrap gap-2"><button type="button" onClick={setExactCash} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-sm">พอดี ฿{total}</button>{CASH_PRESET_AMOUNTS.filter((amount) => amount >= total).map((amount) => <button key={amount} type="button" onClick={() => setCashPreset(amount)} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-sm">฿{amount}</button>)}</div></div>
-                  <div><div className="mb-2 text-xs text-text-muted">เพิ่มจำนวนเงินที่รับ</div><div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{CASH_ADD_AMOUNTS.map((amount) => <button key={amount} type="button" onClick={() => addCashAmount(amount)} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm">+{amount}</button>)}</div></div>
-                  <button type="button" onClick={clearPaidAmount} className="min-h-11 w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface text-sm text-text-secondary">ล้าง</button>
+
+              <div className="mt-2 space-y-2 border-t border-[var(--text-muted)]/20 pt-2">
+                <div className="grid grid-cols-[auto_1fr_1fr] items-center gap-2">
+                  <div className="text-xs text-text-muted">วิธีจ่าย</div>
+                  <button type="button" onClick={() => setPaymentMethod("cash")} aria-pressed={paymentMethod === "cash"} className={["min-h-11 rounded-lg border px-2 text-sm md:min-h-9", paymentMethod === "cash" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>เงินสด</button>
+                  <button type="button" onClick={() => setPaymentMethod("promptpay")} aria-pressed={paymentMethod === "promptpay"} className={["min-h-11 rounded-lg border px-2 text-sm md:min-h-9", paymentMethod === "promptpay" ? "border-accent bg-accent text-white" : "border-[var(--text-muted)]/20 bg-surface text-text-secondary"].join(" ")}>พร้อมเพย์ / QR</button>
                 </div>
-              ) : null}
-            </div>
+                {paymentMethod === "cash" ? (
+                  <div className="space-y-2">
+                    <label className="sr-only" htmlFor="pos-paid-amount">รับเงิน (บาท)</label>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <input id="pos-paid-amount" type="number" inputMode="decimal" min="0" step="0.01" value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} placeholder="รับเงิน (บาท)" className="min-h-11 min-w-0 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-text-primary md:min-h-9" />
+                      <button type="button" onClick={setExactCash} className="min-h-11 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-3 text-sm md:min-h-9">พอดี ฿{total}</button>
+                    </div>
+                    {(() => { const paid = parseNumberInput(paidAmount); if (paid == null) return null; return paid >= total ? <div className="text-xs text-green-600">เงินทอน: {formatPrice(paid - total)}</div> : <div className="text-xs text-red-600">เงินไม่พอ: ขาดอีก {formatPrice(total - paid)}</div>; })()}
+                    <details className="rounded-lg border border-[var(--text-muted)]/15 bg-surface/50">
+                      <summary className="cursor-pointer px-2 py-1.5 text-xs text-text-secondary">ตัวเลือกเงินสดเพิ่มเติม</summary>
+                      <div className="space-y-2 border-t border-[var(--text-muted)]/15 p-2">
+                        <div className="flex flex-wrap gap-1.5">{CASH_PRESET_AMOUNTS.filter((amount) => amount >= total).map((amount) => <button key={amount} type="button" onClick={() => setCashPreset(amount)} className="min-h-9 rounded-lg border border-[var(--text-muted)]/20 bg-surface px-2 text-xs">฿{amount}</button>)}</div>
+                        <div className="grid grid-cols-4 gap-1.5">{CASH_ADD_AMOUNTS.map((amount) => <button key={amount} type="button" onClick={() => addCashAmount(amount)} className="min-h-9 rounded-lg border border-[var(--text-muted)]/20 bg-surface text-xs">+{amount}</button>)}</div>
+                        <button type="button" onClick={clearPaidAmount} className="min-h-9 w-full rounded-lg border border-[var(--text-muted)]/20 bg-surface text-xs text-text-secondary">ล้างจำนวนเงิน</button>
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
             </fieldset>
           </div>
 
@@ -1489,7 +1478,7 @@ export default function POSClient() {
 
     /* -------------------- RENDER -------------------- */
     return (
-    <div className="flex min-h-full flex-col bg-background pb-24 md:h-screen md:flex-row md:pb-0 text-text-primary">
+    <div className="flex min-h-full flex-col bg-background pb-24 md:h-full md:min-h-0 md:flex-row md:overflow-hidden md:pb-0 text-text-primary">
             {pendingStorageError ? <p role="alert" className="fixed inset-x-3 top-3 z-50 rounded-xl bg-red-100 p-3 text-red-900">{pendingStorageError}</p> : null}
             {feedbackText ? (
                 <div className="fixed right-2 top-2 z-50 rounded-lg border border-accent/50 bg-surface/95 px-2.5 py-1.5 text-xs text-text-primary shadow-xl backdrop-blur pointer-events-none">
@@ -1498,15 +1487,7 @@ export default function POSClient() {
             ) : null}
 
             {/* LEFT: Menu List */}
-      <div className="flex-none border-b p-3 md:min-h-0 md:w-[58%] md:flex-none md:overflow-y-auto md:border-r md:p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                    <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
-                        Shop: {context.shopName ?? context.shopId ?? "-"}
-                    </span>
-                    <span className="rounded-full border border-[var(--text-muted)]/20 bg-surface px-2 py-1">
-                        Branch: {context.branchName ?? context.branchId ?? "Not selected"}
-                    </span>
-                </div>
+      <div className="flex-none border-b p-3 md:min-h-0 md:min-w-0 md:flex-1 md:overflow-y-auto md:border-r md:p-4">
                 <div className="flex flex-col gap-3 mb-4">
           <h2 className="text-xl lg:text-2xl font-bold text-text-primary">
             เมนูทั้งหมด
@@ -1589,129 +1570,52 @@ export default function POSClient() {
                   </span>
                 </button>
 
-                            <div
-                  className="hidden min-w-0 flex-col rounded-2xl border border-[var(--text-muted)]/25 bg-surface p-4 shadow-sm transition hover:border-accent/50 hover:shadow-md focus-within:border-accent/60 md:flex"
+                <div
+                  className="hidden min-w-0 flex-col gap-3 rounded-xl border border-[var(--text-muted)]/25 bg-surface p-3 shadow-sm transition focus-within:border-accent/60 md:flex"
                   title="เลือกอุณหภูมิและความหวาน แล้วกด + เพิ่ม"
-                            >
-                                <div className="flex items-start justify-between gap-4 border-b border-[var(--text-muted)]/15 pb-3">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="break-words text-lg font-bold leading-snug text-text-primary">
-                                            {item.name}
-                                        </div>
-                                        <div className="mt-1 font-medium text-text-secondary">
-                                            เริ่มต้น {formatPrice(getMinVariantPrice(item))}
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            addToCart(item);
-                                        }}
-                      className="min-h-11 shrink-0 rounded-xl border border-accent bg-accent px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                                        aria-label={`เพิ่ม ${item.name} ตัวเลือกปัจจุบันลงตะกร้า`}
-                                    >
-                                        + เพิ่ม
-                                    </button>
-                                </div>
-                                <div className="mt-4">
-                    <div className="mb-2 text-sm font-bold text-text-primary">
-                      อุณหภูมิ
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 break-words font-bold leading-snug text-text-primary">{item.name}</div>
+                    <div className="shrink-0 font-semibold tabular-nums text-text-primary">
+                      {formatPrice(selectedVariant?.price ?? getMinVariantPrice(item))}
                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                    {variants.length === 0 ? (
-                        <span className="col-span-full text-sm text-text-muted">
-                          ไม่มีตัวเลือกอุณหภูมิ
-                        </span>
-                                    ) : (
-                        variants.map((variant) => {
-                          const active = selectedVariant?.id === variant.id;
-                                            return (
-                                                <button
-                              key={variant.id}
-                                                    type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                                        setVariantPick((prev) => ({
-                                                            ...prev,
-                                  [item.id]: variant.id,
-                                                        }));
-                                                    }}
-                                                        className={[
-                                "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-                                                            active
-                                                                ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
-                                                                : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
-                                                        ].join(" ")}
-                                                    aria-pressed={active}
-                              aria-label={`เลือกอุณหภูมิ${serveLabel(variant)}`}
-                                                >
-                              {active ? (
-                                <span aria-hidden="true">✓</span>
-                              ) : null}
-                              <span className="min-w-0 break-words">
-                                {serveLabel(variant)}
-                              </span>
-                                                </button>
-                                            );
-                                        })
-                                    )}
-                                    </div>
-                                </div>
-                                <div className="mt-5">
-                    <div className="mb-2 text-sm font-bold text-text-primary">
-                      ระดับความหวาน
-                    </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {SWEETNESS_OPTIONS.map((option) => {
-                                            const active = selectedSweetness === option;
-                                            return (
-                                                <button
-                                                    key={option}
-                                                    type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                                                        setSweetnessPick((prev) => ({
-                                                            ...prev,
-                                                            [item.id]: option,
-                                                        }));
-                                                    }}
-                                                    className={[
-                              "flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-                                                        active
-                                                            ? "border-accent bg-accent text-white shadow-sm ring-2 ring-accent/30"
-                                                            : "border-[var(--text-muted)]/30 bg-background text-text-secondary hover:border-accent/50 hover:bg-accent/10",
-                                                    ].join(" ")}
-                                                    aria-pressed={active}
-                                                    aria-label={`ความหวาน ${option}`}
-                                                >
-                                                    {active ? <span aria-hidden="true">✓</span> : null}
-                            {option}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="mt-4 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
-                    <div className="text-xs font-medium text-text-muted">
-                      ตัวเลือกปัจจุบัน
-                    </div>
-                    <div
-                      className="mt-0.5 font-bold text-text-primary"
-                      aria-live="polite"
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {variants.length > 1 ? (
+                      <select
+                        aria-label={`อุณหภูมิ ${item.name}`}
+                        value={selectedVariant?.id ?? ""}
+                        onChange={(event) => setVariantPick((prev) => ({ ...prev, [item.id]: event.target.value }))}
+                        className="min-h-10 min-w-0 max-w-full rounded-lg border border-[var(--text-muted)]/25 bg-background px-2 text-sm text-text-primary"
+                      >
+                        {variants.map((variant) => (
+                          <option key={variant.id} value={variant.id}>{serveLabel(variant)}</option>
+                        ))}
+                      </select>
+                    ) : selectedVariant ? (
+                      <span className="rounded-lg bg-accent/10 px-2 py-1 text-sm text-text-secondary">{serveLabel(selectedVariant)}</span>
+                    ) : null}
+                    <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+                      ความหวาน
+                      <select
+                        aria-label={`ความหวาน ${item.name}`}
+                        value={selectedSweetness}
+                        onChange={(event) => setSweetnessPick((prev) => ({ ...prev, [item.id]: event.target.value as SweetnessLevel }))}
+                        className="min-h-10 rounded-lg border border-[var(--text-muted)]/25 bg-background px-2 text-sm text-text-primary"
+                      >
+                        {SWEETNESS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => addToCart(item)}
+                      className="ml-auto min-h-10 shrink-0 rounded-lg bg-accent px-3 text-sm font-bold text-white transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      aria-label={`เพิ่ม ${item.name} ตัวเลือกปัจจุบันลงตะกร้า`}
                     >
-                      {selectedVariant
-                        ? normalizeServeLabel(serveLabel(selectedVariant))
-                        : "ยังไม่เลือก"}
-                      {selectedVariant
-                        ? ` • ${sweetnessLabel(selectedSweetness)}`
-                        : ""}
-                                    </div>
-                                </div>
-                                <div className="mt-3 text-sm leading-relaxed text-text-muted">
-                    เลือกอุณหภูมิและความหวาน แล้วกด “+ เพิ่ม” เพื่อนำลงตะกร้า
-                                </div>
-                            </div>
+                      + เพิ่ม
+                    </button>
+                  </div>
+                </div>
               </React.Fragment>
                         );
                     })}
@@ -1758,7 +1662,7 @@ export default function POSClient() {
               </button>
             </header>
             <div className="mt-4 space-y-5">
-              <fieldset>
+              {configuredMenu.variants.length > 1 ? <fieldset>
                 <legend className="mb-2 font-bold text-text-primary">
                   อุณหภูมิ
                 </legend>
@@ -1791,7 +1695,7 @@ export default function POSClient() {
                     );
                   })}
                 </div>
-              </fieldset>
+              </fieldset> : configuredMenu.variants[0] ? <p className="text-sm text-text-secondary">{serveLabel(configuredMenu.variants[0])}</p> : null}
               <fieldset>
                 <legend className="mb-2 font-bold text-text-primary">
                   ระดับความหวาน

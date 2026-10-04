@@ -19,6 +19,7 @@ export default function AdminShell({
     contentVariant?: "admin" | "pos";
 }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const isPos = contentVariant === "pos";
     const [contextNames, setContextNames] = useState<{ shopName: string | null; branchName: string | null }>({
         shopName: null,
         branchName: null,
@@ -28,8 +29,8 @@ export default function AdminShell({
     }, []);
 
     return (
-        <div className="flex min-h-screen bg-[var(--background)] text-[var(--text-primary)] transition-colors duration-300">
-            <Sidebar
+        <div className={`flex min-h-screen bg-[var(--background)] text-[var(--text-primary)] transition-colors duration-300 ${isPos ? "md:h-dvh md:min-h-0 md:overflow-hidden" : ""}`}>
+            {!isPos ? <Sidebar
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 currentShopId={currentShopId}
@@ -37,19 +38,20 @@ export default function AdminShell({
                 currentShopRole={currentShopRole}
                 currentShopName={contextNames.shopName}
                 currentBranchName={contextNames.branchName}
-            />
+            /> : null}
 
             <div className="flex-1 min-w-0 flex flex-col relative z-10">
                 <AdminNavbar
-                    onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
+                    onToggleSidebar={isPos ? undefined : () => setIsSidebarOpen((v) => !v)}
+                    posMode={isPos}
                     currentShopId={currentShopId}
                     currentBranchId={currentBranchId}
                     currentShopRole={currentShopRole}
                     onContextLoaded={handleContextLoaded}
                 />
 
-                <main className={`flex-1 min-w-0 overflow-auto ${contentVariant === "admin" ? "p-4 md:p-8" : ""}`}>
-                    <div className={contentVariant === "admin" ? "max-w-6xl mx-auto space-y-6" : "min-h-full"}>{children}</div>
+                <main className={`flex-1 min-w-0 ${isPos ? "md:min-h-0 md:overflow-hidden" : "overflow-auto p-4 md:p-8"}`}>
+                    <div className={isPos ? "md:h-full" : "max-w-6xl mx-auto space-y-6"}>{children}</div>
                 </main>
             </div>
         </div>

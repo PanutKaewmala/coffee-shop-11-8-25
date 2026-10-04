@@ -148,7 +148,7 @@ await upsert("shops", {
   id: SHOP_ID,
   name: "TALVO Local Demo",
   slug: "talvo-local-demo",
-  receipt_footer: "Local browser-test fixture only",
+  receipt_footer: "ขอบคุณที่อุดหนุน",
 });
 
 let branches = await restGet("branch", `shop_id=eq.${SHOP_ID}&select=id,name,is_primary,is_active&order=created_at.asc&limit=1`);
@@ -208,7 +208,7 @@ await upsert("menu_categories", {
 await upsert("menu_serve_types", {
   id: SERVE_ID,
   shop_id: SHOP_ID,
-  name: "Local Test Serve",
+  name: "เย็น",
   is_system: false,
   system_key: null,
 });
@@ -218,7 +218,7 @@ await upsert("ingredients", {
   id: INGREDIENT_ID,
   shop_id: SHOP_ID,
   branch_id: branchId,
-  name: "Local Test Coffee",
+  name: "กาแฟสกัด",
   stock: 1000,
   unit: "ml",
   base_unit: "ml",
@@ -232,8 +232,8 @@ await upsert("menu", {
   id: MENU_ID,
   shop_id: SHOP_ID,
   category_id: CATEGORY_ID,
-  name: "Local Test Americano",
-  description: "Disposable local browser-test menu",
+  name: "Americano",
+  description: "กาแฟดำเย็น",
   price: 60,
 });
 
@@ -302,6 +302,6 @@ console.log("TALVO_LOCAL_BROWSER_FIXTURE_READY");
 console.log(`Login: ${EMAIL} / ${PASSWORD}`);
 console.log("Shop: TALVO Local Demo");
 console.log("Branch: one local branch");
-console.log("POS menu: Local Test Americano (60 THB)");
+console.log("POS menu: Americano / เย็น (60 THB)");
 console.log("Canonical supply: TALVO Browser Beans, 1000 base units received; ready to add through recipe UI");
 console.log("All fixture data exists only in the disposable local Supabase instance.");

@@ -2,12 +2,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/context/ThemeContext";
 import { Menu, LogOut, Moon, Sun, Store, GitBranch } from "lucide-react";
 
 export interface AdminNavbarProps {
     onToggleSidebar?: () => void;
+    posMode?: boolean;
 
     currentShopId?: string;
     currentBranchId?: string | null;
@@ -49,6 +51,7 @@ async function postJSON<T extends Record<string, unknown>>(
 
 export default function AdminNavbar({
     onToggleSidebar,
+    posMode = false,
     currentShopId,
     currentBranchId,
     currentShopRole,
@@ -201,21 +204,24 @@ export default function AdminNavbar({
     };
 
     return (
-        <header className="sticky top-0 z-50 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--text-muted)]/20 text-[var(--text-primary)] shadow-sm transition-colors duration-300">
+        <header className="sticky top-0 z-50 shrink-0 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--text-muted)]/20 text-[var(--text-primary)] shadow-sm transition-colors duration-300">
             <div className="flex min-w-0 items-center justify-between px-4 py-3 md:px-6 gap-4">
                 {/* Left */}
                 <div className="flex items-center gap-3 min-w-0">
-                    <button
+                    {posMode ? <Link
+                        href={currentShopRole === "owner" ? "/admin" : "/admin/orders"}
+                        className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium hover:bg-[var(--accent)]/10"
+                    >← หลังบ้าน</Link> : <button
                         className="md:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onToggleSidebar}
                         aria-label="เปิดเมนูด้านข้าง"
                     >
                         <Menu size={20} />
-                    </button>
+                    </button>}
 
                     <div className="min-w-0">
                         <div className="font-semibold text-base md:text-lg tracking-wide select-none truncate">
-                            ☕ แผงจัดการร้าน
+                            {posMode ? "☕ POS" : "☕ แผงจัดการร้าน"}
                         </div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">
                             {shopLabel} • {branchLabel}
