@@ -9,7 +9,7 @@ import { localSql, assertLocalEndpoint } from "./lib/talvo-bootstrap-local.mjs";
 const root = process.cwd();
 const plan = loadBootstrap(root);
 const paths = plan.manifest.migrations.map((e) => e.path);
-const versions = ["20260807090000", "20260817100000", "20260922193511", "20260819180000", "20260819180100", "20260910042652", "20260921142010"];
+const versions = ["20260807090000", "20260817100000", "20260922193511", "20260819180000", "20260819180100", "20260910042652", "20260921142010", "20261004050634", "20261004052000", "20261004052509"];
 assert.deepEqual(plan.manifest.migrations.map((e) => e.version), versions);
 assert.equal(plan.manifest.baseline.sha256, "f02f683252c165e7508a640d5d6e01f17f3f73c28b76a33e8e5c3e341a2e520c");
 assert.equal(plan.manifest.baseline.version, "20260805083001");
@@ -59,8 +59,8 @@ for (const source of plan.sources.slice(1)) {
   assert.ok(built.payload.indexOf(`values ('${source.version}','${source.sha256}')`) > index + source.bytes.length - 1, "Record after source executes");
 }
 assert.ok(payload.indexOf("create table talvo.schema_revisions") < payload.indexOf("insert into talvo.schema_revisions"));
-assert.equal((payload.match(/insert into talvo.schema_revisions\(/g) ?? []).length, 8);
-assert.equal(ledgerRows(plan).length, 8);
+assert.equal((payload.match(/insert into talvo.schema_revisions\(/g) ?? []).length, 11);
+assert.equal(ledgerRows(plan).length, 11);
 assert.match(payload, /set transaction isolation level read committed, read write;/);
 assert.match(payload, /BOOTSTRAP_LEDGER_MISMATCH/);
 assert.match(payload, /TALVO_BRANCH_BOOTSTRAP_REQUIRES_READ_COMMITTED/);
@@ -113,4 +113,4 @@ assert.match(transport, /"ON_ERROR_STOP=1"/);
 assert.doesNotMatch(reset, /postBaselineMigrations|copyFileSync/);
 assert.match(reset, /buildBootstrap\(plan\)/);
 assert.match(reset, /localSql\(built.payload, \{ transaction: true \}\)/);
-console.log(`PASS canonical bootstrap: source blobs, CRLF/LF independence, adaptation/ACLs, eight-row ledger, transaction order, local-only transport; ${mutations} deliberate manifest mutations rejected`);
+console.log(`PASS canonical bootstrap: source blobs, CRLF/LF independence, adaptation/ACLs, manifest-derived ledger, transaction order, local-only transport; ${mutations} deliberate manifest mutations rejected`);

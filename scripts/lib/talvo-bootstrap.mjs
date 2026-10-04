@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 
 // A reviewed contract fingerprint, not a second execution-order list. Changing
 // order, adaptation or sources requires an explicit contract/test review.
-const reviewedManifestHash = "ac54783804ff9ed67bc32794a5fe899ce64dc634ad169864ea94dc079196119d";
+const reviewedManifestHash = "12f3cd34040469bc506d3ac4430fdf073391813b333506874f066b3dc58a998c";
 export const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const git = (root, args) => execFileSync("git", args, { cwd: root, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
@@ -161,9 +161,10 @@ export function ledgerRows(plan) {
 }
 
 export function ledgerAssertionSql(plan) {
-  const values = ledgerRows(plan).map(([version, hash]) => `('${version}','${hash}')`).join(",\n");
+  const expectedRows = ledgerRows(plan);
+  const values = expectedRows.map(([version, hash]) => `('${version}','${hash}')`).join(",\n");
   return `do $ledger$ begin
-    if (select count(*) from talvo.schema_revisions) <> 8 or exists (
+    if (select count(*) from talvo.schema_revisions) <> ${expectedRows.length} or exists (
       with expected(version,source_sha256) as (values ${values})
       (select version,source_sha256 from expected except select version,source_sha256 from talvo.schema_revisions)
       union all
@@ -190,6 +191,34 @@ begin
   if (select count(*) from talvo.units) <> 3 or (select count(*) from talvo.role_capabilities) <> 2
     or exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='talvo' and c.relkind='r' and not c.relrowsecurity)
   then raise exception 'BOOTSTRAP_CATALOG_OR_RLS_MISMATCH'; end if;
+  if exists(
+    select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relkind in ('r','p')
+      and c.relname in ('_backup_shopa_mismatch_ingredient_logs','_backup_stock_logs_shopa_before_fix','ingredient_expiry_settings')
+      and (not c.relrowsecurity
+        or has_table_privilege('anon',c.oid,'select') or has_table_privilege('anon',c.oid,'insert')
+        or has_table_privilege('anon',c.oid,'update') or has_table_privilege('anon',c.oid,'delete')
+        or has_table_privilege('authenticated',c.oid,'select') or has_table_privilege('authenticated',c.oid,'insert')
+        or has_table_privilege('authenticated',c.oid,'update') or has_table_privilege('authenticated',c.oid,'delete'))
+  ) then raise exception 'BOOTSTRAP_PUBLIC_TABLE_EXPOSURE'; end if;
+  if exists(
+    select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relkind='v'
+      and c.relname in ('ingredient_lot_expiry_status','ingredient_expiry_summary','v_ingredients_alert','v_user_shop_permissions')
+      and (not (coalesce(c.reloptions,'{}'::text[]) @> array['security_invoker=true'])
+        or has_table_privilege('anon',c.oid,'select')
+        or has_table_privilege('authenticated',c.oid,'select'))
+  ) then raise exception 'BOOTSTRAP_PUBLIC_VIEW_EXPOSURE'; end if;
+  if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname in ('discard_ingredient_lot','ensure_default_serve_type','mark_ingredient_lot_opened')) <> 3
+    or exists(
+      select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname in ('discard_ingredient_lot','ensure_default_serve_type','mark_ingredient_lot_opened')
+        and (has_function_privilege('anon',p.oid,'execute')
+          or has_function_privilege('authenticated',p.oid,'execute')
+          or not has_function_privilege('service_role',p.oid,'execute'))
+    )
+  then raise exception 'BOOTSTRAP_PRIVILEGED_RPC_ACL_MISMATCH'; end if;
   for t in select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('public','talvo') and c.relkind in ('r','p')
     and not (n.nspname='talvo' and c.relname in ('units','role_capabilities','schema_revisions'))
