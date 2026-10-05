@@ -207,4 +207,11 @@ repair.state.recipes.push({ ...brokenRecipe, id: "remove-unassigned" });
 assert.equal((await repair.api.DELETE(repair.request(null, "?id=remove-unassigned"))).status, 200, "owner can remove a broken unassigned recipe");
 assert.equal((await repair.api.DELETE(repair.request(null, "?id=other-recipe"))).status, 404);
 
+const menuRoute = readFileSync("src/app/api/menu/route.ts", "utf8");
+assert.match(menuRoute, /select\("variant_id,ingredient_id,supply_item_id,quantity"\)/, "menu readiness reads canonical and legacy recipe sources");
+assert.match(menuRoute, /list_talvo_supply_items/, "menu readiness validates canonical supply items in the selected branch");
+assert.match(menuRoute, /row\.supply_item_id !== null && validSupplyIds\.has\(row\.supply_item_id\)/, "canonical supply recipes can become POS-ready");
+assert.match(menuRoute, /Number\(row\.quantity\) > 0/, "menu readiness rejects non-positive recipe quantities");
+assert.match(menuRoute, /readinessByVariant\.get\(row\.variant_id\) \?\? true/, "all recipe rows for a variant must remain valid");
+
 console.log("Recipe inventory behavioral tests passed (authorization, branch scope, source validation, quantity steps, duplicate replacement, and editing)");
