@@ -84,12 +84,13 @@ assert.ok(applied.includes("BOOTSTRAP_APPLIED:20260922193511"));
 assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004050634"));
 assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004052000"));
 assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004052509"));
+assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261005153421"));
 assert.ok(applied.includes("BOOTSTRAP_VERIFIED_BEFORE_COMMIT"));
 sql(`begin read only; ${postconditionsSql(plan)} rollback;`);
 const rows = sql("select version||'|'||source_sha256 from talvo.schema_revisions order by version;").split("\n");
 assert.deepEqual(rows, ledgerRows(plan).map((row) => row.join("|")).sort());
 assert.equal(sql("select (select count(*) from public.shops),(select count(*) from public.branch),(select count(*) from talvo.inventory_locations);"), "0|0|0");
-assert.equal(sql("select count(*) from talvo.schema_revisions where applied_at is not null;"), "11");
+assert.equal(sql("select count(*) from talvo.schema_revisions where applied_at is not null;"), "12");
 assert.equal(sql("select string_agg(column_name||':'||data_type||':'||is_nullable,',' order by ordinal_position) from information_schema.columns where table_schema='talvo' and table_name='schema_revisions';"),
   "version:text:NO,source_sha256:text:NO,applied_at:timestamp with time zone:NO");
 sql(`begin; update talvo.schema_revisions set source_sha256=repeat('0',64) where version='20260805083001'; ${ledgerAssertionSql(plan)} rollback;`, { error: "BOOTSTRAP_LEDGER_MISMATCH" });

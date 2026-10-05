@@ -58,6 +58,11 @@
       "version": "20261004052509",
       "path": "supabase/migrations/20261004052509_trial_01_authenticated_legacy_rpc_hardening.sql",
       "sha256": "bb966b7b4779704a1236b948fc26a585a231b7a0c3c1a562ab21f45c37994f1d"
+    },
+    {
+      "version": "20261005153421",
+      "path": "supabase/migrations/20261005153421_trial_01_public_rpc_hardening.sql",
+      "sha256": "5950506c6c36b1270a0a630645edabf3d5668bd7097f665dfd8c2fe194719b5d"
     }
   ]
 }

@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 
 // A reviewed contract fingerprint, not a second execution-order list. Changing
 // order, adaptation or sources requires an explicit contract/test review.
-const reviewedManifestHash = "12f3cd34040469bc506d3ac4430fdf073391813b333506874f066b3dc58a998c";
+const reviewedManifestHash = "85200d2385dfd27020d10c5f916cff5d22bb536c696c491e04aec04930841abe";
 export const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const git = (root, args) => execFileSync("git", args, { cwd: root, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
@@ -219,6 +219,24 @@ begin
           or not has_function_privilege('service_role',p.oid,'execute'))
     )
   then raise exception 'BOOTSTRAP_PRIVILEGED_RPC_ACL_MISMATCH'; end if;
+  if to_regprocedure('public.set_current_context(uuid,uuid)') is null
+    or to_regprocedure('public.set_current_shop(uuid)') is null
+    or to_regprocedure('public.sync_order_items_shop_id()') is null
+    or has_function_privilege('anon',to_regprocedure('public.set_current_context(uuid,uuid)'),'execute')
+    or not has_function_privilege('authenticated',to_regprocedure('public.set_current_context(uuid,uuid)'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.set_current_context(uuid,uuid)'),'execute')
+    or not exists(
+      select 1 from pg_proc p
+      where p.oid=to_regprocedure('public.set_current_context(uuid,uuid)')
+        and coalesce(p.proconfig,'{}'::text[]) @> array['search_path=public']
+    )
+    or has_function_privilege('anon',to_regprocedure('public.set_current_shop(uuid)'),'execute')
+    or not has_function_privilege('authenticated',to_regprocedure('public.set_current_shop(uuid)'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.set_current_shop(uuid)'),'execute')
+    or has_function_privilege('anon',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
+    or has_function_privilege('authenticated',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
+  then raise exception 'BOOTSTRAP_TRIAL_RPC_HARDENING_MISMATCH'; end if;
   for t in select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('public','talvo') and c.relkind in ('r','p')
     and not (n.nspname='talvo' and c.relname in ('units','role_capabilities','schema_revisions'))
