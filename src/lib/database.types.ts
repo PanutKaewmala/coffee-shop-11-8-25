@@ -1687,6 +1687,19 @@ export type Database = {
         Args: { p_branch_id: string; p_business_date: string; p_close_id: string; p_counted_cash: number; p_notes: string | null; p_shop_id: string }
         Returns: Json
       }
+      receive_talvo_supply_item: {
+        Args: {
+          p_branch_id: string
+          p_business_id: string
+          p_external_batch_code: string | null
+          p_idempotency_key: string
+          p_manufacturer_use_by_at: string | null
+          p_provenance_source_ref: string
+          p_quantity_base: number
+          p_supply_item_id: string
+        }
+        Returns: Json
+      }
       process_pos_checkout_atomic: {
         Args: { p_branch_id: string; p_idempotency_key: string; p_items: Json; p_paid_amount: number | null; p_payment_method: string; p_shop_id: string }
         Returns: Json

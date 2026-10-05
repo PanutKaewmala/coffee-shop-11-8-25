@@ -28,10 +28,10 @@ for (const value of ["0", "500", "0.000001", "999999999999.999999"]) assert.equa
 for (const value of [null, false, 500, "", " ", "-1", "1e3", "0.0000001", "1000000000000", "NaN"]) assert.equal(stockLib.validMinimum(value), false);
 
 let identity = { user: { id: "owner" }, currentShopId: "shop", currentBranchId: "branch", currentShopRole: "owner" };
-let rpcError = null; let loadError = false; const calls = [];
+let rpcError = null; let rpcData = { ok: true, data: {} }; let loadError = false; const calls = [];
 const server = {
   getServerIdentity: async () => identity,
-  getSupabaseServer: async () => ({ rpc: async (name, args) => { calls.push({ name, args }); return { error: rpcError }; } }),
+  getSupabaseServer: async () => ({ rpc: async (name, args) => { calls.push({ name, args }); return { data: rpcData, error: rpcError }; } }),
 };
 const route = load("src/app/api/stock/usable/route.ts", {
   "next/server": { NextResponse: { json: (body, options = {}) => new Response(JSON.stringify(body), { ...options, headers: { "Content-Type": "application/json" } }) } },
@@ -39,29 +39,61 @@ const route = load("src/app/api/stock/usable/route.ts", {
   "@/lib/usableStockServer": { loadUsableStock: async () => { if (loadError) throw new Error("database offline"); return stock; } },
 });
 const payload = { shop_id: "shop", branch_id: "branch", source_type: item.source_type, item_id: item.id, minimum_stock: "500.5" };
+const receivePayload = { shop_id: "shop", branch_id: "branch", source_type: "supply_item", item_id: item.id, quantity: "100" };
 const patch = (body = payload) => route.PATCH(new Request("http://localhost/api/stock/usable", { method: "PATCH", body: JSON.stringify(body) }));
+const post = (body = receivePayload, idempotencyKey = "receive:test:0001") => route.POST(new Request("http://localhost/api/stock/usable", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+  body: JSON.stringify(body),
+}));
 assert.equal((await route.GET()).status, 200);
 assert.equal((await patch()).status, 200);
 assert.equal(calls.at(-1).args.p_minimum_stock, "500.5", "decimal string reaches SQL without binary rounding");
+assert.equal((await post()).status, 200);
+assert.equal(calls.at(-1).name, "receive_talvo_supply_item");
+assert.equal(calls.at(-1).args.p_quantity_base, 100);
+assert.equal(calls.at(-1).args.p_supply_item_id, item.id);
+for (const quantity of [null, false, "", "0", "-1", "1e3", "0.0000001"]) assert.equal((await post({ ...receivePayload, quantity })).status, 400);
+assert.equal((await post({ ...receivePayload, source_type: "ingredient" })).status, 400);
+assert.equal((await post({ ...receivePayload, branch_id: "other" })).status, 409);
+assert.equal((await post(receivePayload, "bad")).status, 400);
 for (const minimum_stock of [null, false, "", "-1", "1e3"]) assert.equal((await patch({ ...payload, minimum_stock })).status, 400);
 assert.equal((await patch({ ...payload, branch_id: "other" })).status, 409);
 identity.currentShopRole = "staff";
 assert.equal((await route.GET()).status, 200);
 assert.equal((await patch()).status, 403);
+assert.equal((await post()).status, 403);
 identity.currentShopRole = "owner";
 identity.user = null;
 assert.equal((await route.GET()).status, 401);
 assert.equal((await patch()).status, 401);
+assert.equal((await post()).status, 401);
 identity.user = { id: "owner" };
 identity.currentBranchId = null;
 assert.equal((await route.GET()).status, 409);
+assert.equal((await post()).status, 409);
 identity.currentBranchId = "branch";
 loadError = true;
 assert.equal((await route.GET()).status, 503);
+loadError = false;
 rpcError = { code: "P0001", message: "BUSINESS_DAY_CLOSED" };
 assert.equal((await patch()).status, 409);
+assert.equal((await post()).status, 409);
+rpcError = null;
+rpcData = { ok: false, error: { code: "VALIDATION_FAILED", message: "invalid quantity" } };
+assert.equal((await post()).status, 400);
+rpcData = { ok: false, error: { code: "BUSINESS_DAY_CLOSED", message: "closed" } };
+assert.equal((await post()).status, 409);
+rpcData = { ok: true, data: {} };
 rpcError = { code: "XX000", message: "unavailable" };
 assert.equal((await patch()).status, 503);
+assert.equal((await post()).status, 503);
+rpcError = null;
+
+const usablePanel = fs.readFileSync("src/components/admin/UsableStockPanel.tsx", "utf8");
+assert.match(usablePanel, /ReceiveStockForm/, "usable stock UI exposes canonical receiving");
+assert.match(usablePanel, /Idempotency-Key/, "receiving UI sends an idempotency key");
+assert.match(usablePanel, /source_type === "supply_item"/, "receiving UI is limited to canonical supply items");
 
 const presentation = load("src/lib/dashboardTodayPresentation.ts");
 const today = { tasks: { outOfStock: [], lowStock: [], expiringLots: [], unavailableStock: [{ id: item.id, name: item.name }] },

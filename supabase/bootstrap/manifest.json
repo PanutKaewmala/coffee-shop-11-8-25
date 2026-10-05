@@ -43,6 +43,26 @@
       "version": "20260921142010",
       "path": "supabase/migrations/20260921142010_current_usable_stock.sql",
       "sha256": "ba8f58f592620ef2c7644ba5a1c24741c32ba377990b40ea0072b6ec3db814e9"
+    },
+    {
+      "version": "20261004050634",
+      "path": "supabase/migrations/20261004050634_trial_01_staging_security_hardening.sql",
+      "sha256": "5658cd852cf12beb5cb1e297d00f69a4bb43c758547c16df88e93476776f6743"
+    },
+    {
+      "version": "20261004052000",
+      "path": "supabase/migrations/20261004052000_trial_01_anon_rpc_hardening.sql",
+      "sha256": "190e1bcf572f233268c163e705341101d7de6769cdd9809cc69707afb842602e"
+    },
+    {
+      "version": "20261004052509",
+      "path": "supabase/migrations/20261004052509_trial_01_authenticated_legacy_rpc_hardening.sql",
+      "sha256": "bb966b7b4779704a1236b948fc26a585a231b7a0c3c1a562ab21f45c37994f1d"
+    },
+    {
+      "version": "20261005153421",
+      "path": "supabase/migrations/20261005153421_trial_01_public_rpc_hardening.sql",
+      "sha256": "5950506c6c36b1270a0a630645edabf3d5668bd7097f665dfd8c2fe194719b5d"
     }
   ]
 }

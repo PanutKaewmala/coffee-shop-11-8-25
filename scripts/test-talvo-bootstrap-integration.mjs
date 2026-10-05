@@ -81,15 +81,19 @@ console.log("PASS partial schema, existing application objects and unexplained C
 
 const applied = sql(payload, { transaction: true });
 assert.ok(applied.includes("BOOTSTRAP_APPLIED:20260922193511"));
+assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004050634"));
+assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004052000"));
+assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261004052509"));
+assert.ok(applied.includes("BOOTSTRAP_APPLIED:20261005153421"));
 assert.ok(applied.includes("BOOTSTRAP_VERIFIED_BEFORE_COMMIT"));
 sql(`begin read only; ${postconditionsSql(plan)} rollback;`);
 const rows = sql("select version||'|'||source_sha256 from talvo.schema_revisions order by version;").split("\n");
 assert.deepEqual(rows, ledgerRows(plan).map((row) => row.join("|")).sort());
 assert.equal(sql("select (select count(*) from public.shops),(select count(*) from public.branch),(select count(*) from talvo.inventory_locations);"), "0|0|0");
-assert.equal(sql("select count(*) from talvo.schema_revisions where applied_at is not null;"), "8");
+assert.equal(sql("select count(*) from talvo.schema_revisions where applied_at is not null;"), "12");
 assert.equal(sql("select string_agg(column_name||':'||data_type||':'||is_nullable,',' order by ordinal_position) from information_schema.columns where table_schema='talvo' and table_name='schema_revisions';"),
   "version:text:NO,source_sha256:text:NO,applied_at:timestamp with time zone:NO");
 sql(`begin; update talvo.schema_revisions set source_sha256=repeat('0',64) where version='20260805083001'; ${ledgerAssertionSql(plan)} rollback;`, { error: "BOOTSTRAP_LEDGER_MISMATCH" });
 sql(`begin read only; ${ledgerAssertionSql(plan)} rollback;`);
 sql(payload, { transaction: true, error: "BOOTSTRAP_TARGET_NOT_FRESH" });
-console.log("PASS full canonical reconstruction committed: real zero-branch execution, eight exact source hashes, zero application rows, current usable-stock RPCs, ledger-conflict detection and repeat rejection");
+console.log("PASS full canonical reconstruction committed: real zero-branch execution, manifest-derived exact source hashes, hardened public exposure and privileged RPC ACLs, zero application rows, current usable-stock RPCs, ledger-conflict detection and repeat rejection");

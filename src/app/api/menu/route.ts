@@ -63,6 +63,12 @@ type MenuPayload = {
 
 type ServeTypeRow = { id: UUID; name: string };
 type CategoryRow = { id: UUID; name: string };
+type RecipeReadinessRow = {
+    variant_id: UUID;
+    ingredient_id: UUID | null;
+    supply_item_id: UUID | null;
+    quantity: number | null;
+};
 
 type ServePricingInputRow = {
     serveType: string;
@@ -368,18 +374,18 @@ export async function GET(req: NextRequest) {
     }
 
     const allVariantIds = variantRows.map((v) => v.id);
-    let recipeRows: { variant_id: string; ingredient_id: string | null }[] = [];
+    let recipeRows: RecipeReadinessRow[] = [];
     if (allVariantIds.length > 0) {
         const { data: recipeData, error: recipeErr } = await db
             .from("recipe_items")
-            .select("variant_id,ingredient_id")
+            .select("variant_id,ingredient_id,supply_item_id,quantity")
             .eq("shop_id", selectedShopId!)
             .in("variant_id", allVariantIds);
 
         if (recipeErr) {
             return NextResponse.json({ error: recipeErr.message }, { status: 500 });
         }
-        recipeRows = (recipeData ?? []) as { variant_id: string; ingredient_id: string | null }[];
+        recipeRows = (recipeData ?? []) as RecipeReadinessRow[];
     }
 
     const validIngredientIds = new Set<string>();
@@ -396,6 +402,7 @@ export async function GET(req: NextRequest) {
             const { data: ingredientRows, error: ingredientErr } = await db
                 .from("ingredients")
                 .select("id")
+                .eq("is_active", true)
                 .eq("shop_id", selectedShopId!)
                 .filter("branch_id", "eq", currentBranchId)
                 .in("id", ingredientIds);
@@ -410,12 +417,46 @@ export async function GET(req: NextRequest) {
         }
     }
 
-    const readyVariantIds = new Set<string>();
-    for (const row of recipeRows) {
-        if (row.ingredient_id && validIngredientIds.has(row.ingredient_id)) {
-            readyVariantIds.add(row.variant_id);
+    const validSupplyIds = new Set<string>();
+    const supplyIds = new Set(
+        recipeRows
+            .map((r) => r.supply_item_id)
+            .filter((v): v is string => typeof v === "string" && v.length > 0)
+    );
+    if (currentBranchId && supplyIds.size > 0) {
+        const { data: supplyItems, error: supplyError } = await supabase.rpc(
+            "list_talvo_supply_items",
+            { p_business_id: selectedShopId!, p_branch_id: currentBranchId }
+        );
+        if (supplyError) {
+            return NextResponse.json({ error: "Unable to check recipe supplies" }, { status: 500 });
+        }
+        for (const item of Array.isArray(supplyItems) ? supplyItems : []) {
+            if (isRecord(item) && typeof item.id === "string") {
+                validSupplyIds.add(item.id);
+            }
         }
     }
+
+    const readinessByVariant = new Map<string, boolean>();
+    for (const row of recipeRows) {
+        const validSource = row.ingredient_id !== null
+            ? row.supply_item_id === null && validIngredientIds.has(row.ingredient_id)
+            : row.supply_item_id !== null && validSupplyIds.has(row.supply_item_id);
+        const validQuantity =
+            row.quantity !== null &&
+            Number.isFinite(Number(row.quantity)) &&
+            Number(row.quantity) > 0;
+        readinessByVariant.set(
+            row.variant_id,
+            (readinessByVariant.get(row.variant_id) ?? true) && validSource && validQuantity
+        );
+    }
+    const readyVariantIds = new Set(
+        [...readinessByVariant]
+            .filter(([, ready]) => ready)
+            .map(([variantId]) => variantId)
+    );
 
     const final: ApiMenuRow[] = menusScoped.map((m) => {
         const bucket = byMenuId.get(m.id);

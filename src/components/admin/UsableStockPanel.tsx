@@ -7,12 +7,79 @@ import { parseUsableStock, stockStatus, stockStatusLabel, unavailableStockLabel,
 
 const formatQuantity = (value: number) => value.toLocaleString("th-TH", { maximumFractionDigits: 6 });
 const buttonClass = "rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold hover:bg-[var(--surface)] disabled:opacity-50";
+const inputClass = "min-w-0 w-36 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[var(--text-primary)]";
 const tones = {
     normal: "bg-green-100 text-green-800",
     low: "bg-amber-100 text-amber-900",
     out: "bg-red-100 text-red-800",
     unavailable: "bg-gray-500/10 text-[var(--text-secondary)]",
 };
+
+function ReceiveStockForm({ item, stock, onSaved }: { item: UsableStockItem; stock: UsableStock; onSaved: (quantity: string) => void }) {
+    const [quantity, setQuantity] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    async function receive(event: React.FormEvent) {
+        event.preventDefault();
+        if (saving) return;
+        if (!/^(0|[1-9][0-9]{0,11})(\.[0-9]{1,6})?$/.test(quantity) || Number(quantity) <= 0) {
+            setError("กรอกจำนวนมากกว่า 0 ทศนิยมไม่เกิน 6 ตำแหน่ง");
+            return;
+        }
+
+        setSaving(true);
+        setError(null);
+        try {
+            const response = await fetch("/api/stock/usable", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": `receive:${item.id}:${crypto.randomUUID()}`,
+                },
+                body: JSON.stringify({
+                    shop_id: stock.shop_id,
+                    branch_id: stock.branch_id,
+                    source_type: item.source_type,
+                    item_id: item.id,
+                    quantity,
+                }),
+            });
+            const result: unknown = await response.json().catch(() => null);
+            const message =
+                result && typeof result === "object" && !Array.isArray(result) && "error" in result && typeof result.error === "string"
+                    ? result.error
+                    : "รับของเข้าไม่สำเร็จ กรุณาลองใหม่";
+            if (!response.ok) throw new Error(message);
+            onSaved(quantity);
+            setQuantity("");
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : "รับของเข้าไม่สำเร็จ กรุณาลองใหม่");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return <form onSubmit={receive} className="space-y-2 border-t border-[var(--border)] pt-4">
+        <label className="block text-sm font-semibold" htmlFor={`receive-${item.id}`}>รับของเข้า ({item.unit})</label>
+        <div className="flex flex-wrap gap-2">
+            <input
+                id={`receive-${item.id}`}
+                aria-label={`รับเข้า ${item.name}`}
+                inputMode="decimal"
+                value={quantity}
+                disabled={saving}
+                onChange={(event) => setQuantity(event.target.value)}
+                placeholder="เช่น 100"
+                className={inputClass}
+            />
+            <button type="submit" disabled={saving || quantity.trim() === ""} className={buttonClass}>
+                {saving ? "กำลังรับเข้า…" : "รับเข้า"}
+            </button>
+        </div>
+        {error ? <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p> : null}
+    </form>;
+}
 
 function MinimumEditor({ item, stock, onSaved }: { item: UsableStockItem; stock: UsableStock; onSaved: () => void }) {
     const [value, setValue] = useState(item.minimum_stock === null ? "" : String(item.minimum_stock));
@@ -39,7 +106,7 @@ function MinimumEditor({ item, stock, onSaved }: { item: UsableStockItem; stock:
         <div className="flex flex-wrap gap-2">
             <input id={`minimum-${item.source_type}-${item.id}`} aria-label={`ขั้นต่ำ ${item.name}`} inputMode="decimal" value={value} disabled={saving}
                 onChange={(event) => setValue(event.target.value)} placeholder="ยังไม่ตั้งขั้นต่ำ"
-                className="min-w-0 w-36 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-[var(--text-primary)]" />
+                className={inputClass} />
             <button type="submit" disabled={saving} className={buttonClass}>{saving ? "กำลังบันทึก…" : "บันทึกขั้นต่ำ"}</button>
         </div>
         {error ? <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p> : null}
@@ -91,6 +158,9 @@ export default function UsableStockPanel() {
                                 <p className="mt-1 text-2xl font-bold">{item.usable_stock === null ? "—" : formatQuantity(item.usable_stock)} <span className="text-base font-normal">{item.unit}</span></p></div>
                             {status === "unavailable" ? <p className="text-sm text-[var(--text-secondary)]">{unavailableStockLabel(item.unavailable_reason)}</p> : null}
                             <p className="text-sm">{item.minimum_stock === null ? "ยังไม่ตั้งขั้นต่ำ · ยังไม่ประเมินใกล้หมด (Low Stock)" : `ขั้นต่ำ ${formatQuantity(item.minimum_stock)} ${item.unit} · ใกล้หมดเมื่อยอดมากกว่า 0 และไม่เกินขั้นต่ำ`}</p>
+                            {stock.can_edit_minimum && item.source_type === "supply_item"
+                                ? <ReceiveStockForm item={item} stock={stock} onSaved={(quantity) => { setNotice(`รับเข้า ${item.name} ${quantity} ${item.unit} แล้ว`); refresh(); }} />
+                                : null}
                             {stock.can_edit_minimum ? <MinimumEditor item={item} stock={stock} onSaved={() => { setNotice(`บันทึกขั้นต่ำ ${item.name} แล้ว`); refresh(); }} /> : null}
                         </article>
                     </Card>;
