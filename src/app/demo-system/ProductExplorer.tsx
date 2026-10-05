@@ -108,15 +108,15 @@ export default function ProductExplorer() {
     <>
       <section className="px-4 pb-8 pt-10 sm:pt-14">
         <div className="mx-auto max-w-[1380px]">
-          <div className="flex flex-col gap-5 border-b border-white/10 pb-8 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-5 border-b border-[#d8ccbf] pb-8 dark:border-white/10 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#a76f36] dark:text-[#d4a574]">
                 Level 2 · Product Explorer
               </div>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#30261f] dark:text-[#f5f3f0] sm:text-4xl lg:text-5xl">
                 เลือกหน้าจอ แล้วดู TALVO ตัวจริง
               </h1>
-              <p className="mt-4 max-w-2xl leading-7 text-[#b8aa9b]">
+              <p className="mt-4 max-w-2xl leading-7 text-[#6b5b4c] dark:text-[#b8aa9b]">
                 ตรงนี้ไม่อธิบาย flow ซ้ำแล้ว แต่ให้สำรวจ interface จริงของแต่ละงาน:
                 ใครใช้ หน้านี้ทำอะไร และควรมองตรงไหน
               </p>
@@ -124,7 +124,7 @@ export default function ProductExplorer() {
 
             <Link
               href="/#workflow"
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-white/15 px-4 py-2.5 text-sm font-semibold text-[#d6cbbf] transition hover:bg-white/[0.05]"
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-[#cdbba9] bg-white/70 px-4 py-2.5 text-sm font-semibold text-[#5c4b3d] transition hover:bg-[#f1e8df] dark:border-white/15 dark:bg-transparent dark:text-[#d6cbbf] dark:hover:bg-white/[0.05]"
             >
               <ArrowLeft size={16} />
               กลับไปดู Level 1 · How TALVO works
@@ -135,10 +135,10 @@ export default function ProductExplorer() {
 
       <section className="px-4 pb-20">
         <div className="mx-auto max-w-[1380px]">
-          <div className="overflow-hidden rounded-[26px] border border-white/10 bg-[#181512] shadow-2xl shadow-black/20">
+          <div className="overflow-hidden rounded-[26px] border border-[#d8ccbf] bg-[#fffdf9] shadow-[0_24px_70px_rgba(103,78,55,0.12)] dark:border-white/10 dark:bg-[#181512] dark:shadow-2xl dark:shadow-black/20">
             <div className="grid min-h-[720px] lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-              <aside className="border-b border-white/10 bg-[#141210] p-3 lg:border-b-0 lg:border-r">
-                <div className="mb-3 hidden px-3 pt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7f7367] lg:block">
+              <aside className="border-b border-[#d8ccbf] bg-[#f3ede6] p-3 dark:border-white/10 dark:bg-[#141210] lg:border-b-0 lg:border-r">
+                <div className="mb-3 hidden px-3 pt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#8d7c6b] dark:text-[#7f7367] lg:block">
                   หน้าจอ
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
@@ -152,19 +152,21 @@ export default function ProductExplorer() {
                         onClick={() => setActiveId(screen.id)}
                         className={`flex shrink-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition lg:w-full ${
                           selected
-                            ? "border-[#d4a574]/35 bg-[#d4a574]/12 text-white"
-                            : "border-transparent text-[#a99b8d] hover:border-white/10 hover:bg-white/[0.035] hover:text-white"
+                            ? "border-[#b88953]/45 bg-[#ead8c5] text-[#35291f] dark:border-[#d4a574]/35 dark:bg-[#d4a574]/12 dark:text-white"
+                            : "border-transparent text-[#6b5b4c] hover:border-[#d8ccbf] hover:bg-white hover:text-[#30261f] dark:text-[#a99b8d] dark:hover:border-white/10 dark:hover:bg-white/[0.035] dark:hover:text-white"
                         }`}
                       >
                         <span
                           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                            selected ? "bg-[#d4a574] text-[#17130f]" : "bg-white/[0.05]"
+                            selected
+                              ? "bg-[#b88953] text-white dark:bg-[#d4a574] dark:text-[#17130f]"
+                              : "bg-[#e6ddd4] text-[#6b5b4c] dark:bg-white/[0.05] dark:text-[#a99b8d]"
                           }`}
                         >
                           <Icon size={17} />
                         </span>
                         <span>
-                          <span className="block text-[10px] font-bold tracking-[0.16em] text-[#8e8174]">
+                          <span className="block text-[10px] font-bold tracking-[0.16em] text-[#9a8066] dark:text-[#8e8174]">
                             {screen.eyebrow}
                           </span>
                           <span className="mt-0.5 block text-sm font-semibold">{screen.label}</span>
@@ -175,15 +177,15 @@ export default function ProductExplorer() {
                 </div>
               </aside>
 
-              <div className="min-w-0 bg-[#0f0d0c]">
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-5">
+              <div className="min-w-0 bg-[#f8f4ef] dark:bg-[#0f0d0c]">
+                <div className="flex items-center justify-between border-b border-[#d8ccbf] bg-[#fffdf9] px-4 py-3 dark:border-white/10 dark:bg-[#12100e] sm:px-5">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#d4a574]/12 text-[#d4a574]">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#ead8c5] text-[#9a6331] dark:bg-[#d4a574]/12 dark:text-[#d4a574]">
                       <ActiveIcon size={18} />
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{active.title}</div>
-                      <div className="text-xs text-[#7f7367]">
+                      <div className="truncate text-sm font-semibold text-[#30261f] dark:text-[#f5f3f0]">{active.title}</div>
+                      <div className="text-xs text-[#8d7c6b] dark:text-[#7f7367]">
                         {activeIndex + 1} / {screens.length}
                       </div>
                     </div>
@@ -192,7 +194,7 @@ export default function ProductExplorer() {
                   <button
                     type="button"
                     onClick={() => setExpanded(true)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-[#b8aa9b] transition hover:bg-white/[0.05] hover:text-white"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#d8ccbf] bg-white px-3 py-2 text-xs font-semibold text-[#6b5b4c] transition hover:bg-[#f1e8df] hover:text-[#30261f] dark:border-white/10 dark:bg-transparent dark:text-[#b8aa9b] dark:hover:bg-white/[0.05] dark:hover:text-white"
                   >
                     <Expand size={14} />
                     <span className="hidden sm:inline">ขยายภาพ</span>
@@ -216,11 +218,11 @@ export default function ProductExplorer() {
                   />
                 </button>
 
-                <div className="flex items-center justify-between border-t border-white/10 px-4 py-3 sm:px-5">
+                <div className="flex items-center justify-between border-t border-[#d8ccbf] bg-[#fffdf9] px-4 py-3 dark:border-white/10 dark:bg-[#12100e] sm:px-5">
                   <button
                     type="button"
                     onClick={() => go(-1)}
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#a99b8d] transition hover:text-white"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#6b5b4c] transition hover:text-[#30261f] dark:text-[#a99b8d] dark:hover:text-white"
                   >
                     <ArrowLeft size={15} />
                     ก่อนหน้า
@@ -228,7 +230,7 @@ export default function ProductExplorer() {
                   <button
                     type="button"
                     onClick={() => go(1)}
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#d4a574] transition hover:text-[#e7bc8d]"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#9a6331] transition hover:text-[#70461f] dark:text-[#d4a574] dark:hover:text-[#e7bc8d]"
                   >
                     หน้าถัดไป
                     <ArrowRight size={15} />
@@ -236,28 +238,28 @@ export default function ProductExplorer() {
                 </div>
               </div>
 
-              <aside className="border-t border-white/10 bg-[#1c1916] p-6 lg:border-l lg:border-t-0">
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">
+              <aside className="border-t border-[#d8ccbf] bg-[#f6f0e9] p-6 dark:border-white/10 dark:bg-[#1c1916] lg:border-l lg:border-t-0">
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#a76f36] dark:text-[#d4a574]">
                   {active.eyebrow} · {active.label}
                 </div>
-                <h2 className="mt-3 text-2xl font-bold leading-tight">{active.title}</h2>
+                <h2 className="mt-3 text-2xl font-bold leading-tight text-[#30261f] dark:text-[#f5f3f0]">{active.title}</h2>
 
                 <div className="mt-6">
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#7f7367]">ใครใช้</div>
-                  <div className="mt-2 font-semibold text-[#f0ebe5]">{active.role}</div>
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#8d7c6b] dark:text-[#7f7367]">ใครใช้</div>
+                  <div className="mt-2 font-semibold text-[#3e3127] dark:text-[#f0ebe5]">{active.role}</div>
                 </div>
 
                 <div className="mt-6">
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#7f7367]">งานที่ทำในหน้านี้</div>
-                  <p className="mt-2 text-sm leading-6 text-[#b8aa9b]">{active.job}</p>
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#8d7c6b] dark:text-[#7f7367]">งานที่ทำในหน้านี้</div>
+                  <p className="mt-2 text-sm leading-6 text-[#6b5b4c] dark:text-[#b8aa9b]">{active.job}</p>
                 </div>
 
-                <div className="mt-6 border-t border-white/10 pt-6">
-                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#7f7367]">จุดที่ควรมอง</div>
+                <div className="mt-6 border-t border-[#d8ccbf] pt-6 dark:border-white/10">
+                  <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#8d7c6b] dark:text-[#7f7367]">จุดที่ควรมอง</div>
                   <ul className="mt-3 space-y-3">
                     {active.lookFor.map((item) => (
-                      <li key={item} className="flex gap-2 text-sm leading-5 text-[#d6cbbf]">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#d4a574]" />
+                      <li key={item} className="flex gap-2 text-sm leading-5 text-[#544538] dark:text-[#d6cbbf]">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#b88953] dark:bg-[#d4a574]" />
                         <span>{item}</span>
                       </li>
                     ))}
@@ -267,11 +269,11 @@ export default function ProductExplorer() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.025] px-5 py-4 text-sm text-[#a99b8d] sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[#d8ccbf] bg-white/65 px-5 py-4 text-sm text-[#6b5b4c] dark:border-white/10 dark:bg-white/[0.025] dark:text-[#a99b8d] sm:flex-row sm:items-center sm:justify-between">
             <span>
               ถ้ายังไม่เข้าใจว่าแต่ละหน้าต่อกันอย่างไร ให้ดู Level 1 ก่อน — Product Explorer ตั้งใจแสดงเฉพาะระดับการใช้งาน
             </span>
-            <Link href="/#workflow" className="inline-flex shrink-0 items-center gap-2 font-semibold text-[#d4a574]">
+            <Link href="/#workflow" className="inline-flex shrink-0 items-center gap-2 font-semibold text-[#9a6331] dark:text-[#d4a574]">
               ดู system logic
               <ArrowRight size={14} />
             </Link>
@@ -281,7 +283,7 @@ export default function ProductExplorer() {
 
       {expanded && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-3 sm:p-6"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#efe8df]/95 p-3 backdrop-blur-sm dark:bg-black/90 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label={active.title}
@@ -289,12 +291,12 @@ export default function ProductExplorer() {
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/60 text-white"
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[#cdbba9] bg-white/90 text-[#30261f] shadow-sm dark:border-white/15 dark:bg-black/60 dark:text-white"
             aria-label="ปิดภาพขยาย"
           >
             <X size={20} />
           </button>
-          <div className="max-h-full max-w-[1600px] overflow-auto rounded-xl bg-[#ece7e1]">
+          <div className="max-h-full max-w-[1600px] overflow-auto rounded-xl border border-[#d8ccbf] bg-[#ece7e1] shadow-2xl dark:border-white/10">
             <Image
               src={active.image}
               alt={active.alt}
