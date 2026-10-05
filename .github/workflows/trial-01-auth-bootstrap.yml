@@ -1,0 +1,115 @@
+name: TRIAL-01 staging auth bootstrap
+
+on:
+  push:
+    branches:
+      - chore/trial-01-staging-readiness
+    paths:
+      - .github/workflows/trial-01-auth-bootstrap.yml
+
+permissions: {}
+
+concurrency:
+  group: staging-database-mutation
+  cancel-in-progress: false
+
+jobs:
+  bootstrap-trial-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: talvo-staging
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
+      POSTGRES_17_IMAGE: postgres:17.11-trixie@sha256:f86c774c7a51d0f05133f2ab70e4c384b589170458ab1df1ba83426d7cc30da7
+    steps:
+      - name: Bootstrap exact staging trial owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/chore/trial-01-staging-readiness" ]] || { echo "::error::Wrong branch"; exit 1; }
+          [[ "$STAGING_PROJECT_REF" == "qyospaplvrfpdoyiwpoy" ]] || { echo "::error::Unexpected staging ref"; exit 1; }
+          [[ "$PRODUCTION_PROJECT_REF" == "udgxrvtbhytqncmyhmiv" ]] || { echo "::error::Unexpected production ref"; exit 1; }
+          [[ "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF" ]] || { echo "::error::Staging equals production"; exit 1; }
+          [[ "$STAGING_DATABASE_URL" == *"$STAGING_PROJECT_REF"* ]] || { echo "::error::Staging URI mismatch"; exit 1; }
+          [[ "$STAGING_DATABASE_URL" != *"$PRODUCTION_PROJECT_REF"* ]] || { echo "::error::Production ref found in staging URI"; exit 1; }
+
+          TRIAL_PASSWORD="TalvoTrial-${GITHUB_RUN_ID}!Aa9"
+          export TRIAL_PASSWORD
+
+          docker run --rm -i \
+            -e STAGING_DATABASE_URL \
+            -e TRIAL_PASSWORD \
+            -e PGSSLMODE=require \
+            -e PGCONNECT_TIMEOUT=15 \
+            "$POSTGRES_17_IMAGE" sh -euc 'psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          begin;
+
+          update auth.users
+          set
+            instance_id = '00000000-0000-0000-0000-000000000000'::uuid,
+            aud = 'authenticated',
+            role = 'authenticated',
+            encrypted_password = extensions.crypt(current_setting('env.trial_password', true), extensions.gen_salt('bf')),
+            email_confirmed_at = now(),
+            confirmation_token = '',
+            recovery_token = '',
+            email_change_token_new = '',
+            email_change_token_current = '',
+            email_change = '',
+            phone_change = '',
+            phone_change_token = '',
+            reauthentication_token = '',
+            raw_app_meta_data = '{"provider":"email","providers":["email"]}'::jsonb,
+            raw_user_meta_data = '{"purpose":"talvo-trial-01"}'::jsonb,
+            is_super_admin = false,
+            created_at = coalesce(created_at, now()),
+            updated_at = now(),
+            is_sso_user = false,
+            is_anonymous = false,
+            deleted_at = null,
+            banned_until = null
+          where id = '71000000-0000-4000-8000-000000000001'::uuid
+            and email = 'trial01-owner@example.com';
+
+          insert into auth.identities (
+            provider_id,
+            user_id,
+            identity_data,
+            provider,
+            last_sign_in_at,
+            created_at,
+            updated_at
+          )
+          values (
+            '71000000-0000-4000-8000-000000000001',
+            '71000000-0000-4000-8000-000000000001'::uuid,
+            '{"sub":"71000000-0000-4000-8000-000000000001","email":"trial01-owner@example.com","email_verified":true,"phone_verified":false}'::jsonb,
+            'email',
+            now(),
+            now(),
+            now()
+          )
+          on conflict (provider_id, provider) do update
+          set
+            user_id = excluded.user_id,
+            identity_data = excluded.identity_data,
+            updated_at = now();
+
+          commit;
+
+          select
+            case when exists (
+              select 1
+              from auth.users u
+              join auth.identities i on i.user_id=u.id and i.provider='email'
+              where u.id='71000000-0000-4000-8000-000000000001'::uuid
+                and u.email='trial01-owner@example.com'
+                and u.aud='authenticated'
+                and u.role='authenticated'
+                and u.encrypted_password <> ''
+                and u.email_confirmed_at is not null
+                and i.provider_id=u.id::text
+            ) then 'PASS trial auth fixture ready' else 'FAIL trial auth fixture incomplete' end;
+          SQL
