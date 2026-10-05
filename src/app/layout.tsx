@@ -16,8 +16,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Coffee SaaS",
-    description: "Multi-tenant coffee shop management system",
+    title: {
+        default: "TALVO | ระบบจัดการร้านกาแฟ",
+        template: "%s | TALVO",
+    },
+    description: "ขายหน้าร้าน ตัดสต็อกตามสูตร และปิดยอดรายวันใน flow เดียวสำหรับร้านกาแฟและร้านเครื่องดื่ม",
 };
 
 const themeBootstrapScript = `
@@ -35,7 +38,7 @@ const themeBootstrapScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="th" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>

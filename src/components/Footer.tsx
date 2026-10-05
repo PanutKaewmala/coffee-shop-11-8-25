@@ -1,6 +1,7 @@
 "use client";
-import { usePathname } from "next/navigation";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { isPublicTenantPath } from "@/lib/publicTenantPath";
 
 export default function Footer({ shopName }: { shopName?: string | null }) {
@@ -9,112 +10,58 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
     const isDemoSystemRoute = pathname === "/demo-system" || pathname.startsWith("/demo-system/");
     const isTenantRoute = !isDemoSystemRoute && isPublicTenantPath(pathname);
     const tenantBase = isTenantRoute ? `/${pathname.split("/")[1]}` : "";
-    const displayName = isDemoSystemRoute ? "Coffee Shop System" : shopName?.trim() || "Coffee SaaS";
 
-    const quickLinks = isTenantRoute
-        ? [{ name: "Home", href: tenantBase || "/" }, { name: "Menu", href: `${tenantBase}/menu` }, { name: "News", href: `${tenantBase}/news` }]
-        : [{ name: "Features", href: "/#features" }, { name: "Demo Shops", href: "/#demo" }, { name: "Login", href: "/login" }];
-
-    if (isDemoSystemRoute) {
-        const marketingLinks = [
-            { name: "หน้าแรก", href: "/" },
-            { name: "แพ็กเกจ", href: "/#pricing" },
-            { name: "ตัวอย่างหน้าร้าน", href: "/coffeespace-a" },
-            { name: "ติดต่อ", href: "/#contact" },
-        ];
-
+    if (isTenantRoute) {
+        const displayName = shopName?.trim() || "Coffee Shop";
         return (
-            <footer className="border-t border-white/10 bg-[#12100e] px-6 py-8 text-[#f5f3f0]">
-                <div className="mx-auto flex max-w-6xl flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <footer className="bg-surface py-10 text-foreground transition-colors duration-300">
+                <div className="mx-auto grid max-w-6xl gap-6 px-6 sm:grid-cols-2 md:grid-cols-3">
                     <div>
-                        <div className="font-bold text-lg">{displayName}</div>
-                        <p className="text-sm text-[#d6cbbf]">ระบบร้านกาแฟ</p>
+                        <div className="text-lg font-bold">{displayName}</div>
+                        <p className="text-sm text-foreground/70">Coffee Shop</p>
                     </div>
-
-                    <nav className="flex flex-wrap gap-3 text-sm text-[#d6cbbf]">
-                        {marketingLinks.map((link) => (
-                            <Link key={link.href} href={link.href} className="transition hover:text-[#d4a574]">
-                                {link.name}
-                            </Link>
-                        ))}
-                    </nav>
-                </div>
-
-                <div className="mx-auto mt-6 max-w-6xl text-sm text-[#a39482]">
-                    © {year} {displayName} — All rights reserved
+                    <div>
+                        <div className="mb-2 text-sm text-foreground/70">Quick Links</div>
+                        <div className="flex flex-wrap gap-3 text-sm">
+                            <Link href={tenantBase || "/"}>Home</Link>
+                            <Link href={`${tenantBase}/menu`}>Menu</Link>
+                            <Link href={`${tenantBase}/news`}>News</Link>
+                            <Link href={`${tenantBase}/contact`}>Contact</Link>
+                        </div>
+                    </div>
+                    <div className="text-sm text-foreground/70">
+                        © {year} {displayName} — All rights reserved
+                    </div>
                 </div>
             </footer>
         );
     }
 
+    const dark = isDemoSystemRoute;
+
     return (
-        <footer className="py-10 transition-colors duration-300 bg-surface text-foreground">
-            <div className="max-w-6xl mx-auto grid md:grid-cols-3 sm:grid-cols-2 grid-cols-1 gap-6 px-6">
-                {/* Brand */}
-                <div>
-                    <div className="font-bold text-lg">{displayName}</div>
-                    <p className="text-sm text-foreground/70">
-                        {isTenantRoute ? "Coffee Shop" : "Coffee Shop SaaS"}
+        <footer
+            className={dark ? "border-t border-white/10 bg-[#12100e] px-6 py-10 text-[#f5f3f0]" : "border-t border-accent/10 bg-surface px-6 py-10 text-foreground"}
+        >
+            <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-[1fr_auto] md:items-start">
+                <div className="max-w-md">
+                    <div className="text-xl font-bold">TALVO</div>
+                    <p className={dark ? "mt-2 text-sm leading-6 text-[#d6cbbf]" : "mt-2 text-sm leading-6 text-text-secondary"}>
+                        ระบบจัดการร้านกาแฟที่เชื่อม POS สต็อก และการปิดยอดรายวันให้เป็น flow เดียวกัน
                     </p>
                 </div>
 
-                {/* Quick Links */}
-                <div>
-                    <div className="text-sm mb-2 text-foreground/70">Quick Links</div>
-                    <div className="flex flex-wrap gap-3 text-sm">
-                        {quickLinks.map((link) => (
-                            <a
-                                key={link.name}
-                                href={link.href}
-                                className="rounded-lg transition-colors hover:opacity-80"
-                            >
-                                {link.name}
-                            </a>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Newsletter / Login */}
-                <div>
-                    <div className="text-sm mb-2 text-foreground/70">
-                        {isTenantRoute ? "Newsletter" : "Get Started"}
-                    </div>
-                    {isTenantRoute ? (
-                        <div className="flex gap-2">
-                            <input
-                                type="email"
-                                placeholder="you@mail.com"
-                                className="
-                            flex-1 rounded-xl border border-text-muted/40 px-3 py-2 text-sm
-                            bg-surface text-foreground placeholder:text-text-muted
-                            border-foreground/20 transition-colors duration-300
-                            focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent
-                          "/>
-                            <button className="
-                                            px-6 py-2 rounded-full font-semibold text-white
-                                            bg-gradient-to-r from-accent to-accent-dark
-                                            text-surface
-                                            shadow-sm
-                                            transition-all duration-300
-                                            hover:brightness-110
-                                        ">
-                                Join
-                            </button>
-                        </div>
-                    ) : (
-                        <Link
-                            href="/login"
-                            className="px-6 py-2 rounded-full font-semibold text-white bg-gradient-to-r from-accent to-accent-dark transition-all duration-300 hover:brightness-110"
-                        >
-                            Login to Admin
-                        </Link>
-                    )}
-                </div>
+                <nav className={dark ? "flex flex-wrap gap-x-5 gap-y-3 text-sm text-[#d6cbbf]" : "flex flex-wrap gap-x-5 gap-y-3 text-sm text-text-secondary"}>
+                    <Link href="/#workflow" className="transition hover:text-accent">วิธีทำงาน</Link>
+                    <Link href="/#features" className="transition hover:text-accent">ฟีเจอร์</Link>
+                    <Link href="/#pricing" className="transition hover:text-accent">ราคา</Link>
+                    <Link href="/demo-system" className="transition hover:text-accent">Product tour</Link>
+                    <Link href="/#contact" className="transition hover:text-accent">ติดต่อ</Link>
+                </nav>
             </div>
 
-            {/* Bottom Row */}
-            <div className="max-w-6xl mx-auto mt-6 flex justify-center text-center text-sm text-foreground/70 px-6">
-                <div>© {year} {displayName} — All rights reserved</div>
+            <div className={dark ? "mx-auto mt-8 max-w-6xl border-t border-white/10 pt-5 text-sm text-[#a39482]" : "mx-auto mt-8 max-w-6xl border-t border-accent/10 pt-5 text-sm text-text-muted"}>
+                © {year} TALVO — ระบบจัดการร้านกาแฟ
             </div>
         </footer>
     );
