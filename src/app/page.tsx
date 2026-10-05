@@ -17,31 +17,35 @@ import {
 const workflow = [
   {
     step: "01",
-    title: "ขายหน้าร้าน",
-    description: "เลือกเมนู ตัวเลือก และวิธีชำระเงินจากหน้า POS เดียว พนักงานเห็นตะกร้าและยอดที่ต้องรับชัดเจน",
-    image: "/talvo-product/pos.png",
-    alt: "หน้า POS ของ TALVO ที่มี Americano อยู่ในตะกร้า",
+    icon: ReceiptText,
+    title: "รับออเดอร์",
+    description: "เมื่อปิดบิล TALVO บันทึกยอดขาย วิธีชำระ และรายการที่ลูกค้าซื้อเป็น transaction เดียว",
+    signal: "ยอดขายเกิดขึ้น",
+    example: "Americano 60 บาท",
   },
   {
     step: "02",
-    title: "ตัดวัตถุดิบตามสูตร",
-    description: "สูตรเชื่อมเมนูกับวัตถุดิบ เช่น Americano 1 แก้วใช้เมล็ดกาแฟ 20 กรัม เพื่อให้ยอดขายกระทบสต็อกจริง",
-    image: "/talvo-product/recipes.png",
-    alt: "หน้าสูตรเมนู TALVO ที่ผูก Americano กับเมล็ดกาแฟ 20 กรัม",
+    icon: Coffee,
+    title: "คำนวณผลต่อวัตถุดิบ",
+    description: "สูตรของเมนูเป็นตัวบอกว่าการขายนั้นต้องใช้วัตถุดิบอะไรและเท่าไร โดยไม่ต้องตัด stock ด้วยมือ",
+    signal: "สูตรกำหนดการใช้",
+    example: "Beans −20 g",
   },
   {
     step: "03",
-    title: "แก้บิลผิดโดยไม่ทำสต็อกเพี้ยน",
-    description: "ยกเลิกออเดอร์ พร้อมเลือกได้ว่าจะคืนวัตถุดิบเข้าสต็อกหรือไม่ และเก็บเหตุผลไว้ตรวจย้อนหลัง",
-    image: "/talvo-product/cancel-order.png",
-    alt: "หน้ารายละเอียดออเดอร์ที่ถูกยกเลิกและคืนสต็อกใน TALVO",
+    icon: RotateCcw,
+    title: "ถ้าบิลเปลี่ยน ผลกระทบเปลี่ยนตาม",
+    description: "ถ้ายกเลิกออเดอร์ เจ้าของเลือกได้ว่าจะคืนวัตถุดิบหรือไม่ เพื่อให้ยอดขายและ stock ยังอธิบายกันได้",
+    signal: "Cancel → restock",
+    example: "Beans +20 g",
   },
   {
     step: "04",
-    title: "ปิดวันด้วยตัวเลขที่ตรวจได้",
-    description: "สรุปยอดขาย เงินสด เงินที่ควรอยู่ในลิ้นชัก เงินที่นับได้จริง และส่วนต่างก่อนล็อกวันขาย",
-    image: "/talvo-product/daily-close.png",
-    alt: "หน้า Daily Close ของ TALVO หลังปิดยอดสำเร็จ",
+    icon: ClipboardCheck,
+    title: "รวมทั้งวันเป็น Daily Close",
+    description: "ปลายวัน TALVO รวมยอดขายและเงินที่ควรมี แล้วเทียบกับเงินจริงก่อนล็อก snapshot ของวัน",
+    signal: "ยอดขาย ↔ เงิน",
+    example: "Expected 120 = Counted 120",
   },
 ] as const;
 
@@ -95,7 +99,7 @@ const plans = [
     monthly: "500 บาท / เดือน",
     description: "สำหรับร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขาที่อยากให้ยอดขาย สต็อก และเงินปลายวันอยู่ใน flow เดียวกัน",
     items: ["POS + ออเดอร์ + ใบเสร็จ", "สูตรเมนู + สต็อกพร้อมใช้", "ยกเลิก/คืนสต็อก + Daily Close"],
-    cta: "ดู TALVO ทำงานจริง",
+    cta: "ดูหน้าจอ TALVO จริง",
     href: "/demo-system",
     featured: true,
   },
@@ -138,14 +142,14 @@ export default function HomePage() {
                 href="/demo-system"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-6 py-3.5 font-semibold text-white transition hover:bg-accent-dark"
               >
-                ดู TALVO ทำงานจริง
+                ดูหน้าจอ TALVO จริง
                 <ArrowRight size={18} />
               </Link>
               <Link
                 href="#workflow"
                 className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-surface/70 px-6 py-3.5 font-semibold text-foreground transition hover:border-accent/50"
               >
-                ดู flow การทำงาน
+                เข้าใจ flow ใน 30 วิ
               </Link>
             </div>
 
@@ -188,42 +192,54 @@ export default function HomePage() {
 
       <section id="workflow" className="scroll-mt-28 border-y border-accent/10 bg-surface/45 px-4 py-16 md:py-24">
         <div className="mx-auto max-w-6xl">
-          <div className="max-w-3xl">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">How TALVO works</div>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">หนึ่ง flow ตั้งแต่ลูกค้าสั่ง จนเจ้าของปิดร้าน</h2>
-            <p className="mt-4 text-lg leading-8 text-text-secondary">
-              TALVO ไม่ได้แยก POS, stock และยอดเงินเป็นคนละโลก ทุกส่วนถูกออกแบบให้ต่อกันเป็นเหตุและผล
+          <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
+            <div className="max-w-2xl">
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Level 1 · How TALVO works</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจ logic ทั้งระบบก่อน โดยไม่ต้องรู้ว่าปุ่มอยู่ตรงไหน</h2>
+            </div>
+            <p className="max-w-2xl text-lg leading-8 text-text-secondary lg:justify-self-end">
+              ส่วนนี้อธิบายเหตุและผลของข้อมูล: เมื่อขายหนึ่งแก้ว อะไรเปลี่ยนตามบ้าง
+              ถ้าบิลถูกยกเลิกอะไรต้องย้อนกลับ และสุดท้ายตัวเลขทั้งหมดไปจบตรงไหน
             </p>
           </div>
 
-          <div className="mt-10 grid gap-8">
-            {workflow.map((item, index) => (
-              <article
-                key={item.step}
-                className="grid overflow-hidden rounded-[28px] border border-accent/10 bg-background shadow-sm lg:grid-cols-[0.4fr_0.6fr]"
-              >
-                <div className="flex flex-col justify-center p-6 md:p-8 lg:p-10">
-                  <div className="text-sm font-bold tracking-[0.2em] text-accent">STEP {item.step}</div>
-                  <h3 className="mt-3 text-2xl font-bold md:text-3xl">{item.title}</h3>
-                  <p className="mt-4 leading-7 text-text-secondary">{item.description}</p>
-                  {index === 1 && (
-                    <div className="mt-5 inline-flex w-fit items-center gap-2 rounded-full bg-accent/10 px-3 py-2 text-sm font-semibold text-accent">
-                      <Coffee size={16} />
-                      Americano = เมล็ดกาแฟ 20 g
+          <div className="mt-10 rounded-[30px] border border-accent/15 bg-background p-5 shadow-sm md:p-7">
+            <div className="grid gap-3 lg:grid-cols-4">
+              {workflow.map(({ step, icon: Icon, title, description, signal, example }, index) => (
+                <div key={step} className="relative">
+                  <article className="h-full rounded-2xl border border-accent/10 bg-surface/55 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                        <Icon size={20} />
+                      </div>
+                      <div className="text-xs font-bold tracking-[0.18em] text-text-muted">STEP {step}</div>
+                    </div>
+                    <h3 className="mt-5 text-xl font-bold">{title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-text-secondary">{description}</p>
+                    <div className="mt-5 border-t border-accent/10 pt-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-accent">{signal}</div>
+                      <div className="mt-1 font-semibold">{example}</div>
+                    </div>
+                  </article>
+                  {index < workflow.length - 1 && (
+                    <div className="pointer-events-none absolute -bottom-3 left-1/2 z-10 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-accent/20 bg-background text-accent lg:-right-[18px] lg:bottom-auto lg:left-auto lg:top-1/2 lg:-translate-y-1/2 lg:translate-x-0">
+                      <ArrowRight size={13} className="rotate-90 lg:rotate-0" />
                     </div>
                   )}
                 </div>
-                <div className="border-t border-accent/10 bg-[#efe9e2] lg:border-l lg:border-t-0">
-                  <Image
-                    src={item.image}
-                    alt={item.alt}
-                    width={1440}
-                    height={900}
-                    className="h-full w-full object-cover object-top"
-                  />
-                </div>
-              </article>
-            ))}
+              ))}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-[#17130f] px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างหนึ่ง transaction</div>
+                <div className="mt-1 font-semibold">ขาย Americano 60 → ใช้ Beans 20 g → ถ้ายกเลิกคืน 20 g → ปลายวันยอดเข้า Daily Close</div>
+              </div>
+              <Link href="/demo-system" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#d4a574]">
+                ต่อไปดูหน้าจอจริง
+                <ArrowRight size={15} />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -365,34 +381,43 @@ export default function HomePage() {
       </section>
 
       <section id="demo" className="scroll-mt-28 px-4 py-16 md:py-24">
-        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-center">
-          <div>
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Product proof</div>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">ไม่ต้องจินตนาการจากรายการฟีเจอร์</h2>
-            <p className="mt-4 leading-7 text-text-secondary">
-              ดูหน้าจอ TALVO จริง ไล่จาก POS ไปถึงสูตร สต็อก การยกเลิก และ Daily Close พร้อมคำอธิบายว่าทุกหน้าต่อกันอย่างไร
-            </p>
-            <Link
-              href="/demo-system"
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 font-semibold text-white transition hover:bg-accent-dark"
-            >
-              เปิด product tour
-              <ArrowRight size={17} />
-            </Link>
-          </div>
+        <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-background p-6 shadow-sm md:p-9">
+          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Level 2 · TALVO Product Tour</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจ flow แล้ว ค่อยลงไปดูว่าหน้าจอจริงทำงานยังไง</h2>
+              <p className="mt-4 leading-7 text-text-secondary">
+                Product Tour ไม่เล่า logic ซ้ำอีกครั้ง แต่พาเข้าไปดู UI จริงทีละหน้า:
+                พนักงานกดตรงไหน เจ้าของเห็นอะไร และ state ต่าง ๆ หน้าตาเป็นอย่างไร
+              </p>
+              <Link
+                href="/demo-system"
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 font-semibold text-white transition hover:bg-accent-dark"
+              >
+                เปิด Product Tour
+                <ArrowRight size={17} />
+              </Link>
+            </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ["/talvo-product/stock.png", "สต็อกพร้อมใช้"],
-              ["/talvo-product/orders.png", "ออเดอร์"],
-              ["/talvo-product/cancel-order.png", "ยกเลิกและคืนสต็อก"],
-              ["/talvo-product/overview.png", "Overview"],
-            ].map(([src, label]) => (
-              <div key={src} className="overflow-hidden rounded-2xl border border-accent/10 bg-surface shadow-sm">
-                <Image src={src} alt={label} width={1440} height={900} className="aspect-[16/10] w-full object-cover object-top" />
-                <div className="px-4 py-3 text-sm font-semibold">{label}</div>
+            <div className="rounded-[24px] bg-[#17130f] p-6 text-white md:p-8">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าจอจริง · Detailed walkthrough</div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {[
+                  ["01", "POS", "รับออเดอร์และชำระเงิน"],
+                  ["02", "Recipe", "กำหนดวัตถุดิบต่อเมนู"],
+                  ["03", "Usable stock", "ดูของพร้อมใช้และรับเข้า"],
+                  ["04", "Orders", "ย้อนดูรายการขาย"],
+                  ["05", "Cancellation", "ยกเลิกและคืนสต็อก"],
+                  ["06", "Daily Close", "ปิดยอดและล็อกวัน"],
+                ].map(([step, title, description]) => (
+                  <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                    <div className="text-xs font-bold text-[#d4a574]">{step}</div>
+                    <div className="mt-1 font-semibold">{title}</div>
+                    <div className="mt-1 text-sm text-[#b8aa9b]">{description}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>
@@ -414,7 +439,7 @@ export default function HomePage() {
             </div>
             <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
               <Link href="/demo-system" className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 font-semibold text-white hover:bg-accent-dark">
-                ดูระบบก่อน
+                ดูหน้าจอ TALVO จริง
                 <ArrowRight size={17} />
               </Link>
               <a href="tel:0630427563" className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-background/80 px-6 py-3 font-semibold">

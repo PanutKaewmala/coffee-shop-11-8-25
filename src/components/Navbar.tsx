@@ -50,7 +50,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
         ? "ดูเมนู"
         : isDemoSystemRoute
         ? "คุย flow ร้าน"
-        : "ดูระบบจริง";
+        : "ดูหน้าจอจริง";
 
     return (
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">

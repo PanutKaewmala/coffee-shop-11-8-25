@@ -4,8 +4,8 @@ import type { Metadata } from "next";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "ดู TALVO ทำงานจริง",
-  description: "ดู flow จริงของ TALVO ตั้งแต่ขายหน้าร้าน สูตรเมนู สต็อก ยกเลิกออเดอร์ จนถึงปิดยอดรายวัน",
+  title: "TALVO Product Tour",
+  description: "สำรวจหน้าจอจริงของ TALVO ตั้งแต่ POS สูตรเมนู สต็อก ออเดอร์ การยกเลิก จนถึง Daily Close",
 };
 
 const screens = [
@@ -70,23 +70,23 @@ export default function DemoSystemPage() {
         <div className="mx-auto max-w-6xl py-16 sm:py-24">
           <div className="max-w-3xl">
             <div className="inline-flex rounded-full border border-[#d4a574]/30 bg-[#d4a574]/10 px-4 py-2 text-sm font-semibold text-[#d4a574]">
-              TALVO Product Tour
+              Level 2 · TALVO Product Tour
             </div>
             <h1 className="mt-6 text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
-              ดู TALVO ทำงานจริง
-              <span className="block text-[#d4a574]">ตั้งแต่รับออเดอร์จนปิดยอด</span>
+              สำรวจหน้าจอ TALVO จริง
+              <span className="block text-[#d4a574]">ดูว่าแต่ละงานทำตรงไหนและเห็นอะไร</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-[#d6cbbf] sm:text-lg">
-              ภาพทั้งหมดมาจากระบบ TALVO ตัวจริงใน environment ทดลอง
-              เราเรียงตาม flow ร้าน เพื่อให้เห็นว่าแต่ละหน้าต่อกันอย่างไร ไม่ใช่แค่รวม screenshot หลายหน้าไว้ด้วยกัน
+              ถ้าหน้า Landing ทำให้เข้าใจ logic ของระบบแล้ว หน้านี้จะลงลึกที่ UI จริง:
+              หน้าขายอยู่ตรงไหน สูตรถูกตั้งอย่างไร stock ดูตรงไหน และตอนปิดวันเจ้าของเห็นตัวเลขอะไรบ้าง
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="#flow"
+                href="#screens"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d4a574] px-6 py-3 font-semibold text-[#12100e] transition hover:bg-[#e0b88b]"
               >
-                ไล่ดู flow จริง
+                เริ่มดู 6 หน้าจอ
                 <ArrowRight size={18} />
               </Link>
               <Link
@@ -101,8 +101,12 @@ export default function DemoSystemPage() {
       </section>
 
       <section className="border-y border-white/10 bg-[#1b1917] px-4 py-7">
-        <div className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {["POS → order", "Order → stock", "Cancel → restock", "Sales → Daily Close"].map((item) => (
+        <div className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            "เห็นหน้าจอเต็ม ไม่ใช่ mockup",
+            "อธิบายว่าใครใช้หน้าจอนี้",
+            "บอกว่าต้องดู/กดอะไรในแต่ละงาน",
+          ].map((item) => (
             <div key={item} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-[#d6cbbf]">
               <CheckCircle2 size={16} className="text-[#d4a574]" />
               {item}
@@ -111,13 +115,14 @@ export default function DemoSystemPage() {
         </div>
       </section>
 
-      <section id="flow" className="scroll-mt-28 px-4 py-16 sm:py-20">
+      <section id="screens" className="scroll-mt-28 px-4 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-3xl">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">One connected workflow</div>
-            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">ไม่ต้องเดาว่าแต่ละฟีเจอร์เอาไปใช้ตอนไหน</h2>
+            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">6 real screens</div>
+            <h2 className="mt-3 text-3xl font-bold sm:text-4xl">จากภาพรวมของระบบ มาลงรายละเอียดที่หน้าจอจริง</h2>
             <p className="mt-4 leading-8 text-[#d6cbbf]">
-              ไล่จากงานที่พนักงานทำตอนขาย ไปจนถึงงานที่เจ้าของทำตอนปิดวัน แล้วดูว่าข้อมูลชุดเดียวกันไหลผ่านระบบอย่างไร
+              แต่ละส่วนด้านล่างตอบคำถามระดับการใช้งาน: หน้านี้มีไว้ทำอะไร ใครเป็นคนใช้ และข้อมูลสำคัญอยู่ตรงไหน
+              ส่วน logic ว่าทำไมข้อมูลถึงไหลต่อกัน ให้กลับไปดู How TALVO works บนหน้าแรก
             </p>
           </div>
 
