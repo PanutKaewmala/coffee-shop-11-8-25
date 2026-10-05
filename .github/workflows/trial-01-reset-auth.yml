@@ -1,0 +1,83 @@
+name: TRIAL-01 reset staging auth
+
+on:
+  push:
+    branches:
+      - chore/trial-01-staging-readiness
+    paths:
+      - .github/workflows/trial-01-reset-auth.yml
+
+permissions: {}
+
+concurrency:
+  group: staging-database-mutation
+  cancel-in-progress: false
+
+jobs:
+  reset-trial-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: talvo-staging
+    env:
+      STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      STAGING_PROJECT_REF: ${{ vars.STAGING_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
+    steps:
+      - name: Reset exact staging trial password
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$GITHUB_REF" = "refs/heads/chore/trial-01-staging-readiness"
+          test "$STAGING_PROJECT_REF" = "qyospaplvrfpdoyiwpoy"
+          test "$PRODUCTION_PROJECT_REF" = "udgxrvtbhytqncmyhmiv"
+          test "$STAGING_PROJECT_REF" != "$PRODUCTION_PROJECT_REF"
+
+          case "$STAGING_DATABASE_URL" in
+            *"$STAGING_PROJECT_REF"*) ;;
+            *) echo "staging URI mismatch"; exit 1 ;;
+          esac
+
+          case "$STAGING_DATABASE_URL" in
+            *"$PRODUCTION_PROJECT_REF"*) echo "production ref found in staging URI"; exit 1 ;;
+          esac
+
+          docker run --rm -i \
+            -e STAGING_DATABASE_URL \
+            -e PGSSLMODE=require \
+            postgres:17-alpine \
+            sh -c 'psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atq' <<'SQL'
+          begin;
+
+          update auth.users
+          set encrypted_password = '$2y$12$1ZYwIoXQMVnl/8F9wQC5M.NPp6b4WybFDi0f8vbh8j4ygNFieDQaa',
+              email_confirmed_at = coalesce(email_confirmed_at, now()),
+              confirmation_token = '',
+              recovery_token = '',
+              updated_at = now()
+          where id = '71000000-0000-4000-8000-000000000001'::uuid
+            and email = 'trial01-owner@example.com';
+
+          do $$
+          begin
+            if not exists (
+              select 1
+              from auth.users u
+              join auth.identities i
+                on i.user_id = u.id
+               and i.provider = 'email'
+              where u.id = '71000000-0000-4000-8000-000000000001'::uuid
+                and u.email = 'trial01-owner@example.com'
+                and u.aud = 'authenticated'
+                and u.role = 'authenticated'
+                and u.encrypted_password like '$2%'
+                and u.email_confirmed_at is not null
+                and i.provider_id = u.id::text
+            ) then
+              raise exception 'trial auth fixture incomplete';
+            end if;
+          end $$;
+
+          commit;
+          select 'PASS trial staging auth reset';
+          SQL
