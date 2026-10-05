@@ -125,13 +125,23 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
     return { action: "go", href: resolveDestination(access, nextHref) };
 }
 
-export default function LoginClient() {
+type LoginClientProps = {
+    initialEmail?: string;
+    initialPassword?: string;
+    demoLabel?: string;
+};
+
+export default function LoginClient({
+    initialEmail = "owner@demo.com",
+    initialPassword = "123456",
+    demoLabel = "Demo: owner@demo.com / 123456 • staff@demo.com / 123456",
+}: LoginClientProps) {
     const router = useRouter();
     const sp = useSearchParams();
     const next = useMemo(() => safeNext(sp.get("next")), [sp]);
 
-    const [email, setEmail] = useState("owner@demo.com");
-    const [password, setPassword] = useState("123456");
+    const [email, setEmail] = useState(initialEmail);
+    const [password, setPassword] = useState(initialPassword);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -260,7 +270,7 @@ export default function LoginClient() {
                     </button>
 
                     <div className="text-xs text-[var(--text-secondary)] opacity-80">
-                        Demo: owner@demo.com / 123456 • staff@demo.com / 123456
+                        {demoLabel}
                     </div>
                 </form>
             </div>
