@@ -25,7 +25,7 @@ export function roleHome(role) {
 
 const OWNER_ONLY_PATHS = [
     "/admin", "/admin/reports", "/admin/menu", "/admin/recipes",
-    "/admin/ingredients/archived", "/admin/news", "/admin/branch", "/admin/contact",
+    "/admin/ingredients/archived", "/admin/news", "/admin/branch", "/admin/staff", "/admin/contact",
 ];
 
 export function isOwnerOnlyPath(pathname) {

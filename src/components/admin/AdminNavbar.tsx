@@ -23,7 +23,7 @@ export interface AdminNavbarProps {
 type ShopOption = { id: string; name: string };
 type BranchOption = { id: string; name: string };
 type NavbarResponse = {
-    me?: { id: string; email: string | null } | null;
+    me?: { id: string; email: string | null; displayName?: string | null } | null;
     shops?: ShopOption[];
     branches?: BranchOption[];
 };
@@ -137,7 +137,8 @@ export default function AdminNavbar({
                 if (!alive) return;
 
                 const email = data.me?.email ?? null;
-                setMeLabel(email ? email : "ผู้ดูแลร้าน");
+                const displayName = data.me?.displayName?.trim() || "";
+                setMeLabel(displayName || email || "ผู้ดูแลร้าน");
                 const nextShops = Array.isArray(data.shops) ? data.shops : [];
                 const nextBranches = Array.isArray(data.branches) ? data.branches : [];
                 setShops(nextShops);
@@ -211,7 +212,7 @@ export default function AdminNavbar({
                     {posMode ? <Link
                         href={currentShopRole === "owner" ? "/admin" : "/admin/orders"}
                         className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium hover:bg-[var(--accent)]/10"
-                    >← กลับหน้าจัดการ</Link> : <button
+                    >{currentShopRole === "owner" ? "← กลับหน้าจัดการ" : "← ดูรายการขาย"}</Link> : <button
                         className="lg:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onToggleSidebar}
                         aria-label="เปิดเมนูด้านข้าง"

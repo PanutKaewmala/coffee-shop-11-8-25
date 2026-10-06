@@ -891,13 +891,19 @@ export default function DailyClosePage() {
         }
     };
 
+    const staffDailyClose = role === "staff" && permissions?.canFinalize === false;
+
     return (
         <div className="p-6 text-text-primary">
             <div className="mx-auto max-w-7xl space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">ปิดยอดรายวัน</h1>
-                        <p className="mt-1 text-sm text-text-secondary">เช็กยอดขายกับเงินสดก่อนจบวัน</p>
+                        <h1 className="text-2xl font-bold">{staffDailyClose ? "นับเงินปลายวัน" : "ปิดยอดรายวัน"}</h1>
+                        <p className="mt-1 text-sm text-text-secondary">
+                            {staffDailyClose
+                                ? "นับเงินสดและบันทึกยอดให้เจ้าของร้านตรวจต่อ"
+                                : "เช็กยอดขายกับเงินสดก่อนจบวัน"}
+                        </p>
                     </div>
 
                     <div className="flex flex-wrap items-end gap-2">
@@ -928,6 +934,12 @@ export default function DailyClosePage() {
                         </button>
                     </div>
                 </div>
+
+                {staffDailyClose ? (
+                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-text-primary">
+                        หน้านี้ใช้สำหรับนับเงินสดและบันทึกยอดปลายวัน เจ้าของร้านจะเป็นคนตรวจและกดปิดยอดอีกครั้ง
+                    </div>
+                ) : null}
 
                 {isCloseFinalized ? (
                     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-text-primary">

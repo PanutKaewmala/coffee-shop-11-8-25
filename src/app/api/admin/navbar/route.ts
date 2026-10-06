@@ -52,8 +52,14 @@ export async function GET() {
         branches = (br ?? []).map((b) => ({ id: b.id, name: b.name }));
     }
 
+    const rawDisplayName = user.user_metadata?.display_name;
+
     return NextResponse.json({
-        me: { id: user.id, email: user.email ?? null },
+        me: {
+            id: user.id,
+            email: user.email ?? null,
+            displayName: typeof rawDisplayName === "string" && rawDisplayName.trim() ? rawDisplayName.trim() : null,
+        },
         currentShopId,
         currentBranchId,
         shops,

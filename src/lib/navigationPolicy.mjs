@@ -19,6 +19,7 @@ export const NAV_SECTIONS = [
         { label: "ปิดยอดรายวัน", path: "/admin/daily-close", roles: ["owner", "staff"] },
         { label: "ข่าวสารหน้าเว็บ", path: "/admin/news", roles: ["owner"] },
         { label: "สาขา", path: "/admin/branch", roles: ["owner"] },
+        { label: "พนักงาน", path: "/admin/staff", roles: ["owner"] },
         { label: "ข้อความจากลูกค้า", path: "/admin/contact", roles: ["owner"] },
     ] },
 ];
@@ -27,13 +28,17 @@ export function navigationForRole(rawRole) {
     const role = parseAppRole(rawRole);
     if (!role) return [];
     if (role === "staff") {
-        const order = ["/pos", "/admin/orders", "/admin/ingredients", "/admin/stock", "/admin/daily-close"];
+        const order = ["/pos", "/admin/orders", "/admin/daily-close"];
         return [{
             title: "หน้างาน",
             items: NAV_SECTIONS.flatMap((section) => section.items)
                 .filter((item) => order.includes(item.path))
                 .sort((a, b) => order.indexOf(a.path) - order.indexOf(b.path))
-                .map((item) => ({ ...item, children: undefined })),
+                .map((item) => ({
+                    ...item,
+                    label: item.path === "/admin/daily-close" ? "นับเงินปลายวัน" : item.label,
+                    children: undefined,
+                })),
         }];
     }
     return NAV_SECTIONS.map((section) => ({
