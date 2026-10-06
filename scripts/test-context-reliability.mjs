@@ -56,8 +56,9 @@ const ownerLayouts = [
     "src/app/admin/(protected)/staff/layout.tsx",
 ];
 assert.match(adminShell, /<AdminRoleProvider role=/, "admin shell should provide the parent-resolved role to nested routes");
-assert.match(ownerGuard, /role === "staff"[\s\S]*router\.replace\("\/pos"\)/, "staff should be redirected away from owner-only routes");
-assert.match(ownerGuard, /if \(role !== "owner"\)/, "owner-only children must stay gated until the owner role is known");
+assert.match(ownerGuard, /parentRole === "staff"[\s\S]*router\.replace\("\/pos"\)/, "staff should be redirected away from owner-only routes");
+assert.match(ownerGuard, /fetch\("\/api\/context\/access"[\s\S]*cache: "no-store"/, "owner guard should recover by resolving access when inherited role is unavailable");
+assert.match(ownerGuard, /!checked \|\| resolvedRole !== "owner"/, "owner-only children must stay gated until the owner role is known");
 for (const path of ownerLayouts) {
     const source = fs.readFileSync(path, "utf8");
     assert.match(source, /OwnerOnlyClientGuard/, `${path} should reuse the parent role instead of repeating the server identity lookup`);
