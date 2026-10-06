@@ -18,67 +18,67 @@ const workflow = [
   {
     step: "01",
     icon: ReceiptText,
-    title: "รับออเดอร์",
-    description: "เมื่อปิดบิล TALVO บันทึกยอดขาย วิธีชำระ และรายการที่ลูกค้าซื้อไว้ในรายการเดียว",
-    signal: "ยอดขายเกิดขึ้น",
+    title: "รับออเดอร์และคิดเงิน",
+    description: "พอปิดบิล TALVO จะเก็บยอดขาย วิธีจ่าย และรายการที่ลูกค้าซื้อไว้ให้ครบในบิลเดียว",
+    signal: "ขายแล้ว ระบบบันทึกให้",
     example: "Americano 60 บาท",
   },
   {
     step: "02",
     icon: Coffee,
-    title: "คำนวณผลต่อวัตถุดิบ",
-    description: "สูตรของเมนูเป็นตัวบอกว่าการขายนั้นต้องใช้วัตถุดิบอะไรและเท่าไร โดยไม่ต้องตัดสต็อกด้วยมือ",
-    signal: "สูตรกำหนดการใช้",
+    title: "ตัดวัตถุดิบตามสูตร",
+    description: "แต่ละเมนูผูกสูตรไว้ พอขาย ระบบจะตัดวัตถุดิบตามที่ใช้จริง ไม่ต้องมานั่งตัดสต็อกเอง",
+    signal: "ขาย 1 แก้ว → ตัดตามสูตร",
     example: "เมล็ดกาแฟ −20 กรัม",
   },
   {
     step: "03",
     icon: RotateCcw,
-    title: "ถ้าบิลเปลี่ยน ผลกระทบเปลี่ยนตาม",
-    description: "ถ้ายกเลิกออเดอร์ เจ้าของเลือกได้ว่าจะคืนวัตถุดิบหรือไม่ เพื่อให้ยอดขายและสต็อกยังอธิบายกันได้",
-    signal: "ยกเลิก → คืนสต็อก",
+    title: "ยกเลิกบิล ก็เลือกคืนสต็อกได้",
+    description: "ถ้าต้องยกเลิกบิล เลือกได้ว่าจะคืนวัตถุดิบกลับเข้าสต็อกไหม ยอดขายกับของในร้านเลยยังตรงกัน",
+    signal: "ยกเลิกแล้วเลือกคืนของ",
     example: "เมล็ดกาแฟ +20 กรัม",
   },
   {
     step: "04",
     icon: ClipboardCheck,
-    title: "รวมยอดและปิดวัน",
-    description: "ปลายวัน TALVO รวมยอดขายและเงินที่ควรมี แล้วเทียบกับเงินจริงก่อนยืนยันปิดวัน",
-    signal: "ยอดขาย ↔ เงิน",
-    example: "ควรมี 120 = นับได้ 120",
+    title: "จบวันแล้วเช็กว่าเงินตรงไหม",
+    description: "ปลายวัน TALVO จะรวมยอดขายกับเงินที่ควรมี แล้วให้เทียบกับเงินที่นับได้จริงก่อนปิดวัน",
+    signal: "ยอดขายเทียบกับเงินจริง",
+    example: "ควรมี 120 บาท · นับได้ 120 บาท",
   },
 ] as const;
 
 const capabilities = [
   {
     icon: ReceiptText,
-    title: "ขายหน้าร้านได้เร็ว",
-    description: "เลือกเมนู → ใส่ตะกร้า → รับเงิน → ปิดบิล โดยไม่ต้องไล่ผ่านหน้าจอหลายชั้น",
+    title: "รับออเดอร์ได้ไวขึ้น",
+    description: "เลือกเมนู ปรับรายละเอียด ใส่บิล รับเงิน แล้วจบงานในหน้าเดียว",
   },
   {
     icon: Boxes,
-    title: "สต็อกที่ผูกกับยอดขาย",
-    description: "รับของเข้า ดูของพร้อมใช้ ตั้งขั้นต่ำ และให้สูตรเป็นตัวกำหนดว่าขายหนึ่งแก้วต้องตัดอะไร",
+    title: "สต็อกขยับตามที่ขายจริง",
+    description: "พอขายเมนูไหน ระบบจะตัดวัตถุดิบตามสูตรของเมนูนั้น พร้อมดูของเหลือและตั้งเตือนของใกล้หมดได้",
   },
   {
     icon: RotateCcw,
-    title: "ยกเลิกบิลอย่างมีผลกระทบที่ชัด",
-    description: "รู้ว่าบิลถูกยกเลิกเพราะอะไร คืนสต็อกหรือไม่ และไม่ปล่อยให้ยอดขายกับวัตถุดิบเดินคนละทาง",
+    title: "ยกเลิกบิลแล้วเลือกได้ว่าจะคืนสต็อกไหม",
+    description: "เก็บเหตุผลที่ยกเลิกไว้ และเลือกได้ว่าจะคืนวัตถุดิบกลับเข้าสต็อกหรือไม่",
   },
   {
     icon: ClipboardCheck,
-    title: "ปิดยอดรายวัน",
-    description: "เทียบยอดขายกับเงินจริง ปิดยอด และเก็บข้อมูลสรุปของวัน เพื่อให้วันถัดไปเริ่มจากฐานที่ชัดเจน",
+    title: "ปิดยอดแล้วเช็กเงินง่าย",
+    description: "เทียบยอดขายกับเงินที่นับได้จริง เห็นส่วนต่างก่อนปิดวัน และกลับมาดูย้อนหลังได้",
   },
   {
     icon: ShieldCheck,
-    title: "แยกสิทธิ์เจ้าของและพนักงาน",
-    description: "แยกงานที่พนักงานทำได้ออกจากงานที่เจ้าของต้องเป็นคนตัดสินใจ เช่น การปิดยอดและยกเลิกบางกรณี",
+    title: "เจ้าของกับพนักงาน แยกสิทธิ์กันชัดเจน",
+    description: "พนักงานทำงานหน้าร้านได้ ส่วนงานสำคัญอย่างปิดยอดหรือยกเลิกบางกรณีให้เจ้าของเป็นคนจัดการ",
   },
   {
     icon: BadgeCheck,
-    title: "มองความผิดปกติก่อนต้องนั่งไล่หา",
-    description: "หน้าภาพรวมช่วยพาไปยังสต็อกต่ำ รายการที่ต้องตรวจ และสถานะสำคัญของสาขาที่กำลังใช้งาน",
+    title: "เห็นของใกล้หมดก่อนต้องไล่เช็กเอง",
+    description: "หน้าแรกช่วยบอกว่าวัตถุดิบอะไรใกล้หมด มีอะไรต้องเช็ก และวันนี้ร้านมีเรื่องไหนที่ควรดูเป็นพิเศษ",
   },
 ] as const;
 
@@ -87,8 +87,8 @@ const plans = [
     name: "เมนูออนไลน์",
     setup: "1,500 บาท",
     monthly: "300 บาท / เดือน",
-    description: "สำหรับร้านที่อยากเริ่มจากหน้าเมนูและข้อมูลร้านให้ลูกค้าดูออนไลน์",
-    items: ["หน้าเมนูสาธารณะ", "หมวดหมู่และราคา", "ข่าวสารและช่องทางติดต่อ"],
+    description: "เหมาะกับร้านที่อยากมีหน้าเมนู ราคา และข้อมูลร้านให้ลูกค้าเปิดดูได้ง่าย ๆ",
+    items: ["หน้าเมนูให้ลูกค้าดู", "หมวดหมู่และราคา", "ข่าวสารและช่องทางติดต่อ"],
     cta: "ดูตัวอย่างหน้าร้าน",
     href: "/coffeespace-a",
     featured: false,
@@ -97,19 +97,19 @@ const plans = [
     name: "TALVO ร้านเดียว",
     setup: "2,500 บาท",
     monthly: "500 บาท / เดือน",
-    description: "สำหรับร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขาที่อยากให้ยอดขาย สต็อก และเงินปลายวันเชื่อมกันในขั้นตอนเดียว",
-    items: ["ขายหน้าร้าน + ออเดอร์ + ใบเสร็จ", "สูตรเมนู + สต็อกพร้อมใช้", "ยกเลิก/คืนสต็อก + ปิดยอดรายวัน"],
-    cta: "ดูหน้าจอ TALVO จริง",
+    description: "เหมาะกับร้าน 1 สาขาที่อยากให้การขาย สต็อก และการเช็กเงินปลายวันอยู่ในที่เดียวกัน",
+    items: ["รับออเดอร์ + คิดเงิน + ดูบิล", "สูตรเมนู + สต็อก", "ยกเลิกบิล + คืนสต็อก + ปิดยอด"],
+    cta: "ลองดูหน้าจอจริง",
     href: "/demo-system",
     featured: true,
   },
   {
     name: "ปรับตามร้าน",
     setup: "เริ่มต้น 10,000 บาท",
-    monthly: "ตามขอบเขต",
-    description: "สำหรับร้านที่ใช้ขั้นตอนหลักได้แล้วและต้องการสิทธิ์ รายงาน หรือวิธีทำงานเฉพาะของตัวเอง",
-    items: ["วิเคราะห์วิธีทำงานของร้าน", "ปรับระบบตามขอบเขต", "วางแผนสิทธิ์และการใช้งาน"],
-    cta: "คุยความต้องการ",
+    monthly: "ประเมินตามงานที่ต้องทำ",
+    description: "ถ้าร้านมีวิธีทำงานเฉพาะหรืออยากเพิ่มรายงานและสิทธิ์การใช้งาน ค่อยคุยรายละเอียดแล้วปรับให้เข้ากับร้าน",
+    items: ["ดูวิธีทำงานของร้านก่อน", "เลือกสิ่งที่ต้องปรับจริง ๆ", "กำหนดสิทธิ์ให้เหมาะกับแต่ละคน"],
+    cta: "คุยรายละเอียด",
     href: "#contact",
     featured: false,
   },
@@ -124,17 +124,17 @@ export default function HomePage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent">
               <Sparkles size={16} />
-              TALVO · ระบบจัดการร้านกาแฟ
+              TALVO · ช่วยให้งานหน้าร้านต่อกันง่ายขึ้น
             </div>
 
             <h1 className="mt-6 max-w-3xl text-4xl font-bold leading-[1.12] tracking-tight md:text-6xl">
-              ขายหน้าร้าน ตัดสต็อก และปิดยอด
-              <span className="text-accent"> ให้จบในระบบเดียว</span>
+              รับออเดอร์ ตัดสต็อก และเช็กยอด
+              <span className="text-accent"> ให้อยู่ในที่เดียว</span>
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-8 text-text-secondary">
-              สำหรับร้านกาแฟและร้านเครื่องดื่ม 1 สาขา ที่เริ่มเจอปัญหาว่า
-              ยอดขาย เงิน และวัตถุดิบไม่ตรงกัน TALVO เชื่อมงานตั้งแต่รับออเดอร์จนถึงปิดวันให้ตรวจย้อนกลับได้
+              ถ้าร้านเริ่มเจอปัญหายอดขาย เงินสด และสต็อกไม่ค่อยตรงกัน TALVO ช่วยเชื่อมตั้งแต่รับออเดอร์
+              ตัดวัตถุดิบ ไปจนถึงเช็กยอดปลายวัน ทุกอย่างย้อนดูได้จากที่เดียว
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -142,19 +142,19 @@ export default function HomePage() {
                 href="/demo-system"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-6 py-3.5 font-semibold text-white transition hover:bg-accent-dark"
               >
-                ดูหน้าจอ TALVO จริง
+                ลองดูหน้าจอจริง
                 <ArrowRight size={18} />
               </Link>
               <Link
                 href="#workflow"
                 className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-surface/70 px-6 py-3.5 font-semibold text-foreground transition hover:border-accent/50"
               >
-                ดูวิธีทำงานใน 30 วิ
+                ดูว่าระบบทำงานยังไง
               </Link>
             </div>
 
             <div className="mt-8 grid gap-3 text-sm sm:grid-cols-3">
-              {["ขายหน้าร้านได้จริง", "สต็อกตามสูตร", "ปิดยอดรายวัน"].map((item) => (
+              {["รับออเดอร์และคิดเงิน", "ตัดสต็อกตามสูตร", "เช็กยอดก่อนปิดวัน"].map((item) => (
                 <div key={item} className="flex items-center gap-2 text-text-secondary">
                   <CheckCircle2 size={17} className="text-accent" />
                   {item}
@@ -169,7 +169,7 @@ export default function HomePage() {
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/35" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/25" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/15" />
-                <span className="ml-2 text-xs font-medium text-text-muted">หน้าขาย TALVO</span>
+                <span className="ml-2 text-xs font-medium text-text-muted">หน้ารับออเดอร์</span>
               </div>
               <Image
                 src="/talvo-product/pos.png"
@@ -182,9 +182,9 @@ export default function HomePage() {
             </div>
 
             <div className="absolute -bottom-5 left-4 right-4 grid gap-2 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:right-6 sm:w-[310px]">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">หนึ่งแก้วเกิดอะไรขึ้น</div>
-              <div className="font-semibold">Americano 60 บาท → Beans −20 g</div>
-              <div className="text-sm text-text-secondary">ยอดขายและสต็อกเปลี่ยนจากรายการขายเดียวกัน</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">ขาย 1 แก้ว ระบบทำอะไรให้บ้าง</div>
+              <div className="font-semibold">Americano 60 บาท → ตัดเมล็ดกาแฟ 20 กรัม</div>
+              <div className="text-sm text-text-secondary">ขายครั้งเดียว ยอดขายกับสต็อกขยับพร้อมกัน</div>
             </div>
           </div>
         </div>
@@ -194,12 +194,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
             <div className="max-w-2xl">
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">วิธีทำงานของ TALVO</div>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">ดูว่าขายหนึ่งแก้วแล้วอะไรเปลี่ยนตามบ้าง</h2>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ขาย 1 แก้ว แล้วเกิดอะไรขึ้นบ้าง</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">ตั้งแต่รับเงิน ไปจนถึงสต็อกและยอดปลายวัน</h2>
             </div>
             <p className="max-w-2xl text-lg leading-8 text-text-secondary lg:justify-self-end">
-              ส่วนนี้อธิบายเหตุและผลของข้อมูล: เมื่อขายหนึ่งแก้ว อะไรเปลี่ยนตามบ้าง
-              ถ้าบิลถูกยกเลิกอะไรต้องย้อนกลับ และสุดท้ายตัวเลขทั้งหมดไปจบตรงไหน
+              ลองไล่ดูง่าย ๆ ว่าพอขายหนึ่งแก้ว ระบบบันทึกอะไร ตัดอะไร ถ้ายกเลิกต้องคืนอะไร
+              แล้วตอนจบวันเอาตัวเลขทั้งหมดมาเช็กกันยังไง
             </p>
           </div>
 
@@ -212,7 +212,7 @@ export default function HomePage() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
                         <Icon size={20} />
                       </div>
-                      <div className="text-xs font-bold tracking-[0.18em] text-text-muted">ขั้นที่ {step}</div>
+                      <div className="text-xs font-bold tracking-[0.18em] text-text-muted">{step}</div>
                     </div>
                     <h3 className="mt-5 text-xl font-bold">{title}</h3>
                     <p className="mt-3 text-sm leading-6 text-text-secondary">{description}</p>
@@ -232,11 +232,11 @@ export default function HomePage() {
 
             <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-[#17130f] px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างหนึ่งรายการขาย</div>
-                <div className="mt-1 font-semibold">ขาย Americano 60 บาท → ใช้เมล็ดกาแฟ 20 กรัม → ถ้ายกเลิกคืน 20 กรัม → ปลายวันรวมเข้ายอดปิดวัน</div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างจริง</div>
+                <div className="mt-1 font-semibold">ขาย Americano 60 บาท → ตัดเมล็ดกาแฟ 20 กรัม → ถ้ายกเลิกก็คืนได้ → ปลายวันเอายอดไปเช็กเงิน</div>
               </div>
               <Link href="/demo-system" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#d4a574]">
-                ต่อไปดูหน้าจอจริง
+                ดูหน้าจอจริงต่อ
                 <ArrowRight size={15} />
               </Link>
             </div>
@@ -248,10 +248,10 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
             <div className="max-w-xl">
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">สิ่งที่ร้านจะได้</div>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">สิ่งที่ร้านต้องใช้ทุกวัน โดยไม่ต้องเริ่มจากระบบใหญ่</h2>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">TALVO ช่วยอะไรในร้านบ้าง</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">งานหลักที่ต้องทำทุกวัน เอามาไว้ด้วยกัน</h2>
               <p className="mt-4 leading-7 text-text-secondary">
-                เราโฟกัสงานที่เกิดทุกวันในร้านหนึ่งสาขาก่อน แล้วทำให้แต่ละงานส่งข้อมูลต่อกันได้จริง
+                เริ่มจากงานที่ร้านใช้ทุกวันก่อน แล้วให้ข้อมูลจากแต่ละส่วนต่อกันเอง ไม่ต้องจดซ้ำหลายที่
               </p>
             </div>
 
@@ -273,14 +273,14 @@ export default function HomePage() {
       <section className="px-4 py-8 md:py-12">
         <div className="mx-auto grid max-w-6xl overflow-hidden rounded-[30px] border border-accent/15 bg-[#17130f] text-white lg:grid-cols-[0.85fr_1.15fr]">
           <div className="flex flex-col justify-center p-7 md:p-10">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">ปิดยอดอย่างมั่นใจ</div>
-            <h2 className="mt-3 text-3xl font-bold">สิ้นวันรู้ว่าเงินควรเหลือเท่าไร</h2>
+            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">ก่อนกลับบ้าน เช็กให้ชัวร์ว่าเงินตรง</div>
+            <h2 className="mt-3 text-3xl font-bold">จบวันแล้วรู้ว่าเงินวันนี้ตรงไหม</h2>
             <p className="mt-4 leading-7 text-[#d6cbbf]">
-              หน้าปิดยอดรายวันเก็บยอดขาย วิธีชำระ เงินที่ควรอยู่ในลิ้นชัก เงินที่นับได้จริง และส่วนต่าง
-              หลังปิดยอด TALVO จะกันการสร้างบิลใหม่ของวันนั้น
+              TALVO จะรวมยอดขายและเงินที่ควรมีไว้ให้ แล้วให้ใส่ยอดที่นับได้จริงเพื่อดูว่าตรงกันไหม
+              พอยืนยันปิดวันแล้ว ระบบจะไม่ให้เปิดบิลเพิ่มในวันนั้น
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {["ยอดขายรวม", "เงินสดที่ควรมี", "เงินที่นับได้จริง", "ส่วนต่าง"].map((item) => (
+              {["ยอดขายวันนี้", "เงินที่ควรมี", "เงินที่นับได้จริง", "ต่างกันเท่าไร"].map((item) => (
                 <div key={item} className="flex items-center gap-2 text-sm text-[#d6cbbf]">
                   <CheckCircle2 size={16} className="text-[#d4a574]" />
                   {item}
@@ -303,26 +303,26 @@ export default function HomePage() {
           <div className="rounded-[26px] border border-emerald-500/20 bg-emerald-500/[0.06] p-6 md:p-8">
             <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 size={20} />
-              TALVO เหมาะกับ
+              TALVO น่าจะเหมาะ ถ้าร้านคุณ…
             </div>
             <ul className="mt-5 space-y-3 text-text-secondary">
-              <li>• ร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขา</li>
-              <li>• ร้านที่เริ่มมีพนักงานและต้องการขั้นตอนที่ทุกคนทำตามได้</li>
-              <li>• ร้านที่อยากให้ยอดขาย สต็อก และเงินปลายวันสัมพันธ์กัน</li>
-              <li>• เจ้าของที่อยากตรวจย้อนหลังโดยไม่ต้องรวมข้อมูลจากหลายที่</li>
+              <li>• เป็นร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขา</li>
+              <li>• เริ่มมีพนักงาน และอยากให้ทุกคนทำงานเป็นทางเดียวกัน</li>
+              <li>• อยากให้ยอดขาย สต็อก และเงินปลายวันตรงกันมากขึ้น</li>
+              <li>• อยากย้อนดูได้ว่าแต่ละวันขายอะไร เงินเท่าไร และสต็อกขยับยังไง</li>
             </ul>
           </div>
 
           <div className="rounded-[26px] border border-accent/15 bg-surface/60 p-6 md:p-8">
             <div className="flex items-center gap-2 font-bold">
               <XCircle size={20} className="text-accent" />
-              สิ่งที่ยังไม่ใช่เป้าหมายหลักตอนนี้
+              อาจยังไม่เหมาะ ถ้าร้านคุณต้องการ…
             </div>
             <ul className="mt-5 space-y-3 text-text-secondary">
-              <li>• เครือร้านหลายสิบสาขาที่ต้องการระบบขนาดใหญ่เต็มรูปแบบ</li>
-              <li>• ระบบบัญชีและภาษีครบวงจรแทนซอฟต์แวร์บัญชี</li>
-              <li>• การเชื่อมอุปกรณ์เฉพาะทางที่ยังไม่ได้ประเมิน</li>
-              <li>• วิธีทำงานเฉพาะร้านที่ยังไม่ได้ตกลงขอบเขต</li>
+              <li>• ระบบสำหรับเครือร้านหลายสิบสาขา</li>
+              <li>• ระบบบัญชีและภาษีแบบครบวงจร</li>
+              <li>• เชื่อมอุปกรณ์เฉพาะทางที่ต้องพัฒนาเพิ่ม</li>
+              <li>• ขั้นตอนเฉพาะร้านที่ต้องออกแบบใหม่ทั้งหมด</li>
             </ul>
           </div>
         </div>
@@ -332,7 +332,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="max-w-3xl">
             <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ราคา</div>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เริ่มเท่าที่ร้านต้องใช้ แล้วค่อยขยายเมื่อมีเหตุผล</h2>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เริ่มจากเท่าที่ร้านใช้จริง ไม่ต้องซื้อเกินจำเป็น</h2>
           </div>
 
           <div className="mt-10 grid gap-5 lg:grid-cols-3">
@@ -351,7 +351,7 @@ export default function HomePage() {
                 <h3 className="text-2xl font-bold">{plan.name}</h3>
                 <p className="mt-3 min-h-[72px] text-sm leading-6 text-text-secondary">{plan.description}</p>
                 <div className="mt-5 rounded-2xl bg-surface p-4">
-                  <div className="text-xs text-text-muted">ค่าตั้งค่า</div>
+                  <div className="text-xs text-text-muted">ค่าติดตั้ง</div>
                   <div className="mt-1 text-xl font-bold text-accent">{plan.setup}</div>
                   <div className="mt-3 border-t border-accent/10 pt-3 text-sm font-semibold">{plan.monthly}</div>
                 </div>
@@ -384,11 +384,11 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-background p-6 shadow-sm md:p-9">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ดูหน้าจอจริงของ TALVO</div>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจวิธีทำงานแล้ว ลองดูหน้าจอที่ใช้จริง</h2>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">อยากเห็นตอนใช้งานจริง?</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">ลองเปิดดูทีละหน้า ว่าคนในร้านต้องกดอะไรบ้าง</h2>
               <p className="mt-4 leading-7 text-text-secondary">
-                ส่วนนี้ไม่อธิบายวิธีทำงานซ้ำ แต่พาไปดูหน้าจอจริงทีละหน้า:
-                พนักงานกดตรงไหน เจ้าของเห็นอะไร และแต่ละสถานะแสดงผลอย่างไร
+                มีตัวอย่างหน้าที่ใช้จริงให้ดูตั้งแต่รับออเดอร์ ตั้งสูตร เช็กสต็อก
+                ย้อนดูบิล ไปจนถึงปิดยอด
               </p>
               <Link
                 href="/demo-system"
@@ -400,15 +400,15 @@ export default function HomePage() {
             </div>
 
             <div className="rounded-[24px] bg-[#17130f] p-6 text-white md:p-8">
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าจอจริง · ดูทีละงาน</div>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าหลักที่ใช้ในร้าน</div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {[
-                  ["01", "ขายหน้าร้าน", "รับออเดอร์และชำระเงิน"],
-                  ["02", "สูตรเมนู", "กำหนดวัตถุดิบต่อเมนู"],
-                  ["03", "สต็อกพร้อมใช้", "ดูของพร้อมใช้และรับเข้า"],
-                  ["04", "ออเดอร์", "ย้อนดูรายการขาย"],
-                  ["05", "ยกเลิกบิล", "ยกเลิกและคืนสต็อก"],
-                  ["06", "ปิดยอดรายวัน", "ปิดยอดและล็อกวัน"],
+                  ["01", "รับออเดอร์", "เลือกเมนู รับเงิน และปิดบิล"],
+                  ["02", "สูตรเมนู", "บอกว่าหนึ่งแก้วใช้วัตถุดิบอะไรบ้าง"],
+                  ["03", "สต็อก", "ดูของเหลือ รับของเข้า และตั้งเตือน"],
+                  ["04", "รายการขาย", "ย้อนดูบิลที่ขายไปแล้ว"],
+                  ["05", "ยกเลิกบิล", "บันทึกเหตุผลและเลือกคืนสต็อก"],
+                  ["06", "ปิดยอด", "เทียบเงินแล้วจบวัน"],
                 ].map(([step, title, description]) => (
                   <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                     <div className="text-xs font-bold text-[#d4a574]">{step}</div>
@@ -426,10 +426,10 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-gradient-to-br from-accent/15 via-surface to-background p-7 md:p-10">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
             <div className="max-w-2xl">
-              <h2 className="text-3xl font-bold">อยากลอง TALVO กับร้านจริงของคุณ?</h2>
+              <h2 className="text-3xl font-bold">อยากรู้ว่า TALVO เข้ากับร้านคุณไหม?</h2>
               <p className="mt-4 leading-7 text-text-secondary">
-                บอกวิธีทำงานปัจจุบันของร้านมาได้ ว่ารับออเดอร์ เก็บเงิน เช็กสต็อก และปิดยอดกันอย่างไร
-                เราจะดูตรงกันก่อนว่า TALVO ร้านเดียวครอบคลุมพอหรือมีอะไรที่ต้องปรับ
+                เล่าให้ฟังได้ว่าตอนนี้ร้านรับออเดอร์ เก็บเงิน เช็กสต็อก และปิดยอดกันยังไง
+                แล้วค่อยดูด้วยกันว่า TALVO ใช้ได้เลยหรือควรปรับตรงไหนก่อน
               </p>
               <div className="mt-5 text-sm leading-7 text-text-secondary">
                 <div>LINE: <span className="font-semibold text-foreground">gkaewmala</span></div>
@@ -439,11 +439,11 @@ export default function HomePage() {
             </div>
             <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
               <Link href="/demo-system" className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-6 py-3 font-semibold text-white hover:bg-accent-dark">
-                ดูหน้าจอ TALVO จริง
+                ลองดูหน้าจอจริง
                 <ArrowRight size={17} />
               </Link>
               <a href="tel:0630427563" className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-background/80 px-6 py-3 font-semibold">
-                โทรสอบถาม
+                โทรคุยกัน
               </a>
             </div>
           </div>

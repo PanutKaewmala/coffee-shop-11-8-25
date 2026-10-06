@@ -49,7 +49,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
     const ctaLabel = isTenantRoute
         ? "ดูเมนู"
         : isDemoSystemRoute
-        ? "คุยเรื่องร้าน"
+        ? "คุยกับเรา"
         : "ดูหน้าจอจริง";
 
     return (

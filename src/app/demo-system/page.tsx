@@ -3,7 +3,7 @@ import ProductExplorer from "./ProductExplorer";
 
 export const metadata: Metadata = {
   title: "ดูหน้าจอจริงของ TALVO",
-  description: "สำรวจหน้าจอจริงของ TALVO ทีละงาน ตั้งแต่ขายหน้าร้าน สูตรเมนู สต็อก ออเดอร์ การยกเลิก จนถึงปิดยอดรายวัน",
+  description: "ลองดูหน้าจอที่ใช้จริงของ TALVO ตั้งแต่รับออเดอร์ ตั้งสูตร เช็กสต็อก ย้อนดูบิล ยกเลิกบิล ไปจนถึงปิดยอด",
 };
 
 export default function DemoSystemPage() {

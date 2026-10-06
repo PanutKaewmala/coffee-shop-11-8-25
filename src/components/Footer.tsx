@@ -47,7 +47,7 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
                 <div className="max-w-md">
                     <div className="text-xl font-bold">TALVO</div>
                     <p className={dark ? "mt-2 text-sm leading-6 text-[#d6cbbf]" : "mt-2 text-sm leading-6 text-text-secondary"}>
-                        ระบบจัดการร้านกาแฟที่เชื่อมการขายหน้าร้าน สต็อก และการปิดยอดรายวันไว้ในขั้นตอนเดียวกัน
+                        ช่วยให้การรับออเดอร์ สต็อก และการเช็กยอดปลายวันอยู่ในที่เดียวกัน
                     </p>
                 </div>
 
