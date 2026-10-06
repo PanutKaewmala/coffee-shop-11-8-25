@@ -27,6 +27,8 @@ assert.match(route, /code: "ORDER_NOT_FOUND"/, "cross-shop and cross-branch miss
 assert.match(route, /canonical business-day transaction lock/, "the route delegates its closed-day check to the atomic RPC");
 assert.doesNotMatch(route, /checkDailyClose\(/, "the route has no race-prone preflight-only close guard");
 
+assert.match(route, /p_note:\s*cancelNote\s*\?\?\s*["']{2}/, "blank cancellation notes keep p_note in the RPC payload instead of omitting the parameter");
+assert.doesNotMatch(route, /noteForRpc:\s*string\s*\|\s*undefined/, "the cancellation RPC never omits p_note through undefined");
 assert.match(route, /p_restock: restock/, "the validated restock flag is forwarded unchanged");
 assert.match(route, /already_refunded: data\.already_refunded/, "RPC retry/restock idempotency state remains in the success contract");
 assert.match(route, /already_cancelled: data\.already_cancelled/, "repeat cancellation state remains in the success contract");

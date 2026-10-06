@@ -108,20 +108,22 @@ function getRanges(preset: Preset, todayKey: string) {
 }
 
 async function sumAndCountPaid(
+    admin: ReturnType<typeof getSupabaseAdmin>,
     startISO: string,
     endISO: string,
     currentShopId: string,
     currentBranchId: string | null
 ): Promise<SumResult> {
-    const supabase = await getSupabaseServer();
-
-    let paidQ = supabase
+    // Authorization and tenant/branch checks happen before this helper is called.
+    // Use the same scoped server-side data path as the order list so KPI totals
+    // cannot silently disagree with rows because of a different RLS path.
+    let paidQ = admin
         .from("orders")
         .select("total", { count: "exact" })
         .eq("status", "paid")
         .eq("shop_id", currentShopId);
 
-    let legacyQ = supabase
+    let legacyQ = admin
         .from("orders")
         .select("total", { count: "exact" })
         .eq("status", "paid")
@@ -202,8 +204,8 @@ export async function GET(req: NextRequest) {
         const { current, previous } = getRanges(preset, todayKey);
 
         const [cur, prev] = await Promise.all([
-            sumAndCountPaid(current.startISO, current.endISO, currentShopId, currentBranchId),
-            sumAndCountPaid(previous.startISO, previous.endISO, currentShopId, currentBranchId),
+            sumAndCountPaid(admin, current.startISO, current.endISO, currentShopId, currentBranchId),
+            sumAndCountPaid(admin, previous.startISO, previous.endISO, currentShopId, currentBranchId),
         ]);
 
         const out: Summary = {

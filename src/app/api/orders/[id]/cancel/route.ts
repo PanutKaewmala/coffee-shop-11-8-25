@@ -177,12 +177,13 @@ export async function POST(
             return NextResponse.json({ error: "Note is required when reason is 'อื่นๆ'" }, { status: 400 });
         }
 
-        const noteForRpc: string | undefined = cancelNote ?? undefined;
-
         const { data, error } = await supabase.rpc("cancel_order", {
             p_order_id: rawId,
             p_reason: reason,
-            p_note: noteForRpc,
+            // Keep the RPC parameter present even when the optional note is blank.
+            // PostgREST resolves RPC signatures from the supplied keys; the
+            // database normalizes an empty note back to NULL.
+            p_note: cancelNote ?? "",
             // Audit actor is derived exclusively from the authenticated user's
             // current-shop membership. Client-supplied actor fields are ignored.
             p_cancelled_by: actorRole,

@@ -95,4 +95,10 @@ const route = fs.readFileSync(path.join(root, "src/app/api/reports/sales/route.t
 for (const behavior of ["crypto.randomUUID()", "REPORTS_INTERNAL_ERROR", "requestId", "console.error", 'stage: ReportsErrorStage']) assert.ok(route.includes(behavior), behavior);
 assert.ok(!route.includes("error instanceof Error ? error.message"));
 
+const revenueSummaryRoute = fs.readFileSync(path.join(root, "src/app/api/revenue/summary/route.ts"), "utf8");
+assert.match(revenueSummaryRoute, /sumAndCountPaid\(\s*admin:/, "revenue KPI helper receives the authorized server-side client");
+assert.match(revenueSummaryRoute, /let paidQ = admin[\s\S]*\.eq\("shop_id", currentShopId\)/, "paid KPI query stays scoped to the current shop");
+assert.match(revenueSummaryRoute, /paidQ = paidQ\.eq\("branch_id", currentBranchId\)/, "paid KPI query stays scoped to the current branch");
+assert.match(revenueSummaryRoute, /sumAndCountPaid\(admin, current\.startISO/, "current KPI uses the authorized scoped client");
+
 console.log(`reports stabilization: ${invalid.length} invalid URL cases, 3 empty-midnight cases, and ${queries.length} normal range cases passed`);
