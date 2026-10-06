@@ -702,7 +702,7 @@ export default function IngredientsClient() {
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="คลังวัตถุดิบ">
+            <Card title="วัตถุดิบ">
                 {showRestockGuide ? (
                     <div ref={restockGuideRef} tabIndex={-1} className="mb-4 rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-sm text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:text-emerald-200" role="status">
                         <div className="flex items-start justify-between gap-3">
@@ -735,7 +735,7 @@ export default function IngredientsClient() {
                 ) : null}
                 {!permissionLoading && !canManageIngredients ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-                        คุณปรับสต็อกได้ แต่เจ้าของร้านเท่านั้นที่เพิ่ม เปลี่ยนชื่อ หรือนำวัตถุดิบเข้าคลังเก่าได้
+                        คุณปรับสต็อกได้ แต่การเพิ่ม เปลี่ยนชื่อ หรือเก็บวัตถุดิบออกจากรายการใช้งาน ต้องให้เจ้าของร้านเป็นคนทำ
                     </div>
                 ) : null}
                 {/* Filters */}
@@ -764,7 +764,7 @@ export default function IngredientsClient() {
                                     ? "bg-red-500/10 text-red-600 border-red-500/30"
                                     : "bg-surface text-text-secondary border-text-muted/25 hover:border-text-muted/40"
                                 }`}
-                            title="แสดงวัตถุดิบที่ควรจัดการวันนี้"
+                            title="แสดงวัตถุดิบที่ต้องจัดการวันนี้"
                         >
                             ต้องจัดการวันนี้
                             {summary.low > 0 ? (
@@ -815,11 +815,11 @@ export default function IngredientsClient() {
                     >
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm text-text-secondary">ควรจัดการวันนี้</div>
+                                <div className="text-sm text-text-secondary">ต้องจัดการวันนี้</div>
                                 <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.low} รายการ
                                 </div>
-                                <div className="text-xs text-text-muted mt-1">หมดแล้ว หรือคาดว่าจะหมดภายใน 3 วัน</div>
+                                <div className="text-xs text-text-muted mt-1">หมดแล้ว หรือมีแนวโน้มว่าจะหมดใน 3 วัน</div>
                             </div>
                             <div className="px-2 py-1 rounded-full text-xs border border-red-500/30 text-red-600 bg-red-500/10">
                                 ด่วน
@@ -854,11 +854,11 @@ export default function IngredientsClient() {
                     >
                         <div className="flex items-start justify-between">
                             <div>
-                                <div className="text-sm text-text-secondary">ควรเตรียมสั่งเพิ่ม</div>
+                                <div className="text-sm text-text-secondary">ควรเตรียมเติมของ</div>
                                 <div className="text-2xl font-semibold mt-1 tabular-nums text-text-primary">
                                     {summary.warn} รายการ
                                 </div>
-                                <div className="text-xs text-text-muted mt-1">คาดว่าจะหมดภายใน 7 วัน</div>
+                                <div className="text-xs text-text-muted mt-1">มีแนวโน้มว่าจะหมดใน 7 วัน</div>
                             </div>
                             <div className="px-2 py-1 rounded-full text-xs border border-yellow-500/30 text-yellow-700 bg-yellow-500/10">
                                 เฝ้าดู
@@ -896,7 +896,7 @@ export default function IngredientsClient() {
                     </div>
                 ) : null}
                 {loading ? (
-                    <p className="text-text-muted">กำลังโหลดคลังวัตถุดิบ...</p>
+                    <p className="text-text-muted">กำลังโหลดวัตถุดิบ...</p>
                 ) : paginatedItems.length === 0 ? (
                     <div className="rounded-xl border border-text-muted/20 bg-surface px-4 py-8 text-center">
                         <div className="font-medium text-text-primary">
@@ -1036,7 +1036,7 @@ export default function IngredientsClient() {
                             <>
                                 <input
                                     type="number"
-                                    placeholder="จำนวนเริ่มต้น"
+                                    placeholder="จำนวนตั้งต้น"
                                     value={stock}
                                     onChange={(e) => setStock(e.target.value)}
                                     disabled={saving}
@@ -1044,7 +1044,7 @@ export default function IngredientsClient() {
                                 />
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-text-primary">ประเภทวัตถุดิบ</label>
+                                    <label className="text-sm font-medium text-text-primary">ประเภท</label>
                                     <select
                                         value={type}
                                         onChange={(e) => setType(e.target.value as IngredientType)}

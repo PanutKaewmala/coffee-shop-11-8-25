@@ -411,10 +411,10 @@ export default function MenuAdminPage() {
     ====================================================================== */
     return (
         <div className="p-6 space-y-6">
-            <Card title="จัดการเมนู">
+            <Card title="เมนูของร้าน">
                 {!permissionLoading && !canManageMenu ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการเมนูได้
+                        คุณดูเมนูได้ แต่การเพิ่ม แก้ไข หรือลบเมนูต้องให้เจ้าของร้านเป็นคนทำ
                     </div>
                 ) : null}
                 {/* Filter bar */}
@@ -448,7 +448,7 @@ export default function MenuAdminPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <div className="px-2 py-1.5 text-xs text-[var(--text-secondary)]">
-                                                กรองตาม “หมวดเมนู”
+                                                เลือกหมวดเมนู
                                             </div>
                                             <SelectItem value="all">ทั้งหมด</SelectItem>
                                             {categories.map((c) => (
@@ -475,7 +475,7 @@ export default function MenuAdminPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <div className="px-2 py-1.5 text-xs text-[var(--text-secondary)]">
-                                                กรองตาม “รูปแบบการขาย” (ร้อน/เย็น/ปั่น/ไซส์ ฯลฯ)
+                                                เลือกรูปแบบการขาย เช่น ร้อน เย็น ปั่น หรือขนาด
                                             </div>
                                             <SelectItem value="all">ทั้งหมด</SelectItem>
                                             {serveTypesDB.map((s) => (
@@ -690,7 +690,7 @@ export default function MenuAdminPage() {
                                                             className="h-9 px-3 whitespace-nowrap"
                                                             onClick={() => deleteMenu(item.id, item.name)}
                                                         >
-                                                            ลบทั้งร้าน
+                                                            ลบเมนูออกจากร้าน
                                                         </Button>
                                                     </>
                                                 ) : (

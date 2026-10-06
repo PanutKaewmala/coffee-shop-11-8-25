@@ -190,7 +190,7 @@ function OrderHoverPreview({ preview }: { preview: HoverPreview | null }) {
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="text-xs text-[var(--text-muted)]">รายละเอียดออเดอร์</div>
+                    <div className="text-xs text-[var(--text-muted)]">รายละเอียดรายการขาย</div>
                     <div className="mt-1 truncate font-mono text-base font-semibold text-[var(--accent)]">
                         {shortId(order.id)}
                     </div>
@@ -264,7 +264,7 @@ function OrderHoverPreview({ preview }: { preview: HoverPreview | null }) {
             <div className="mt-3 border-t border-white/10 pt-3 text-xs text-[var(--text-muted)]">
                 <div>{safeDateTH(order.created_at)}</div>
                 <div className="mt-1 font-medium text-[var(--accent)]">
-                    คลิกเลขออเดอร์เพื่อดูรายละเอียดทั้งหมด
+                    กดเลขรายการเพื่อดูรายละเอียดทั้งหมด
                 </div>
             </div>
         </div>
@@ -639,7 +639,7 @@ export default function OrdersClient() {
     return (
         <div className="p-3 sm:p-6">
             <div className="max-w-6xl mx-auto space-y-6">
-                <Card title="รายการออเดอร์ทั้งหมด">
+                <Card title="รายการขายทั้งหมด">
                     {/* FILTER + SEARCH */}
                     <div className="space-y-2 sm:space-y-3">
                         <div className="[&>div]:mb-0">
@@ -665,7 +665,7 @@ export default function OrdersClient() {
                                 <input
                                     type="date"
                                     value={exactDate}
-                                    aria-label="เลือกวันที่ออเดอร์"
+                                    aria-label="เลือกวันที่ขาย"
                                     onChange={(event) => {
                                         setExactDate(event.target.value);
                                         setPage(1);
@@ -698,7 +698,7 @@ export default function OrdersClient() {
                                         setPage(1);
                                         setInputPage("1");
                                     }}
-                                    placeholder="ค้นหาเลขออเดอร์ / ข้อความ / รายการสินค้า"
+                                    placeholder="ค้นหาเลขรายการ / ข้อความ / สินค้า"
                                 />
                             </div>
 
@@ -814,7 +814,7 @@ export default function OrdersClient() {
                             {/* EMPTY */}
                             {isEmpty ? (
                                 <div className="p-6 rounded-xl bg-card border border-border/40 text-center">
-                                    <div className="text-lg font-semibold">ไม่พบออเดอร์</div>
+                                    <div className="text-lg font-semibold">ไม่พบรายการขาย</div>
                                     <div className="text-text-secondary mt-1">
                                         ลองเปลี่ยนช่วงเวลา หรือเคลียร์คำค้นหา
                                     </div>
@@ -895,7 +895,7 @@ export default function OrdersClient() {
                                     </div>
 
                                     <div className="text-xs text-text-secondary mt-2">
-                                        คำแนะนำ: คลิกเลขออเดอร์เพื่อดูรายละเอียดหรือยกเลิก
+                                        กดเลขรายการเพื่อดูรายละเอียด หรือยกเลิกรายการได้
                                     </div>
 
                                     {/* PAGINATION */}

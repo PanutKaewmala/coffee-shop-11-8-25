@@ -102,12 +102,12 @@ function MinimumEditor({ item, stock, onSaved }: { item: UsableStockItem; stock:
         finally { setSaving(false); }
     }
     return <form onSubmit={save} className="space-y-2">
-        <label className="block text-sm" htmlFor={`minimum-${item.source_type}-${item.id}`}>ขั้นต่ำ ({item.unit})</label>
+        <label className="block text-sm" htmlFor={`minimum-${item.source_type}-${item.id}`}>เตือนเมื่อเหลือไม่เกิน ({item.unit})</label>
         <div className="flex flex-wrap gap-2">
-            <input id={`minimum-${item.source_type}-${item.id}`} aria-label={`ขั้นต่ำ ${item.name}`} inputMode="decimal" value={value} disabled={saving}
-                onChange={(event) => setValue(event.target.value)} placeholder="ยังไม่ตั้งขั้นต่ำ"
+            <input id={`minimum-${item.source_type}-${item.id}`} aria-label={`จุดเตือน ${item.name}`} inputMode="decimal" value={value} disabled={saving}
+                onChange={(event) => setValue(event.target.value)} placeholder="ยังไม่ได้ตั้ง"
                 className={inputClass} />
-            <button type="submit" disabled={saving} className={buttonClass}>{saving ? "กำลังบันทึก…" : "บันทึกขั้นต่ำ"}</button>
+            <button type="submit" disabled={saving} className={buttonClass}>{saving ? "กำลังบันทึก…" : "บันทึก"}</button>
         </div>
         {error ? <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p> : null}
     </form>;
@@ -139,34 +139,34 @@ export default function UsableStockPanel() {
     }) : [];
     return <div className="space-y-5 p-4 md:p-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
-            <div><h1 className="text-2xl font-bold text-[var(--text-primary)]">สต็อกพร้อมใช้</h1>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">วัตถุดิบที่ใช้ในสูตรของสาขา{stock ? ` · ${stock.branch_name}` : "ที่เลือก"}</p></div>
-            <button type="button" onClick={() => { setNotice(null); refresh(); }} disabled={loading} className={buttonClass}>รีเฟรชยอด</button>
+            <div><h1 className="text-2xl font-bold text-[var(--text-primary)]">สต็อกที่พร้อมใช้</h1>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">วัตถุดิบที่สูตรของสาขานี้ใช้อยู่{stock ? ` · ${stock.branch_name}` : "ที่เลือก"}</p></div>
+            <button type="button" onClick={() => { setNotice(null); refresh(); }} disabled={loading} className={buttonClass}>อัปเดตยอด</button>
         </header>
-        <p className="text-sm leading-6 text-[var(--text-secondary)]">ยอดที่ระบบบันทึกไว้ ไม่ใช่ยอดที่ตรวจนับจริง · นับเฉพาะสต็อกที่พร้อมใช้ ไม่รวมล็อตหมดอายุ ถูกเรียกคืน ไม่ผ่านการตรวจสอบ หรืออยู่ในพื้นที่ที่ใช้ขายไม่ได้</p>
+        <p className="text-sm leading-6 text-[var(--text-secondary)]">ยอดนี้มาจากรายการรับเข้า ขาย และคืนสต็อกในระบบ ไม่ใช่ยอดจากการนับของจริง · ไม่นับล็อตหมดอายุ ถูกเรียกคืน ยังไม่ผ่านการตรวจ หรือของที่ถูกแยกไว้ไม่ให้ขาย</p>
         {notice ? <p role="status" className="text-sm text-[var(--accent)]">{notice}</p> : null}
-        {loading ? <Card><p role="status">กำลังโหลดสต็อกพร้อมใช้…</p></Card> : error ? <Card><div role="alert"><p className="font-semibold text-red-600 dark:text-red-300">{error}</p><p className="mt-2 text-sm">ยังไม่สามารถสรุปได้ว่าสต็อกปกติหรือขาด กรุณารีเฟรชยอด</p></div></Card> : stock ? <>
-            <p className="text-sm text-[var(--text-muted)]">ข้อมูล ณ {new Date(stock.as_of).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })} (เวลาไทย) · รีเฟรชหลังรับของ ขาย หรือยกเลิกคืนสต็อก</p>
-            {items.length === 0 ? <Card><p>ยังไม่มีวัตถุดิบที่ใช้ในสูตรของสาขานี้</p><p className="mt-2 text-sm text-[var(--text-muted)]">จึงยังไม่มีรายการสำหรับประเมินการขาดสต็อก</p></Card> : <div className="grid gap-4 lg:grid-cols-2">
+        {loading ? <Card><p role="status">กำลังโหลดสต็อก…</p></Card> : error ? <Card><div role="alert"><p className="font-semibold text-red-600 dark:text-red-300">{error}</p><p className="mt-2 text-sm">ตอนนี้ยังบอกไม่ได้ว่าสต็อกพอหรือไม่ ลองอัปเดตข้อมูลอีกครั้ง</p></div></Card> : stock ? <>
+            <p className="text-sm text-[var(--text-muted)]">อัปเดตล่าสุด {new Date(stock.as_of).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })} (เวลาไทย) · ยอดจะเปลี่ยนหลังรับของ ขาย หรือยกเลิกแล้วคืนสต็อก</p>
+            {items.length === 0 ? <Card><p>ยังไม่มีวัตถุดิบที่ใช้ในสูตรของสาขานี้</p><p className="mt-2 text-sm text-[var(--text-muted)]">เลยยังไม่มีรายการให้เช็กว่าอะไรใกล้หมด</p></Card> : <div className="grid gap-4 lg:grid-cols-2">
                 {items.map((item) => {
                     const status = stockStatus(item);
                     return <Card key={`${stock.as_of}:${item.source_type}:${item.id}`}>
                         <article aria-label={item.name} className="space-y-4">
                             <div className="flex flex-wrap items-start justify-between gap-2"><h2 className="font-bold text-lg">{item.name}</h2>
                                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tones[status]}`}>{stockStatusLabel[status]}</span></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">จำนวนพร้อมใช้ · {item.source_type === "supply_item" ? "คลัง TALVO" : "วัตถุดิบเดิม"}</p>
+                            <div><p className="text-sm text-[var(--text-muted)]">จำนวนที่ใช้ขายได้ตอนนี้ · {item.source_type === "supply_item" ? "คลังวัตถุดิบ" : "วัตถุดิบเดิม"}</p>
                                 <p className="mt-1 text-2xl font-bold">{item.usable_stock === null ? "—" : formatQuantity(item.usable_stock)} <span className="text-base font-normal">{item.unit}</span></p></div>
                             {status === "unavailable" ? <p className="text-sm text-[var(--text-secondary)]">{unavailableStockLabel(item.unavailable_reason)}</p> : null}
-                            <p className="text-sm">{item.minimum_stock === null ? "ยังไม่ตั้งขั้นต่ำ · ยังไม่ประเมินใกล้หมด (Low Stock)" : `ขั้นต่ำ ${formatQuantity(item.minimum_stock)} ${item.unit} · ใกล้หมดเมื่อยอดมากกว่า 0 และไม่เกินขั้นต่ำ`}</p>
+                            <p className="text-sm">{item.minimum_stock === null ? "ยังไม่ตั้งขั้นต่ำ · ระบบจึงยังไม่เตือนว่าใกล้หมด" : `ขั้นต่ำ ${formatQuantity(item.minimum_stock)} ${item.unit} · ใกล้หมดเมื่อยอดมากกว่า 0 และไม่เกินขั้นต่ำ`}</p>
                             {stock.can_edit_minimum && item.source_type === "supply_item"
                                 ? <ReceiveStockForm item={item} stock={stock} onSaved={(quantity) => { setNotice(`รับเข้า ${item.name} ${quantity} ${item.unit} แล้ว`); refresh(); }} />
                                 : null}
-                            {stock.can_edit_minimum ? <MinimumEditor item={item} stock={stock} onSaved={() => { setNotice(`บันทึกขั้นต่ำ ${item.name} แล้ว`); refresh(); }} /> : null}
+                            {stock.can_edit_minimum ? <MinimumEditor item={item} stock={stock} onSaved={() => { setNotice(`บันทึกจุดเตือนของ ${item.name} แล้ว`); refresh(); }} /> : null}
                         </article>
                     </Card>;
                 })}
             </div>}
         </> : null}
-        <Link href="/admin/stock" className="inline-block text-sm text-[var(--accent)] hover:underline">กลับหน้าสต็อก</Link>
+        <Link href="/admin/stock" className="inline-block text-sm text-[var(--accent)] hover:underline">กลับไปดูความเคลื่อนไหวสต็อก</Link>
     </div>;
 }

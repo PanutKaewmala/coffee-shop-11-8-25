@@ -301,7 +301,7 @@ export default function NewsAdminPage() {
         const e: NewsFormErrors = {};
 
         if (!normalizeCat(category)) e.category = "จำเป็นต้องเลือกหมวดหมู่";
-        if (!title.trim()) e.title = "จำเป็นต้องใส่ชื่อหัวข้อข่าว";
+        if (!title.trim()) e.title = "กรุณาใส่หัวข้อข่าว";
         if (!date.trim()) e.event_date = "จำเป็นต้องเลือกวันที่";
 
         setErrors(e);
@@ -404,10 +404,10 @@ export default function NewsAdminPage() {
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="ข่าวสาร">
+            <Card title="ข่าวสารหน้าเว็บ">
                 {!permissionLoading && !canManageNews ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการข่าวได้
+                        คุณดูข่าวได้ แต่การเพิ่ม แก้ไข หรือลบข่าวต้องให้เจ้าของร้านเป็นคนทำ
                     </div>
                 ) : null}
 

@@ -12,7 +12,7 @@ function SalesTooltip({ active, payload, granularity }: { active?: boolean; payl
     return <div className="max-w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-black/10 bg-[var(--background)] p-3 text-sm shadow-xl dark:border-white/15">
         <p className="font-semibold text-[var(--text-primary)]">ช่วงเวลา {formatReportsTrendBucketLabel(bucket, granularity)}</p>
         <p className="mt-2 text-[var(--text-secondary)]">ยอดขายที่ชำระแล้ว <strong className="text-[var(--text-primary)]">{formatReportsMoney(bucket.paidSales)}</strong></p>
-        <p className="mt-1 text-[var(--text-secondary)]">จำนวนออเดอร์ที่ชำระแล้ว <strong className="text-[var(--text-primary)]">{bucket.paidOrderCount.toLocaleString("th-TH")}</strong></p>
+        <p className="mt-1 text-[var(--text-secondary)]">จำนวนบิลที่ชำระแล้ว <strong className="text-[var(--text-primary)]">{bucket.paidOrderCount.toLocaleString("th-TH")}</strong></p>
     </div>;
 }
 

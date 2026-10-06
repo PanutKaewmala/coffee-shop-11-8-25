@@ -59,24 +59,24 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
     if (data.tasks.outOfStock.length > 0) {
         actions.push({
             id: "out-of-stock",
-            title: "ตรวจวัตถุดิบหมด",
-            description: `วัตถุดิบคงเหลือ 0 หรือต่ำกว่า ${data.tasks.outOfStock.length} รายการ`,
+            title: "วัตถุดิบหมด ต้องเติมของ",
+            description: `มี ${data.tasks.outOfStock.length} รายการที่ของหมดหรือยอดต่ำกว่า 0`,
             itemCount: data.tasks.outOfStock.length,
             examples: uniqueNames(data.tasks.outOfStock.map((item) => item.name)),
             href: "/admin/stock/usable",
-            linkLabel: "ตรวจสต็อกพร้อมใช้",
+            linkLabel: "ดูสต็อกที่พร้อมใช้",
             tone: "critical",
         });
     }
     if (expiredLots.length > 0) {
         actions.push({
             id: "expired-lots",
-            title: "ตรวจล็อตหมดอายุแล้ว",
-            description: `ล็อตที่เลยวันหมดอายุและยังมีจำนวนคงเหลือ ${expiredLots.length} รายการ`,
+            title: "มีล็อตหมดอายุที่ยังเหลืออยู่",
+            description: `พบ ${expiredLots.length} รายการที่เลยวันหมดอายุแล้วแต่ยังมีของคงเหลือ`,
             itemCount: expiredLots.length,
             examples: uniqueNames(expiredLots.map((lot) => lot.ingredientName)),
             href: "/admin/ingredients",
-            linkLabel: "ตรวจล็อตวัตถุดิบ",
+            linkLabel: "ดูล็อตวัตถุดิบ",
             tone: "critical",
         });
     }
@@ -88,12 +88,12 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
         const varianceType = cashDifference > 0 ? "เกิน" : "ขาด";
         actions.push({
             id: "cash-variance",
-            title: `ตรวจเงินสด${varianceType}จากยอดระบบ`,
-            description: `ปิดยอดแล้วและพบเงินสด${varianceType} ${formatMoney(Math.abs(cashDifference))}`,
+            title: `เงินสด${varianceType}จากยอดที่ควรมี`,
+            description: `หลังปิดยอด พบเงินสด${varianceType} ${formatMoney(Math.abs(cashDifference))}`,
             itemCount: 1,
             examples: [],
             href: "/admin/daily-close",
-            linkLabel: "ตรวจการปิดยอด",
+            linkLabel: "ดูรายละเอียดปิดยอด",
             tone: "critical",
         });
     }
@@ -104,7 +104,7 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             id: "daily-close",
             title: "ปิดยอดเมื่อวานให้เสร็จ",
             description: close?.status === "draft"
-                ? `รายการยังอยู่ในสถานะร่าง · ยอดขายที่ชำระแล้ว ${formatMoney(data.sales.netSales)}`
+                ? `เมื่อวานยังปิดยอดไม่เสร็จ · ยอดขายที่ชำระแล้ว ${formatMoney(data.sales.netSales)}`
                 : `มี ${data.sales.paidOrderCount.toLocaleString("th-TH")} ออเดอร์ที่ชำระแล้ว · ยอดขาย ${formatMoney(data.sales.netSales)}`,
             itemCount: 1,
             examples: [],
@@ -117,49 +117,49 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
     if (data.tasks.lowStock.length > 0) {
         actions.push({
             id: "low-stock",
-            title: "ตรวจวัตถุดิบใกล้หมด",
-            description: `วัตถุดิบคงเหลือต่ำกว่าหรือเท่ากับขั้นต่ำ ${data.tasks.lowStock.length} รายการ`,
+            title: "วัตถุดิบใกล้หมด",
+            description: `มี ${data.tasks.lowStock.length} รายการที่เหลือไม่เกินขั้นต่ำที่ตั้งไว้`,
             itemCount: data.tasks.lowStock.length,
             examples: uniqueNames(data.tasks.lowStock.map((item) => item.name)),
             href: "/admin/stock/usable",
-            linkLabel: "ตรวจสต็อกพร้อมใช้",
+            linkLabel: "ดูสต็อกที่พร้อมใช้",
             tone: "warning",
         });
     }
     if (nearExpiryLots.length > 0) {
         actions.push({
             id: "near-expiry",
-            title: "ตรวจล็อตใกล้หมดอายุ",
-            description: `ล็อตที่เข้าเกณฑ์แจ้งเตือนวันหมดอายุ ${nearExpiryLots.length} รายการ`,
+            title: "มีล็อตใกล้หมดอายุ",
+            description: `มี ${nearExpiryLots.length} รายการที่ใกล้ถึงวันหมดอายุ`,
             itemCount: nearExpiryLots.length,
             examples: uniqueNames(nearExpiryLots.map((lot) => lot.ingredientName)),
             href: "/admin/ingredients",
-            linkLabel: "ตรวจล็อตวัตถุดิบ",
+            linkLabel: "ดูล็อตวัตถุดิบ",
             tone: "warning",
         });
     }
 
     if (data.tasks.unavailableStock?.length) {
-        actions.push({ id: "stock-unavailable", title: "มีสต็อกที่ยังประเมินไม่ได้",
-            description: `ไม่สามารถระบุยอดพร้อมใช้ ${data.tasks.unavailableStock.length} รายการ จึงยังสรุปว่าปกติไม่ได้`,
+        actions.push({ id: "stock-unavailable", title: "มีวัตถุดิบบางรายการที่ยังคำนวณสต็อกไม่ได้",
+            description: `มี ${data.tasks.unavailableStock.length} รายการที่ยังบอกยอดพร้อมใช้ไม่ได้ ต้องเช็กข้อมูลก่อน`,
             itemCount: data.tasks.unavailableStock.length, examples: uniqueNames(data.tasks.unavailableStock.map((item) => item.name)),
-            href: "/admin/stock/usable", linkLabel: "ตรวจรายการที่ไม่พร้อมใช้", tone: "warning" });
+            href: "/admin/stock/usable", linkLabel: "ดูรายการที่ต้องเช็ก", tone: "warning" });
     }
 
     const reviews: DashboardReviewGroup[] = [];
     if (data.reviewEvents.orders.length > 0) {
         const statusCount = (status: string) => data.reviewEvents.orders.filter((order) => order.status === status).length;
         const descriptions = [
-            ["ออเดอร์ยกเลิก", statusCount("cancelled") + statusCount("void")],
+            ["บิลที่ยกเลิก", statusCount("cancelled") + statusCount("void")],
             ["คืนเงิน", statusCount("refunded")],
         ] as const;
         reviews.push({
             id: "orders",
-            title: "ออเดอร์ที่สร้างเมื่อวานและควรตรวจ",
+            title: "บิลเมื่อวานที่ควรกลับไปเช็ก",
             description: descriptions.filter(([, count]) => count > 0).map(([label, count]) => `${label} ${count} รายการ`).join(" · "),
             itemCount: data.reviewEvents.orders.length,
             href: "/admin/orders",
-            linkLabel: "ตรวจออเดอร์",
+            linkLabel: "ดูรายการขาย",
         });
     }
     if (data.reviewEvents.stock.length > 0) {
@@ -168,11 +168,11 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
         const descriptions = [adjustments ? `ปรับสต็อก ${adjustments} รายการ` : "", waste ? `ของเสีย ${waste} รายการ` : ""];
         reviews.push({
             id: "stock",
-            title: "ความเคลื่อนไหวสต็อกเมื่อวาน",
+            title: "สต็อกที่มีการเปลี่ยนแปลงเมื่อวาน",
             description: descriptions.filter(Boolean).join(" · "),
             itemCount: data.reviewEvents.stock.length,
             href: "/admin/stock",
-            linkLabel: "ตรวจความเคลื่อนไหวสต็อก",
+            linkLabel: "ดูความเคลื่อนไหวสต็อก",
         });
     }
 
@@ -180,15 +180,15 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
     const firstAction = actions[0];
     const firstReview = reviews[0];
     const overviewTitle = actions.length > 0
-        ? `มี ${actions.length.toLocaleString("th-TH")} เรื่องต้องจัดการวันนี้`
+        ? `วันนี้มี ${actions.length.toLocaleString("th-TH")} เรื่องที่ควรจัดการ`
         : reviewCount > 0
-            ? `วันนี้ไม่มีเรื่องเร่งด่วน แต่มี ${reviewCount.toLocaleString("th-TH")} รายการที่ควรตรวจเพิ่มเติม`
+            ? `วันนี้ไม่มีเรื่องเร่งด่วน แต่มี ${reviewCount.toLocaleString("th-TH")} รายการที่น่ากลับไปเช็ก`
             : "วันนี้ไม่มีเรื่องเร่งด่วน";
     const overviewDescription = actions.length > 0
-        ? `จัดลำดับจากข้อมูลสต็อก การปิดยอด และยอดขายเมื่อวาน${reviewCount ? ` · มีอีก ${reviewCount.toLocaleString("th-TH")} รายการที่ควรตรวจ` : ""}`
+        ? `เรียงจากข้อมูลสต็อก การปิดยอด และยอดขายเมื่อวาน${reviewCount ? ` · ยังมีอีก ${reviewCount.toLocaleString("th-TH")} รายการที่ควรเช็ก` : ""}`
         : reviewCount > 0
-            ? "ไม่พบกลุ่มปัญหาที่ต้องจัดการทันที แต่มีข้อมูลจริงที่ควรตรวจเพิ่มเติม"
-            : "ตอนนี้ยังไม่มีเรื่องที่ต้องจัดการหรือรายการที่ต้องตรวจเพิ่มเติม";
+            ? "ยังไม่มีเรื่องเร่งด่วน แต่มีบางรายการที่ควรกลับไปดูให้ชัวร์"
+            : "ตอนนี้ยังไม่มีเรื่องที่ต้องจัดการหรือรายการที่ต้องเช็กเพิ่ม";
 
     const visibleActions = actions.filter((action, index) => index < 3 ||
         action.id === "out-of-stock" || action.id === "low-stock" || action.id === "stock-unavailable");
@@ -201,7 +201,7 @@ export function buildDashboardTodayPresentation(data: DashboardTodayResponse): D
             primaryAction: firstAction
                 ? { label: firstAction.linkLabel, href: firstAction.href }
                 : firstReview
-                    ? { label: "ตรวจรายการ", href: firstReview.href }
+                    ? { label: "ดูรายการ", href: firstReview.href }
                     : null,
         },
         actions,

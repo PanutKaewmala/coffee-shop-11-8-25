@@ -836,7 +836,7 @@ export default function IngredientDetailClient() {
                     <Link
                         href={`/admin/stock?ingredient_id=${encodeURIComponent(String(ingredientId))}`}
                         className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 hover:bg-white/5 text-sm"
-                        title="ไปดูประวัติสต็อกแบบภาพรวม"
+                        title="ดูความเคลื่อนไหวสต็อกทั้งหมด"
                     >
                         ดูประวัติทั้งหมด
                     </Link>
@@ -862,7 +862,7 @@ export default function IngredientDetailClient() {
             ) : null}
 
             {/* Decision-first card */}
-            <Card title="ภาพรวม (ตัดสินใจเร็ว)">
+            <Card title="สรุปตอนนี้">
                 {loading ? (
                     <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
                 ) : ingredientNotFound ? (
@@ -897,7 +897,7 @@ export default function IngredientDetailClient() {
                                 </div>
 
                                 <div className="mt-2 text-sm">
-                                    <span className="text-[var(--text-secondary)]">สรุป: </span>
+                                    <span className="text-[var(--text-secondary)]">สรุปตอนนี้: </span>
                                     <span className="font-semibold">{decisionHint}</span>
                                 </div>
                             </div>
@@ -950,14 +950,14 @@ export default function IngredientDetailClient() {
             </Card>
 
             {/* What makes it run out (top consumers) */}
-            <Card title="ตัวที่ทำให้หมดเร็ว (30 วัน)">
+            <Card title="เมนูที่ใช้วัตถุดิบนี้เยอะ (30 วัน)">
                 {loading ? (
                     <div className="text-sm text-[var(--text-secondary)]">กำลังโหลด...</div>
                 ) : !ingredient ? (
                     <div className="text-sm text-[var(--text-secondary)]">-</div>
                 ) : topMenusUI.list.length === 0 ? (
                     <div className="text-sm text-[var(--text-secondary)]">
-                        ยังไม่มีข้อมูล (ยังไม่มีสูตร/ออเดอร์ที่ใช้วัตถุดิบนี้)
+                        ยังไม่มีข้อมูล เพราะยังไม่มีสูตรหรือรายการขายที่ใช้วัตถุดิบนี้
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -991,7 +991,7 @@ export default function IngredientDetailClient() {
                         })}
 
                         <div className="text-xs text-[var(--text-secondary)]">
-                            แสดง 3 อันดับแรก (พอแล้วสำหรับตัดสินใจไว)
+                            แสดง 3 อันดับที่ใช้มากที่สุด
                         </div>
                     </div>
                 )}
@@ -1060,7 +1060,7 @@ export default function IngredientDetailClient() {
             </Card>
 
             {/* Logs - compact, owner-friendly */}
-            <Card title="การเคลื่อนไหวสต็อก (ดูไว)">
+            <Card title="ความเคลื่อนไหวล่าสุด">
                 <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2">
                         <button

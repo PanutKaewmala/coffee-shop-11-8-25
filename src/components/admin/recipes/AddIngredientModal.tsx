@@ -97,7 +97,7 @@ export default function AddIngredientModal({
                 <div className="mb-4 text-lg font-semibold">{isAdd ? "เพิ่มวัตถุดิบ" : "แก้ไขวัตถุดิบ"}</div>
                 {draft.branch_id === null ? (
                     <div role="alert" className="mb-3 rounded-lg border border-amber-500/30 p-3 text-sm text-amber-600">
-                        สูตรนี้ยังไม่กำหนดสาขา เลือกวัตถุดิบของสาขาปัจจุบันแล้วบันทึกเพื่อแก้ไข
+                        สูตรนี้ยังไม่ได้ผูกกับสาขา เลือกวัตถุดิบของสาขาที่กำลังใช้อยู่ แล้วบันทึกเพื่ออัปเดตสูตร
                     </div>
                 ) : null}
 
@@ -117,7 +117,7 @@ export default function AddIngredientModal({
 
                 {!lockIngredient ? (
                     <>
-                        <label htmlFor="recipe-stock-source" className="mb-1 block text-sm text-[var(--text-muted)]">แหล่งสต็อก</label>
+                        <label htmlFor="recipe-stock-source" className="mb-1 block text-sm text-[var(--text-muted)]">ใช้วัตถุดิบจาก</label>
                         <select
                             id="recipe-stock-source"
                             className="mb-3 w-full rounded-lg border border-text-muted/40 bg-background p-2"
@@ -125,7 +125,7 @@ export default function AddIngredientModal({
                             onChange={(event) => setDraft({ ...draft, source_type: event.target.value as RecipeDraft["source_type"], ingredient_id: "" })}
                         >
                             <option value="ingredient">วัตถุดิบเดิม</option>
-                            <option value="supply_item">TALVO Supply</option>
+                            <option value="supply_item">คลังวัตถุดิบ</option>
                         </select>
                     </>
                 ) : null}
@@ -138,18 +138,18 @@ export default function AddIngredientModal({
                 ) : draft.source_type === "supply_item" ? (
                     <div className="mb-3">
                         <select
-                            aria-label="TALVO Supply"
+                            aria-label="วัตถุดิบในคลัง"
                             className="w-full rounded-lg border border-text-muted/40 bg-background p-2"
                             value={draft.ingredient_id}
                             onChange={(event) => setDraft({ ...draft, ingredient_id: event.target.value })}
                         >
-                            <option value="">เลือกวัตถุดิบ TALVO</option>
+                            <option value="">เลือกวัตถุดิบในคลัง</option>
                             {supplyItems.map((item) => (
                                 <option key={item.id} value={item.id}>{item.name} ({item.base_unit})</option>
                             ))}
                         </select>
                         {selectedSupply ? <div className="mt-1 text-xs text-[var(--text-secondary)]">คงเหลือในสาขานี้: {selectedSupply.available_stock} {selectedSupply.base_unit}</div> : null}
-                        {!supplyItems.length ? <div className="mt-1 text-xs text-[var(--text-secondary)]">ยังไม่มีวัตถุดิบ TALVO ในร้านนี้</div> : null}
+                        {!supplyItems.length ? <div className="mt-1 text-xs text-[var(--text-secondary)]">ร้านนี้ยังไม่มีวัตถุดิบในคลัง</div> : null}
                     </div>
                 ) : (
                     <div className="mb-3">

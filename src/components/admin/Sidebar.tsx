@@ -77,7 +77,7 @@ export default function Sidebar({
             >
                 {/* Mobile header */}
                 <div className="flex items-center justify-between lg:hidden px-4 py-3 border-b border-[var(--text-muted)]/20">
-                    <div className="text-lg font-semibold">☕ จัดการร้าน</div>
+                    <div className="text-lg font-semibold">☕ TALVO</div>
                     <button
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onClose}
@@ -91,7 +91,7 @@ export default function Sidebar({
                 <div className="px-4 mt-4">
                     <div className="rounded-xl border border-[var(--text-muted)]/20 bg-[var(--surface)] p-3">
                         <div className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
-                            ร้าน/สาขาที่ใช้งาน
+                            ร้านและสาขาที่กำลังใช้
                         </div>
                         <div className="mt-1 text-sm font-semibold truncate">{shopLabel}</div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">{branchLabel}</div>
@@ -173,7 +173,7 @@ export default function Sidebar({
 
                 {/* Footer */}
                 <div className="mt-10 text-xs text-[var(--text-muted)] border-t border-[var(--text-muted)]/20 pt-4 text-center">
-                    © {new Date().getFullYear()} ระบบจัดการร้านกาแฟ
+                    © {new Date().getFullYear()} TALVO
                 </div>
             </aside>
         </>

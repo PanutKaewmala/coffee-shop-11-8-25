@@ -2,24 +2,24 @@ import { parseAppRole } from "./accessPolicy.mjs";
 
 export const NAV_SECTIONS = [
     { title: "ภาพรวม", items: [
-        { label: "ภาพรวมวันนี้", path: "/admin", roles: ["owner"] },
-        { label: "รายงาน", path: "/admin/reports", roles: ["owner"] },
+        { label: "วันนี้", path: "/admin", roles: ["owner"] },
+        { label: "รายงานยอดขาย", path: "/admin/reports", roles: ["owner"] },
     ] },
-    { title: "จัดการสินค้า", items: [
+    { title: "เมนูและสต็อก", items: [
         { label: "เมนู", path: "/admin/menu", roles: ["owner"] },
         { label: "วัตถุดิบ", path: "/admin/ingredients", roles: ["owner", "staff"], children: [
-            { label: "คลังเก่า", path: "/admin/ingredients/archived", roles: ["owner"] },
+            { label: "วัตถุดิบที่เก็บไว้", path: "/admin/ingredients/archived", roles: ["owner"] },
         ] },
         { label: "สูตรเมนู", path: "/admin/recipes", roles: ["owner"] },
-        { label: "ประวัติสต็อก", path: "/admin/stock", roles: ["owner", "staff"] },
+        { label: "ความเคลื่อนไหวสต็อก", path: "/admin/stock", roles: ["owner", "staff"] },
     ] },
-    { title: "การดำเนินธุรกิจ", items: [
+    { title: "งานประจำวัน", items: [
         { label: "ขายหน้าร้าน", path: "/pos", roles: ["owner", "staff"] },
-        { label: "ออเดอร์", path: "/admin/orders", roles: ["owner", "staff"] },
-        { label: "ปิดยอดวัน", path: "/admin/daily-close", roles: ["owner", "staff"] },
-        { label: "ข่าวสาร", path: "/admin/news", roles: ["owner"] },
+        { label: "รายการขาย", path: "/admin/orders", roles: ["owner", "staff"] },
+        { label: "ปิดยอดรายวัน", path: "/admin/daily-close", roles: ["owner", "staff"] },
+        { label: "ข่าวสารหน้าเว็บ", path: "/admin/news", roles: ["owner"] },
         { label: "สาขา", path: "/admin/branch", roles: ["owner"] },
-        { label: "ติดต่อ", path: "/admin/contact", roles: ["owner"] },
+        { label: "ข้อความจากลูกค้า", path: "/admin/contact", roles: ["owner"] },
     ] },
 ];
 

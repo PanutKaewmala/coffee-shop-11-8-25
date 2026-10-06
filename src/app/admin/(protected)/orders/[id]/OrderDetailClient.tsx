@@ -866,7 +866,7 @@ export default function OrderDetailClient() {
         if (!orderId) {
             setLoading(false);
             setOrder(null);
-            setError("ไม่มีเลขออเดอร์");
+            setError("ไม่มีเลขรายการ");
             return () => controller.abort();
         }
 
@@ -968,7 +968,7 @@ export default function OrderDetailClient() {
                 const msg =
                     isRecord(data) && typeof data.error === "string"
                         ? data.error
-                        : "ยกเลิกออเดอร์ไม่สำเร็จ";
+                        : "ยกเลิกรายการขายไม่สำเร็จ";
                 setCancelError(msg);
                 setCancelLoading(false);
                 return;
@@ -982,7 +982,7 @@ export default function OrderDetailClient() {
             setCancelOpen(false);
         } catch (e: unknown) {
             setCancelLoading(false);
-            setCancelError(e instanceof Error ? e.message : "ยกเลิกออเดอร์ไม่สำเร็จ");
+            setCancelError(e instanceof Error ? e.message : "ยกเลิกรายการขายไม่สำเร็จ");
         }
     }, [order, cancelNote, cancelConfirmStep, cancelRestock, fetchOrder]);
 
@@ -1004,7 +1004,7 @@ export default function OrderDetailClient() {
                     className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition"
                 >
                     <ArrowLeft size={18} className="shrink-0" />
-                    กลับไปหน้าออเดอร์
+                    กลับไปรายการขาย
                 </Link>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-text-secondary">
                     {error ?? "ไม่พบข้อมูลออเดอร์"}
@@ -1022,7 +1022,7 @@ export default function OrderDetailClient() {
                     className="inline-flex min-w-0 items-center gap-2 text-text-secondary transition hover:text-text-primary"
                 >
                     <ArrowLeft size={18} className="shrink-0" />
-                    กลับไปหน้าออเดอร์
+                    กลับไปรายการขาย
                 </Link>
 
                 <div className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -1030,7 +1030,7 @@ export default function OrderDetailClient() {
                         type="button"
                         onClick={() => onCopy(order.id)}
                         className="inline-flex min-w-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-text-secondary transition hover:bg-white/10 sm:w-auto"
-                        title="คัดลอกเลขออเดอร์"
+                        title="คัดลอกเลขรายการ"
                     >
                         {copied ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
                         <span className="min-w-0 truncate font-mono">{shortId(order.id)}</span>
@@ -1046,10 +1046,10 @@ export default function OrderDetailClient() {
                                 ? "border border-red-500/25 bg-red-500/10 text-red-200 hover:bg-red-500/15"
                                 : "border border-white/10 bg-white/5 text-text-secondary opacity-60 cursor-not-allowed",
                         ].join(" ")}
-                        title={canCancel ? "ยกเลิกออเดอร์" : "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว"}
+                        title={canCancel ? "ยกเลิกรายการขาย" : "ยกเลิกได้เฉพาะออเดอร์ที่ชำระแล้ว"}
                     >
                         <AlertTriangle size={14} className="shrink-0" />
-                        ยกเลิกออเดอร์
+                        ยกเลิกรายการขาย
                     </button>
 
                     <button
@@ -1071,7 +1071,7 @@ export default function OrderDetailClient() {
             ) : null}
 
             {/* Summary */}
-            <Card title="สรุปออเดอร์">
+            <Card title="สรุปรายการขาย">
                 <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                         <div className="text-xs text-text-secondary opacity-70">{fmtDateTH(order.created_at)}</div>
@@ -1171,7 +1171,7 @@ export default function OrderDetailClient() {
             {/* Items */}
             <Card title="รายการสินค้า">
                 {order.items.length === 0 ? (
-                    <div className="p-6 text-center text-text-secondary">ไม่มีสินค้าในออเดอร์นี้</div>
+                    <div className="p-6 text-center text-text-secondary">ไม่มีสินค้าในรายการนี้</div>
                 ) : (
                     <div className="divide-y divide-white/10">
                         {order.items.map((it) => (
@@ -1214,7 +1214,7 @@ export default function OrderDetailClient() {
                                     ))}
                                 </ul>
                                 <details className="mt-3 text-xs text-text-secondary">
-                                    <summary className="cursor-pointer">ข้อมูลอ้างอิงสูตร</summary>
+                                    <summary className="cursor-pointer">สูตรที่ใช้ตอนขาย</summary>
                                     <p className="mt-1 break-all">{item.recipe_snapshot.recipe_hash}</p>
                                 </details>
                             </div>
@@ -1237,15 +1237,15 @@ export default function OrderDetailClient() {
                         </div>
                     </div>
                 ) : (
-                    <p className="text-sm text-text-secondary">ออเดอร์เก่านี้ไม่มีบันทึกสูตร ณ เวลาขาย จึงไม่สามารถยืนยันปริมาณที่ใช้จากสูตรปัจจุบันได้</p>
+                    <p className="text-sm text-text-secondary">รายการขายเก่านี้ไม่ได้เก็บสูตรที่ใช้ตอนนั้นไว้ จึงยืนยันไม่ได้ว่าตอนขายใช้วัตถุดิบเท่าไร</p>
                 )}
             </Card>
 
             {/* Cancel Modal */}
-            <ModalShell open={cancelOpen} title="ยกเลิกออเดอร์" onClose={closeCancelModal}>
+            <ModalShell open={cancelOpen} title="ยกเลิกรายการขาย" onClose={closeCancelModal}>
                 <div className="space-y-4">
                     <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-xs text-text-secondary opacity-70">เลขออเดอร์</div>
+                        <div className="text-xs text-text-secondary opacity-70">เลขรายการ</div>
                         <div className="mt-1 font-mono text-sm">{shortId(order.id, 10, 10)}</div>
                     </div>
 
@@ -1327,7 +1327,7 @@ export default function OrderDetailClient() {
                                 ? "กำลังยกเลิก..."
                                 : cancelConfirmStep
                                     ? "ยืนยันยกเลิก (กดอีกครั้ง)"
-                                    : "ยกเลิกออเดอร์"}
+                                    : "ยกเลิกรายการขาย"}
                         </button>
                     </div>
 

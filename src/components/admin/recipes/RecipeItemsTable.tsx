@@ -21,8 +21,8 @@ export default function RecipeItemsTable({
             <div key={`n-${r.id}`} className="flex flex-col">
                 <span className="font-medium">{r.ingredient_name ?? r.source_id}</span>
                 <span className="text-xs text-[var(--text-secondary)]">{r.unit ?? "-"}</span>
-                {r.source_type === "supply_item" ? <span className="text-xs text-[var(--text-secondary)]">TALVO Supply</span> : null}
-                {r.branch_id === null ? <span className="text-xs text-amber-600">ยังไม่กำหนดสาขา — แก้ไขหรือลบรายการนี้ก่อนขาย</span> : null}
+                {r.source_type === "supply_item" ? <span className="text-xs text-[var(--text-secondary)]">คลังวัตถุดิบ</span> : null}
+                {r.branch_id === null ? <span className="text-xs text-amber-600">ยังไม่ได้ผูกกับสาขา — แก้ไขหรือลบรายการนี้ก่อนนำไปขาย</span> : null}
             </div>
         );
 

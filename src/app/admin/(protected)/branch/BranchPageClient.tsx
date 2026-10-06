@@ -260,7 +260,7 @@ export default function BranchPageClient() {
                             ตั้งค่าใบเสร็จของร้าน
                         </p>
                         <p className="mt-1 text-xs text-[var(--text-muted)]">
-                            ข้อมูลนี้ใช้กับทุกสาขา ส่วนชื่อสาขา ที่อยู่ และเบอร์โทร จัดการได้จากตารางสาขาด้านล่าง
+                            ข้อมูลส่วนนี้ใช้เหมือนกันทุกสาขา ส่วนชื่อ ที่อยู่ และเบอร์ของแต่ละสาขาแก้ได้จากรายการด้านล่าง
                         </p>
                     </div>
 
@@ -279,7 +279,7 @@ export default function BranchPageClient() {
                                     className="w-full rounded-md border border-[var(--text-muted)]/20 bg-[var(--background)]/50 p-2 text-[var(--text-muted)]"
                                 />
                                 <p className="text-xs text-[var(--text-muted)]">
-                                    ชื่อร้านจัดการแยกจากการตั้งค่าใบเสร็จ
+                                    ชื่อร้านไม่ได้แก้จากส่วนตั้งค่าใบเสร็จนี้
                                 </p>
                             </div>
 
@@ -364,7 +364,7 @@ export default function BranchPageClient() {
 
                 {!canManageBranches ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่จัดการสาขาได้
+                        คุณดูข้อมูลสาขาได้ แต่การเพิ่ม แก้ไข หรือลบสาขาต้องให้เจ้าของร้านเป็นคนทำ
                     </div>
                 ) : null}
 

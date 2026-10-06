@@ -461,7 +461,7 @@ export default function RecipesShell() {
                 ) : null}
                 {!permissionLoading && !canManageRecipes ? (
                     <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                        โหมดอ่านอย่างเดียว: เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขสูตรได้
+                        ตอนนี้ดูสูตรได้อย่างเดียว มีเฉพาะเจ้าของร้านที่แก้ไขสูตรได้
                     </div>
                 ) : null}
                 <div className="grid grid-cols-12 gap-4">

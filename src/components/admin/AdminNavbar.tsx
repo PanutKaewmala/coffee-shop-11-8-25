@@ -211,7 +211,7 @@ export default function AdminNavbar({
                     {posMode ? <Link
                         href={currentShopRole === "owner" ? "/admin" : "/admin/orders"}
                         className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium hover:bg-[var(--accent)]/10"
-                    >← หลังบ้าน</Link> : <button
+                    >← กลับหน้าจัดการ</Link> : <button
                         className="lg:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onToggleSidebar}
                         aria-label="เปิดเมนูด้านข้าง"
@@ -221,7 +221,7 @@ export default function AdminNavbar({
 
                     <div className="min-w-0">
                         <div className="font-semibold text-base md:text-lg tracking-wide select-none truncate">
-                            {posMode ? "☕ POS" : "☕ แผงจัดการร้าน"}
+                            {posMode ? "☕ หน้าขาย" : "☕ จัดการร้าน"}
                         </div>
                         <div className="text-xs text-[var(--text-secondary)] truncate">
                             {shopLabel} • {branchLabel}
@@ -293,7 +293,7 @@ export default function AdminNavbar({
                     </button>
 
                     <span className="text-[var(--text-secondary)] text-sm hidden sm:inline truncate max-w-[220px]">
-                        สวัสดี, <strong>{meLabel || "ผู้ดูแลร้าน"}</strong>
+                        <strong>{meLabel || "ผู้ดูแลร้าน"}</strong>
                     </span>
 
                     <button

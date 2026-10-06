@@ -27,7 +27,7 @@ export function stockStatus(item: UsableStockItem): StockStatus {
 }
 
 export const stockStatusLabel: Record<StockStatus, string> = {
-    normal: "ปกติ (Normal)", low: "ใกล้หมด (Low Stock)", out: "หมด (Out of Stock)", unavailable: "ไม่สามารถระบุยอดพร้อมใช้",
+    normal: "ปกติ", low: "ใกล้หมด", out: "หมดแล้ว", unavailable: "ยังคำนวณยอดพร้อมใช้ไม่ได้",
 };
 
 export function unavailableStockLabel(reason: string | null): string {

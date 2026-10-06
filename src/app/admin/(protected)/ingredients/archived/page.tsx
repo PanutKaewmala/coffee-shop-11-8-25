@@ -162,10 +162,10 @@ export default function ArchivedIngredientsPage() {
 
     return (
         <div className="p-6 space-y-6">
-            <Card title="คลังวัตถุดิบเก่า">
+            <Card title="วัตถุดิบที่เก็บไว้">
                 {!permissionLoading && !canManageIngredients ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่กู้คืนวัตถุดิบได้
+                        คุณดูรายการได้ แต่มีเฉพาะเจ้าของร้านที่นำวัตถุดิบกลับมาใช้งานได้
                     </div>
                 ) : null}
                 <div className="flex justify-between items-center mb-4 gap-2">

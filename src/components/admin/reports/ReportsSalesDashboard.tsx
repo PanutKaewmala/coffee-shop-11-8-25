@@ -237,11 +237,11 @@ export default function ReportsSalesDashboard() {
                 <section className="space-y-3" aria-labelledby="menus-heading"><SectionHeading id="menus-heading" title="เมนูที่ทำรายได้" description="เรียงตามรายได้ตามลำดับที่รายงานส่งมา"/><Card><MenuContribution menus={data.menus}/></Card></section>
             </>}
 
-            {hasReportsDataQualityIssues(data.dataQuality) ? <section className="space-y-3" aria-labelledby="quality-heading"><SectionHeading id="quality-heading" title="คุณภาพข้อมูล" description="ข้อจำกัดของข้อมูลที่อาจมีผลต่อการอ่านรายงาน"/><Card className="border-amber-500/30 bg-amber-500/5"><ul className="space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
+            {hasReportsDataQualityIssues(data.dataQuality) ? <section className="space-y-3" aria-labelledby="quality-heading"><SectionHeading id="quality-heading" title="ข้อมูลที่ควรเช็ก" description="ข้อจำกัดของข้อมูลที่อาจมีผลต่อการอ่านรายงาน"/><Card className="border-amber-500/30 bg-amber-500/5"><ul className="space-y-2 text-sm leading-6 text-[var(--text-secondary)]">
                 {data.dataQuality.legacyPaidFallbackCount > 0 ? <li>ออเดอร์ชำระแล้ว {data.dataQuality.legacyPaidFallbackCount.toLocaleString("th-TH")} รายการใช้เวลาสร้างแทนเวลาชำระ</li> : null}
                 {data.dataQuality.unknownPaymentCount > 0 ? <li>มี {data.dataQuality.unknownPaymentCount.toLocaleString("th-TH")} ออเดอร์ที่ไม่ระบุวิธีชำระ</li> : null}
                 {data.dataQuality.itemRevenueMismatchOrderCount > 0 ? <li>ยอดรวมสินค้าไม่ตรงกับยอดออเดอร์ {data.dataQuality.itemRevenueMismatchOrderCount.toLocaleString("th-TH")} รายการ<br/>ผลต่างรวม {formatReportsMoney(data.dataQuality.itemRevenueMismatchAmount)}</li> : null}
-            </ul><Link href="/admin/orders" className="mt-4 inline-flex min-h-10 items-center font-semibold text-[var(--accent)] hover:underline">ไปดูรายการออเดอร์</Link></Card></section> : null}
+            </ul><Link href="/admin/orders" className="mt-4 inline-flex min-h-10 items-center font-semibold text-[var(--accent)] hover:underline">ไปดูรายการขาย</Link></Card></section> : null}
         </> : null}
     </div>;
 }

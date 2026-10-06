@@ -55,13 +55,13 @@ assert.match(reportRoute, /\.in\("status", \["closed", "approved"\]\)/, "closed 
 assert.match(report, /summary: "stored_snapshot"/);
 assert.match(report, /paymentTotals: "stored_snapshot"/);
 assert.match(report, /paymentOrderCounts: "current_not_snapshot"/);
-assert.match(page, /Snapshot ณ เวลาปิดยอด/);
-assert.match(page, /รายงานสด: ยังไม่ปิดยอด/);
+assert.match(page, /ยอดสรุปและยอดแยกตามวิธีชำระเงินถูกเก็บไว้ตอนปิดยอดแล้ว จึงแก้ย้อนหลังไม่ได้/);
+assert.match(page, /วันนี้ยังไม่ปิดยอด ตัวเลขจึงอาจเปลี่ยนได้หากมีการแก้ไขรายการขาย/);
 assert.match(page, /border-emerald-500\/30 bg-emerald-500\/10[^\n]*text-text-primary/, "finalized banner uses readable theme text");
 assert.match(page, /border-amber-500\/30 bg-amber-500\/10[^\n]*text-text-primary/, "live banner uses readable theme text");
 assert.doesNotMatch(page, /dark:text-(?:emerald|amber)-100/, "daily-close banners do not use washed-out dark text overrides");
 assert.match(page, /cashDifferenceNeedsReason && !closeReasonIsValid \? \(/, "cash difference warning disappears as soon as a reason is valid");
-assert.match(page, /isCloseFinalized \? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน"/, "snapshot totals are not paired with live payment counts");
+assert.match(page, /isCloseFinalized \? "ยอดที่บันทึกไว้ตอนปิดยอด"/, "finalized totals are not paired with live payment counts");
 assert.match(route, /finalize_daily_close_atomic/, "final close uses the canonical atomic database writer");
 for (const guardedWrite of guardedWrites) {
   assert.match(guardedWrite, /(?:checkDailyClose\(|atomic|canonical business-day)/, "post-close operational guard remains connected");

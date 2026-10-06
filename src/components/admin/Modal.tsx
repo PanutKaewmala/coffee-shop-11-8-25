@@ -57,7 +57,7 @@ const Modal: React.FC<ModalProps> = ({
                 {/* Header */}
                 <div className="flex justify-between items-center px-5 py-4 border-b border-[var(--text-muted)]/20 flex-none">
                     <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-                        {title ?? "Modal"}
+                        {title ?? "รายละเอียด"}
                     </h3>
                     <button
                         onClick={onClose}

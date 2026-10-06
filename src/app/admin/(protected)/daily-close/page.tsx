@@ -736,10 +736,10 @@ export default function DailyClosePage() {
     </style>
 </head>
 <body>
-    <h1>รายงานปิดยอดวัน</h1>
+    <h1>รายงานปิดยอดรายวัน</h1>
     <div class="box" style="margin-bottom:12px;">
         ${isCloseFinalized
-            ? "Snapshot ณ เวลาปิดยอด: ยอดสรุปและยอดวิธีชำระเงินเป็น stored snapshot; จำนวนรายการและรายละเอียดธุรกรรมเป็นข้อมูลปัจจุบันและไม่ใช่ snapshot"
+            ? "ตัวเลขสรุปและยอดแยกตามวิธีชำระเงินถูกบันทึกไว้ตอนปิดยอดแล้ว ส่วนจำนวนรายการและรายละเอียดด้านล่างเป็นข้อมูลล่าสุดในระบบ"
             : "รายงานสด: ยังไม่ปิดยอดและตัวเลขอาจเปลี่ยนแปลงได้"}
     </div>
     <div class="meta">
@@ -798,28 +798,28 @@ export default function DailyClosePage() {
     <h2>สรุปยอดขาย</h2>
     <div class="grid-2" style="margin-bottom:8px;">
         <div class="box"><div class="label">ยอดขายรวม</div><div class="value">${safeText(report.summary.paidTotal)}</div></div>
-        <div class="box"><div class="label">ออเดอร์ที่ชำระแล้ว</div><div class="value">${report.summary.paidOrderCount} รายการ</div></div>
-        <div class="box"><div class="label">ยอดเฉลี่ยต่อออเดอร์</div><div class="value">${safeText(report.summary.averageOrderValue)}</div></div>
-        <div class="box"><div class="label">ออเดอร์ที่ยกเลิก</div><div class="value">${report.cancellations.count} รายการ</div></div>
+        <div class="box"><div class="label">บิลที่ชำระแล้ว</div><div class="value">${report.summary.paidOrderCount} รายการ</div></div>
+        <div class="box"><div class="label">เฉลี่ยต่อบิล</div><div class="value">${safeText(report.summary.averageOrderValue)}</div></div>
+        <div class="box"><div class="label">บิลที่ยกเลิก</div><div class="value">${report.cancellations.count} รายการ</div></div>
     </div>
 
     <h2>วิธีชำระเงิน</h2>
     <div class="grid-3" style="margin-bottom:8px;">
-        <div class="box"><div class="label">เงินสด</div><div class="value">${safeText(report.payments.cash.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.cash.orderCount} รายการ`}</div></div>
-        <div class="box"><div class="label">พร้อมเพย์</div><div class="value">${safeText(report.payments.promptPay.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.promptPay.orderCount} รายการ`}</div></div>
-        <div class="box"><div class="label">ไม่พบวิธีชำระเงิน</div><div class="value">${safeText(report.payments.unknown.sales)}</div><div class="label">${isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.unknown.orderCount} รายการ`}</div></div>
+        <div class="box"><div class="label">เงินสด</div><div class="value">${safeText(report.payments.cash.sales)}</div><div class="label">${isCloseFinalized ? "ยอดที่บันทึกไว้ตอนปิดยอด" : `${report.payments.cash.orderCount} รายการ`}</div></div>
+        <div class="box"><div class="label">พร้อมเพย์</div><div class="value">${safeText(report.payments.promptPay.sales)}</div><div class="label">${isCloseFinalized ? "ยอดที่บันทึกไว้ตอนปิดยอด" : `${report.payments.promptPay.orderCount} รายการ`}</div></div>
+        <div class="box"><div class="label">ไม่พบวิธีชำระเงิน</div><div class="value">${safeText(report.payments.unknown.sales)}</div><div class="label">${isCloseFinalized ? "ยอดที่บันทึกไว้ตอนปิดยอด" : `${report.payments.unknown.orderCount} รายการ`}</div></div>
     </div>
 
     ${report.paidTransactions.length ? `
-    <h2>ออเดอร์ที่ชำระแล้ว (${report.paidTransactions.length})</h2>
+    <h2>บิลที่ชำระแล้ว (${report.paidTransactions.length})</h2>
     <table>
         <thead>
-            <tr><th>เวลา</th><th>ออเดอร์</th><th>วิธีชำระเงิน</th><th class="right">ยอดขายรวม</th><th class="right">รับเงิน / เงินทอน</th></tr>
+            <tr><th>เวลา</th><th>เลขรายการ</th><th>วิธีชำระเงิน</th><th class="right">ยอดขายรวม</th><th class="right">รับเงิน / เงินทอน</th></tr>
         </thead>
         <tbody>
             ${report.paidTransactions.map((t) => `
                 <tr>
-                    <td>${safeText(formatBangkokTime(t.occurredAt))}${t.timestampSource === "created_at" ? " <span style='color:#b45309;' title='ใช้เวลาสร้างออเดอร์เพราะไม่มีเวลาชำระเงิน'>*</span>" : ""}</td>
+                    <td>${safeText(formatBangkokTime(t.occurredAt))}${t.timestampSource === "created_at" ? " <span style='color:#b45309;' title='ใช้เวลาที่สร้างรายการแทน เพราะไม่มีเวลาชำระเงิน'>*</span>" : ""}</td>
                     <td>${safeText(shortId(t.id))}</td>
                     <td>${safeText(paymentLabel(t.paymentMethod))}</td>
                     <td class="right">${safeText(t.total)}</td>
@@ -831,10 +831,10 @@ export default function DailyClosePage() {
     ` : ""}
 
     ${report.cancelledTransactions.length ? `
-    <h2>ออเดอร์ที่ยกเลิก (${report.cancelledTransactions.length})</h2>
+    <h2>บิลที่ยกเลิก (${report.cancelledTransactions.length})</h2>
     <table>
         <thead>
-            <tr><th>เวลายกเลิก</th><th>ออเดอร์</th><th class="right">ยอดก่อนยกเลิก</th><th>เหตุผล</th><th>หมายเหตุ</th><th>ผลกระทบต่อสต็อก</th></tr>
+            <tr><th>เวลายกเลิก</th><th>เลขรายการ</th><th class="right">ยอดก่อนยกเลิก</th><th>เหตุผล</th><th>หมายเหตุ</th><th>ผลกระทบต่อสต็อก</th></tr>
         </thead>
         <tbody>
             ${report.cancelledTransactions.map((t) => `
@@ -859,7 +859,7 @@ export default function DailyClosePage() {
     ` : ""}
 
     <div class="footer">
-        พิมพ์เมื่อ: ${printedAt} • สร้างอัตโนมัติจากระบบปิดยอดวัน
+        พิมพ์เมื่อ: ${printedAt} • สร้างอัตโนมัติจากหน้าปิดยอดรายวัน
     </div>
 </body>
 </html>`;
@@ -896,8 +896,8 @@ export default function DailyClosePage() {
             <div className="mx-auto max-w-7xl space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">ปิดยอดวัน</h1>
-                        <p className="mt-1 text-sm text-text-secondary">สรุปยอดขายและเงินสดของวันที่ขาย</p>
+                        <h1 className="text-2xl font-bold">ปิดยอดรายวัน</h1>
+                        <p className="mt-1 text-sm text-text-secondary">เช็กยอดขายกับเงินสดก่อนจบวัน</p>
                     </div>
 
                     <div className="flex flex-wrap items-end gap-2">
@@ -916,7 +916,7 @@ export default function DailyClosePage() {
                             disabled={loading}
                             className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-text-secondary transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            รีเฟรช
+                            อัปเดตข้อมูล
                         </button>
                         <button
                             type="button"
@@ -931,12 +931,12 @@ export default function DailyClosePage() {
 
                 {isCloseFinalized ? (
                     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-text-primary">
-                        Snapshot ณ เวลาปิดยอด: ยอดสรุปและยอดแยกตามวิธีชำระเงินเป็นข้อมูลที่จัดเก็บตอนปิดยอดและเป็น read-only
-                        ส่วนจำนวนรายการและรายละเอียดธุรกรรมด้านล่างเป็นข้อมูลปัจจุบัน ไม่ใช่ส่วนหนึ่งของ snapshot
+                        ยอดสรุปและยอดแยกตามวิธีชำระเงินถูกเก็บไว้ตอนปิดยอดแล้ว จึงแก้ย้อนหลังไม่ได้
+                        ส่วนจำนวนรายการและรายละเอียดด้านล่างจะแสดงข้อมูลล่าสุดจากระบบ
                     </div>
                 ) : (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-text-primary">
-                        รายงานสด: ยังไม่ปิดยอดและยังไม่ล็อกยอด หากมีการแก้ไขออเดอร์ ตัวเลขอาจเปลี่ยนได้
+                        วันนี้ยังไม่ปิดยอด ตัวเลขจึงอาจเปลี่ยนได้หากมีการแก้ไขรายการขาย
                     </div>
                 )}
 
@@ -946,7 +946,7 @@ export default function DailyClosePage() {
                     </div>
                 ) : null}
 
-                <Card title="สถานะปิดยอดของวันที่ขาย">
+                <Card title="สถานะของวันนี้">
                     <div className="space-y-4">
                         {closeLoading ? (
                             <div className="text-sm text-text-secondary">กำลังโหลด...</div>
@@ -1096,21 +1096,21 @@ export default function DailyClosePage() {
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             <MetricCard label="ยอดขายรวม" value={formatMoney(report.summary.paidTotal)} />
-                            <MetricCard label="ออเดอร์ที่ชำระแล้ว" value={`${report.summary.paidOrderCount} รายการ`} />
-                            <MetricCard label="ยอดเฉลี่ยต่อออเดอร์" value={formatMoney(report.summary.averageOrderValue)} />
+                            <MetricCard label="บิลที่ชำระแล้ว" value={`${report.summary.paidOrderCount} รายการ`} />
+                            <MetricCard label="เฉลี่ยต่อบิล" value={formatMoney(report.summary.averageOrderValue)} />
                             <MetricCard
                                 label="ยอดขายเงินสด"
                                 value={formatMoney(report.payments.cash.sales)}
-                                detail={isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.cash.orderCount} รายการ`}
+                                detail={isCloseFinalized ? "ยอดที่บันทึกไว้ตอนปิดยอด" : `${report.payments.cash.orderCount} รายการ`}
                             />
                             <MetricCard
                                 label="ยอดขายพร้อมเพย์"
                                 value={formatMoney(report.payments.promptPay.sales)}
-                                detail={isCloseFinalized ? "ยอดจาก snapshot • ซ่อนจำนวนรายการปัจจุบัน" : `${report.payments.promptPay.orderCount} รายการ`}
+                                detail={isCloseFinalized ? "ยอดที่บันทึกไว้ตอนปิดยอด" : `${report.payments.promptPay.orderCount} รายการ`}
                             />
                             {!isCloseFinalized ? (
                                 <MetricCard
-                                    label="ออเดอร์ที่ยกเลิก"
+                                    label="บิลที่ยกเลิก"
                                     value={`${report.cancellations.count} รายการ`}
                                     detail={`ยอดก่อนยกเลิก ${formatMoney(report.cancellations.originalValue)}`}
                                 />
@@ -1303,11 +1303,11 @@ export default function DailyClosePage() {
 
                         {isEmpty ? (
                             <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center text-text-secondary">
-                                ยังไม่มีออเดอร์ที่ชำระแล้วหรือยกเลิกในวันที่เลือก
+                                ยังไม่มีบิลที่ชำระแล้วหรือยกเลิกในวันที่เลือก
                             </div>
                         ) : null}
 
-                        <Card title={`ออเดอร์ที่ชำระแล้ว (${report.paidTransactions.length})`}>
+                        <Card title={`บิลที่ชำระแล้ว (${report.paidTransactions.length})`}>
                             <div className="overflow-x-auto">
                                 <table className="w-full min-w-[760px] text-xs md:text-sm">
                                     <thead className="text-left text-xs text-text-secondary">
@@ -1328,7 +1328,7 @@ export default function DailyClosePage() {
                                                         <td className="px-3 py-3 whitespace-nowrap">
                                                             {formatBangkokTime(transaction.occurredAt)}
                                                             {transaction.timestampSource === "created_at" ? (
-                                                                <span className="ml-1 text-amber-300" title="ใช้เวลาสร้างออเดอร์เพราะไม่มีเวลาชำระเงิน">
+                                                                <span className="ml-1 text-amber-300" title="ใช้เวลาที่สร้างรายการแทน เพราะไม่มีเวลาชำระเงิน">
                                                                     *
                                                                 </span>
                                                             ) : null}
@@ -1360,7 +1360,7 @@ export default function DailyClosePage() {
                             </div>
                         </Card>
 
-                        <Card title={`ออเดอร์ที่ยกเลิก (${report.cancelledTransactions.length})`}>
+                        <Card title={`บิลที่ยกเลิก (${report.cancelledTransactions.length})`}>
                             <div className="overflow-x-auto">
                                 <table className="w-full min-w-[900px] text-xs md:text-sm">
                                     <thead className="text-left text-xs text-text-secondary">
@@ -1396,7 +1396,7 @@ export default function DailyClosePage() {
                                         ) : (
                                             <tr>
                                                 <td colSpan={6} className="px-3 py-6 text-center text-text-secondary">
-                                                    ยังไม่มีออเดอร์ที่ยกเลิกในวันที่เลือก
+                                                    ยังไม่มีบิลที่ยกเลิกในวันที่เลือก
                                                 </td>
                                             </tr>
                                         )}

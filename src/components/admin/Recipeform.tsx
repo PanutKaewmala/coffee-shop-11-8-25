@@ -146,7 +146,7 @@ export default function RecipeForm({
                     {/* Quantity */}
                     <div>
                         <label className="block mb-1 font-medium text-text-secondary">
-                            จำนวนต่อ 1 เครื่อง
+                            จำนวนต่อ 1 แก้ว
                         </label>
 
                         <input

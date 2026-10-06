@@ -123,7 +123,7 @@ export default function ContactAdminPage() {
             <Card title="ข้อความจากลูกค้า">
                 {!permissionLoading && !canManageContacts ? (
                     <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
-                        คุณมีสิทธิ์ดูข้อมูลเท่านั้น เจ้าของร้านเท่านั้นที่ลบข้อความได้
+                        คุณดูข้อความได้ แต่มีเฉพาะเจ้าของร้านที่ลบข้อความได้
                     </div>
                 ) : null}
 
