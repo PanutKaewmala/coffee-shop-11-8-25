@@ -1137,7 +1137,7 @@ export default function DailyClosePage() {
                             </div>
                             {report.cash.dataMissingCount > 0 ? (
                                 <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-                                    ยอดเงินสดรับ เงินทอน และเงินสดหลังทอน คิดจากออเดอร์ที่มีข้อมูลครบเท่านั้น
+                                    ยอดเงินสดรับ เงินทอน และเงินสดหลังทอน คิดจากบิลที่มีข้อมูลครบเท่านั้น
                                 </div>
                             ) : null}
                         </Card>
@@ -1313,7 +1313,7 @@ export default function DailyClosePage() {
                                     <thead className="text-left text-xs text-text-secondary">
                                         <tr className="border-b border-white/10">
                                             <th className="px-3 py-2">เวลา</th>
-                                            <th className="px-3 py-2">ออเดอร์</th>
+                                            <th className="px-3 py-2">เลขรายการ</th>
                                             <th className="px-3 py-2">วิธีชำระเงิน</th>
                                             <th className="px-3 py-2 text-right">ยอดขายรวม</th>
                                             <th className="px-3 py-2 text-right">รับเงิน / เงินทอน</th>
@@ -1366,7 +1366,7 @@ export default function DailyClosePage() {
                                     <thead className="text-left text-xs text-text-secondary">
                                         <tr className="border-b border-white/10">
                                             <th className="px-3 py-2">เวลายกเลิก</th>
-                                            <th className="px-3 py-2">ออเดอร์</th>
+                                            <th className="px-3 py-2">เลขรายการ</th>
                                             <th className="px-3 py-2 text-right">ยอดก่อนยกเลิก</th>
                                             <th className="px-3 py-2">เหตุผล</th>
                                             <th className="px-3 py-2">หมายเหตุ</th>
@@ -1424,7 +1424,7 @@ export default function DailyClosePage() {
                                                 <th className="px-3 py-2">วันที่ขาย</th>
                                                 <th className="px-3 py-2">สถานะ</th>
                                                 <th className="px-3 py-2 text-right">ยอดขายรวม</th>
-                                                <th className="px-3 py-2 text-right">จำนวนออเดอร์</th>
+                                                <th className="px-3 py-2 text-right">จำนวนบิล</th>
                                                 <th className="px-3 py-2 text-right">เงินสดที่ควรอยู่ในลิ้นชัก</th>
                                                 <th className="px-3 py-2 text-right">เงินสดที่นับได้จริง</th>
                                                 <th className="px-3 py-2 text-right">ส่วนต่าง</th>

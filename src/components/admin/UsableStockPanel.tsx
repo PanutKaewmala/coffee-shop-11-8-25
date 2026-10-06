@@ -157,7 +157,7 @@ export default function UsableStockPanel() {
                             <div><p className="text-sm text-[var(--text-muted)]">จำนวนที่ใช้ขายได้ตอนนี้ · {item.source_type === "supply_item" ? "คลังวัตถุดิบ" : "วัตถุดิบเดิม"}</p>
                                 <p className="mt-1 text-2xl font-bold">{item.usable_stock === null ? "—" : formatQuantity(item.usable_stock)} <span className="text-base font-normal">{item.unit}</span></p></div>
                             {status === "unavailable" ? <p className="text-sm text-[var(--text-secondary)]">{unavailableStockLabel(item.unavailable_reason)}</p> : null}
-                            <p className="text-sm">{item.minimum_stock === null ? "ยังไม่ตั้งขั้นต่ำ · ระบบจึงยังไม่เตือนว่าใกล้หมด" : `ขั้นต่ำ ${formatQuantity(item.minimum_stock)} ${item.unit} · ใกล้หมดเมื่อยอดมากกว่า 0 และไม่เกินขั้นต่ำ`}</p>
+                            <p className="text-sm">{item.minimum_stock === null ? "ยังไม่ได้ตั้งจุดเตือนของใกล้หมด" : `ตั้งจุดเตือนไว้ที่ ${formatQuantity(item.minimum_stock)} ${item.unit} · ระบบใช้ค่านี้ช่วยบอกว่าเมื่อไรควรเติมของ`}</p>
                             {stock.can_edit_minimum && item.source_type === "supply_item"
                                 ? <ReceiveStockForm item={item} stock={stock} onSaved={(quantity) => { setNotice(`รับเข้า ${item.name} ${quantity} ${item.unit} แล้ว`); refresh(); }} />
                                 : null}

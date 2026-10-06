@@ -777,7 +777,7 @@ export default function OrdersClient() {
                                 />
 
                                 <StatCard
-                                    label="ออเดอร์ชำระแล้ว"
+                                    label="บิลที่ชำระแล้ว"
                                     value={`${paidCountToShow} รายการ`}
                                     sub={
                                         revToShow
@@ -791,7 +791,7 @@ export default function OrdersClient() {
                                 />
 
                                 <StatCard
-                                    label="ออเดอร์ยกเลิก"
+                                    label="บิลที่ยกเลิก"
                                     value={`${computed.cancelledCount} รายการ`}
                                     sub={
                                         computed.cancelledValue > 0

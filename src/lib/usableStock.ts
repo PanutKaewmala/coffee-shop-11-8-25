@@ -31,7 +31,7 @@ export const stockStatusLabel: Record<StockStatus, string> = {
 };
 
 export function unavailableStockLabel(reason: string | null): string {
-    if (reason === "LEGACY_LOT_BALANCE_UNAVAILABLE") return "ยอดล็อตเดิมยังไม่เชื่อมกับการขาย จึงไม่สามารถยืนยันจำนวนที่ไม่หมดอายุได้";
+    if (reason === "LEGACY_LOT_BALANCE_UNAVAILABLE") return "ข้อมูลล็อตเดิมยังเชื่อมกับรายการขายไม่ครบ เลยยังบอกจำนวนที่ใช้ขายได้จริงไม่ได้";
     if (reason === "ITEM_ARCHIVED") return "สูตรยังอ้างอิงวัตถุดิบที่เลิกใช้งานแล้ว";
     if (reason === "BRANCH_INACTIVE") return "สาขานี้ไม่ได้เปิดใช้งาน";
     return "ข้อมูลยอดคงเหลือไม่พร้อมใช้งาน";
