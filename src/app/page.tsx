@@ -118,21 +118,21 @@ const plans = [
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
-      <section className="relative px-4 pb-16 pt-16 md:pb-24 md:pt-24">
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[620px] bg-[radial-gradient(circle_at_70%_20%,rgba(184,137,83,0.18),transparent_42%)]" />
-        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+      <section className="relative px-4 pb-24 pt-20 md:pb-32 md:pt-28">
+        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[620px] bg-[radial-gradient(circle_at_72%_18%,rgba(169,120,69,0.10),transparent_42%)]" />
+        <div className="mx-auto grid max-w-6xl gap-14 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent">
+            <div className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white/45 px-4 py-2 text-sm font-medium text-accent dark:border-white/10 dark:bg-white/[0.04]">
               <Sparkles size={16} />
               TALVO · ช่วยให้งานหน้าร้านต่อกันง่ายขึ้น
             </div>
 
-            <h1 className="mt-6 max-w-3xl text-4xl font-bold leading-[1.12] tracking-tight md:text-6xl">
+            <h1 className="mt-7 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-[-0.04em] md:text-6xl">
               รับออเดอร์ ตัดสต็อก และเช็กยอด
               <span className="text-accent"> ให้อยู่ในที่เดียว</span>
             </h1>
 
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-text-secondary">
+            <p className="mt-7 max-w-2xl text-lg leading-9 text-text-secondary">
               ถ้าร้านเริ่มเจอปัญหายอดขาย เงินสด และสต็อกไม่ค่อยตรงกัน TALVO ช่วยเชื่อมตั้งแต่รับออเดอร์
               ตัดวัตถุดิบ ไปจนถึงเช็กยอดปลายวัน ทุกอย่างย้อนดูได้จากที่เดียว
             </p>
@@ -140,14 +140,14 @@ export default function HomePage() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/demo-system"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-6 py-3.5 font-semibold text-white transition hover:bg-accent-dark"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-7 py-3.5 font-medium text-white shadow-[0_10px_24px_rgba(169,120,69,0.18)] transition hover:bg-accent-dark"
               >
                 ลองดูหน้าจอจริง
                 <ArrowRight size={18} />
               </Link>
               <Link
                 href="#workflow"
-                className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-surface/70 px-6 py-3.5 font-semibold text-foreground transition hover:border-accent/50"
+                className="inline-flex items-center justify-center rounded-full border border-black/[0.08] bg-transparent px-7 py-3.5 font-medium text-text-primary transition hover:bg-white/55 dark:border-white/10"
               >
                 ดูว่าระบบทำงานยังไง
               </Link>
@@ -164,8 +164,8 @@ export default function HomePage() {
           </div>
 
           <div className="relative">
-            <div className="overflow-hidden rounded-[28px] border border-accent/15 bg-surface shadow-2xl shadow-accent/10">
-              <div className="flex items-center gap-2 border-b border-accent/10 px-4 py-3">
+            <div className="overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#fffdf9] shadow-[0_30px_80px_rgba(46,45,42,0.08)] dark:border-white/10 dark:bg-surface">
+              <div className="flex items-center gap-2 border-b border-black/[0.05] px-4 py-3 dark:border-white/10">
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/35" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/25" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/15" />
@@ -181,7 +181,7 @@ export default function HomePage() {
               />
             </div>
 
-            <div className="absolute -bottom-5 left-4 right-4 grid gap-2 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:right-6 sm:w-[310px]">
+            <div className="absolute -bottom-6 left-4 right-4 grid gap-2 rounded-2xl border border-black/[0.06] bg-[#fffdf9]/95 p-5 shadow-[0_18px_45px_rgba(46,45,42,0.09)] backdrop-blur sm:left-auto sm:right-6 sm:w-[320px] dark:border-white/10 dark:bg-surface/95">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">ขาย 1 แก้ว ระบบทำอะไรให้บ้าง</div>
               <div className="font-semibold">Americano 60 บาท → ตัดเมล็ดกาแฟ 20 กรัม</div>
               <div className="text-sm text-text-secondary">ขายครั้งเดียว ยอดขายกับสต็อกขยับพร้อมกัน</div>
@@ -190,7 +190,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="workflow" className="scroll-mt-28 border-y border-accent/10 bg-surface/45 px-4 py-16 md:py-24">
+      <section id="workflow" className="scroll-mt-28 border-y border-black/[0.05] bg-[#faf7f1] px-4 py-20 md:py-28 dark:border-white/10 dark:bg-surface/30">
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
             <div className="max-w-2xl">
@@ -203,11 +203,11 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="mt-10 rounded-[30px] border border-accent/15 bg-background p-5 shadow-sm md:p-7">
+          <div className="mt-12 rounded-[30px] border border-black/[0.06] bg-[#fffdf9]/60 p-5 md:p-8 dark:border-white/10 dark:bg-surface/40">
             <div className="grid gap-3 lg:grid-cols-4">
               {workflow.map(({ step, icon: Icon, title, description, signal, example }, index) => (
                 <div key={step} className="relative">
-                  <article className="h-full rounded-2xl border border-accent/10 bg-surface/55 p-5">
+                  <article className="h-full rounded-2xl border border-black/[0.055] bg-white/45 p-6 dark:border-white/10 dark:bg-white/[0.025]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
                         <Icon size={20} />
@@ -216,7 +216,7 @@ export default function HomePage() {
                     </div>
                     <h3 className="mt-5 text-xl font-bold">{title}</h3>
                     <p className="mt-3 text-sm leading-6 text-text-secondary">{description}</p>
-                    <div className="mt-5 border-t border-accent/10 pt-4">
+                    <div className="mt-6 border-t border-black/[0.06] pt-4 dark:border-white/10">
                       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-accent">{signal}</div>
                       <div className="mt-1 font-semibold">{example}</div>
                     </div>
@@ -230,12 +230,12 @@ export default function HomePage() {
               ))}
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-[#17130f] px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-black/[0.05] bg-[#eee6da] px-5 py-4 text-text-primary sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-[#1b1916] dark:text-white">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างจริง</div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a6d3d] dark:text-[#c69a67]">ตัวอย่างจริง</div>
                 <div className="mt-1 font-semibold">ขาย Americano 60 บาท → ตัดเมล็ดกาแฟ 20 กรัม → ถ้ายกเลิกก็คืนได้ → ปลายวันเอายอดไปเช็กเงิน</div>
               </div>
-              <Link href="/demo-system" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#d4a574]">
+              <Link href="/demo-system" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#9a6d3d] dark:text-[#c69a67]">
                 ดูหน้าจอจริงต่อ
                 <ArrowRight size={15} />
               </Link>
@@ -244,7 +244,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="features" className="scroll-mt-28 px-4 py-16 md:py-24">
+      <section id="features" className="scroll-mt-28 px-4 py-20 md:py-28">
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
             <div className="max-w-xl">
@@ -257,7 +257,7 @@ export default function HomePage() {
 
             <div className="grid gap-4 md:grid-cols-2">
               {capabilities.map(({ icon: Icon, title, description }) => (
-                <div key={title} className="rounded-2xl border border-accent/10 bg-surface/65 p-5">
+                <div key={title} className="rounded-2xl border border-black/[0.055] bg-[#fbf8f2] p-6 dark:border-white/10 dark:bg-surface/55">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
                     <Icon size={20} />
                   </div>
@@ -271,18 +271,18 @@ export default function HomePage() {
       </section>
 
       <section className="px-4 py-8 md:py-12">
-        <div className="mx-auto grid max-w-6xl overflow-hidden rounded-[30px] border border-accent/15 bg-[#17130f] text-white lg:grid-cols-[0.85fr_1.15fr]">
+        <div className="mx-auto grid max-w-6xl overflow-hidden rounded-[30px] border border-black/[0.06] bg-[#eee7dd] text-text-primary lg:grid-cols-[0.85fr_1.15fr] dark:border-white/10 dark:bg-[#1b1916] dark:text-white">
           <div className="flex flex-col justify-center p-7 md:p-10">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">ก่อนกลับบ้าน เช็กให้ชัวร์ว่าเงินตรง</div>
+            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#9a6d3d] dark:text-[#c69a67]">ก่อนกลับบ้าน เช็กให้ชัวร์ว่าเงินตรง</div>
             <h2 className="mt-3 text-3xl font-bold">จบวันแล้วรู้ว่าเงินวันนี้ตรงไหม</h2>
-            <p className="mt-4 leading-7 text-[#d6cbbf]">
+            <p className="mt-4 leading-7 text-[#68625b] dark:text-[#cbc4ba]">
               TALVO จะรวมยอดขายและเงินที่ควรมีไว้ให้ แล้วให้ใส่ยอดที่นับได้จริงเพื่อดูว่าตรงกันไหม
               พอยืนยันปิดวันแล้ว ระบบจะไม่ให้เปิดบิลเพิ่มในวันนั้น
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {["ยอดขายวันนี้", "เงินที่ควรมี", "เงินที่นับได้จริง", "ต่างกันเท่าไร"].map((item) => (
-                <div key={item} className="flex items-center gap-2 text-sm text-[#d6cbbf]">
-                  <CheckCircle2 size={16} className="text-[#d4a574]" />
+                <div key={item} className="flex items-center gap-2 text-sm text-[#68625b] dark:text-[#cbc4ba]">
+                  <CheckCircle2 size={16} className="text-[#9a6d3d] dark:text-[#c69a67]" />
                   {item}
                 </div>
               ))}
@@ -300,8 +300,8 @@ export default function HomePage() {
 
       <section className="px-4 py-16 md:py-24">
         <div className="mx-auto grid max-w-6xl gap-5 md:grid-cols-2">
-          <div className="rounded-[26px] border border-emerald-500/20 bg-emerald-500/[0.06] p-6 md:p-8">
-            <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
+          <div className="rounded-[26px] border border-black/[0.06] bg-[#fbf8f2] p-7 md:p-8 dark:border-white/10 dark:bg-surface/45">
+            <div className="flex items-center gap-2 font-semibold text-accent">
               <CheckCircle2 size={20} />
               TALVO น่าจะเหมาะ ถ้าร้านคุณ…
             </div>
@@ -313,7 +313,7 @@ export default function HomePage() {
             </ul>
           </div>
 
-          <div className="rounded-[26px] border border-accent/15 bg-surface/60 p-6 md:p-8">
+          <div className="rounded-[26px] border border-black/[0.06] bg-[#fbf8f2] p-7 md:p-8 dark:border-white/10 dark:bg-surface/45">
             <div className="flex items-center gap-2 font-bold">
               <XCircle size={20} className="text-accent" />
               อาจยังไม่เหมาะ ถ้าร้านคุณต้องการ…
@@ -328,7 +328,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="pricing" className="scroll-mt-28 border-y border-accent/10 bg-surface/45 px-4 py-16 md:py-24">
+      <section id="pricing" className="scroll-mt-28 border-y border-black/[0.05] bg-[#faf7f1] px-4 py-20 md:py-28 dark:border-white/10 dark:bg-surface/30">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-3xl">
             <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ราคา</div>
@@ -341,8 +341,8 @@ export default function HomePage() {
                 key={plan.name}
                 className={`relative flex flex-col rounded-[26px] border p-6 ${
                   plan.featured
-                    ? "border-accent/45 bg-background shadow-xl shadow-accent/10 ring-1 ring-accent/20"
-                    : "border-accent/10 bg-background/80"
+                    ? "border-accent/30 bg-[#fffdf9] shadow-[0_18px_55px_rgba(46,45,42,0.07)] ring-1 ring-accent/10 dark:bg-background"
+                    : "border-black/[0.055] bg-[#fbf8f2] dark:border-white/10 dark:bg-background/60"
                 }`}
               >
                 {plan.featured && (
@@ -350,7 +350,7 @@ export default function HomePage() {
                 )}
                 <h3 className="text-2xl font-bold">{plan.name}</h3>
                 <p className="mt-3 min-h-[72px] text-sm leading-6 text-text-secondary">{plan.description}</p>
-                <div className="mt-5 rounded-2xl bg-surface p-4">
+                <div className="mt-5 rounded-2xl border border-black/[0.05] bg-[#f6f1e8] p-4 dark:border-white/10 dark:bg-surface">
                   <div className="text-xs text-text-muted">ค่าติดตั้ง</div>
                   <div className="mt-1 text-xl font-bold text-accent">{plan.setup}</div>
                   <div className="mt-3 border-t border-accent/10 pt-3 text-sm font-semibold">{plan.monthly}</div>
@@ -380,8 +380,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="demo" className="scroll-mt-28 px-4 py-16 md:py-24">
-        <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-background p-6 shadow-sm md:p-9">
+      <section id="demo" className="scroll-mt-28 px-4 py-20 md:py-28">
+        <div className="mx-auto max-w-6xl rounded-[30px] border border-black/[0.06] bg-[#fbf8f2] p-7 md:p-10 dark:border-white/10 dark:bg-background">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
               <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">อยากเห็นตอนใช้งานจริง?</div>
@@ -399,8 +399,8 @@ export default function HomePage() {
               </Link>
             </div>
 
-            <div className="rounded-[24px] bg-[#17130f] p-6 text-white md:p-8">
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าหลักที่ใช้ในร้าน</div>
+            <div className="rounded-[24px] border border-black/[0.05] bg-[#eee7dd] p-6 text-text-primary md:p-8 dark:border-white/10 dark:bg-[#1b1916] dark:text-white">
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a6d3d] dark:text-[#c69a67]">6 หน้าหลักที่ใช้ในร้าน</div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {[
                   ["01", "รับออเดอร์", "เลือกเมนู รับเงิน และปิดบิล"],
@@ -410,10 +410,10 @@ export default function HomePage() {
                   ["05", "ยกเลิกบิล", "บันทึกเหตุผลและเลือกคืนสต็อก"],
                   ["06", "ปิดยอด", "เทียบเงินแล้วจบวัน"],
                 ].map(([step, title, description]) => (
-                  <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <div className="text-xs font-bold text-[#d4a574]">{step}</div>
+                  <div key={step} className="rounded-2xl border border-black/[0.06] bg-white/55 p-4 dark:border-white/10 dark:bg-white/[0.035]">
+                    <div className="text-xs font-bold text-[#9a6d3d] dark:text-[#c69a67]">{step}</div>
                     <div className="mt-1 font-semibold">{title}</div>
-                    <div className="mt-1 text-sm text-[#b8aa9b]">{description}</div>
+                    <div className="mt-1 text-sm text-[#6b655e] dark:text-[#b8aa9b]">{description}</div>
                   </div>
                 ))}
               </div>
@@ -423,7 +423,7 @@ export default function HomePage() {
       </section>
 
       <section id="contact" className="scroll-mt-28 px-4 pb-20 pt-8">
-        <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-gradient-to-br from-accent/15 via-surface to-background p-7 md:p-10">
+        <div className="mx-auto max-w-6xl rounded-[30px] border border-black/[0.06] bg-[#fbf8f2] p-8 md:p-11 dark:border-white/10 dark:bg-surface">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
             <div className="max-w-2xl">
               <h2 className="text-3xl font-bold">อยากรู้ว่า TALVO เข้ากับร้านคุณไหม?</h2>
@@ -442,7 +442,7 @@ export default function HomePage() {
                 ลองดูหน้าจอจริง
                 <ArrowRight size={17} />
               </Link>
-              <a href="tel:0630427563" className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-background/80 px-6 py-3 font-semibold">
+              <a href="tel:0630427563" className="inline-flex items-center justify-center rounded-full border border-black/[0.08] bg-transparent px-6 py-3 font-medium dark:border-white/10">
                 โทรคุยกัน
               </a>
             </div>

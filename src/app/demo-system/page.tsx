@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function DemoSystemPage() {
   return (
     <main
-      className="min-h-screen bg-[#fbf8f4] text-[#30261f] transition-colors duration-300 dark:bg-[#0f0d0c] dark:text-[#f5f3f0]"
+      className="min-h-screen bg-background text-text-primary transition-colors duration-300"
       data-demo-system-page
     >
       <ProductExplorer />

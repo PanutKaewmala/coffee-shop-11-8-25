@@ -37,21 +37,17 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
         );
     }
 
-    const dark = isDemoSystemRoute;
-
     return (
-        <footer
-            className={dark ? "border-t border-white/10 bg-[#12100e] px-6 py-10 text-[#f5f3f0]" : "border-t border-accent/10 bg-surface px-6 py-10 text-foreground"}
-        >
+        <footer className="border-t border-black/[0.06] bg-[#f5f1e9] px-6 py-12 text-text-primary dark:border-white/10 dark:bg-[#12110f] dark:text-[#f4f1eb]">
             <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-[1fr_auto] md:items-start">
                 <div className="max-w-md">
                     <div className="text-xl font-bold">TALVO</div>
-                    <p className={dark ? "mt-2 text-sm leading-6 text-[#d6cbbf]" : "mt-2 text-sm leading-6 text-text-secondary"}>
+                    <p className="mt-3 max-w-sm text-sm leading-7 text-text-secondary">
                         ช่วยให้การรับออเดอร์ สต็อก และการเช็กยอดปลายวันอยู่ในที่เดียวกัน
                     </p>
                 </div>
 
-                <nav className={dark ? "flex flex-wrap gap-x-5 gap-y-3 text-sm text-[#d6cbbf]" : "flex flex-wrap gap-x-5 gap-y-3 text-sm text-text-secondary"}>
+                <nav className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-text-secondary">
                     <Link href="/#workflow" className="transition hover:text-accent">วิธีทำงาน</Link>
                     <Link href="/#features" className="transition hover:text-accent">ทำอะไรได้</Link>
                     <Link href="/#pricing" className="transition hover:text-accent">ราคา</Link>
@@ -60,7 +56,7 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
                 </nav>
             </div>
 
-            <div className={dark ? "mx-auto mt-8 max-w-6xl border-t border-white/10 pt-5 text-sm text-[#a39482]" : "mx-auto mt-8 max-w-6xl border-t border-accent/10 pt-5 text-sm text-text-muted"}>
+            <div className="mx-auto mt-10 max-w-6xl border-t border-black/[0.06] pt-6 text-sm text-text-muted dark:border-white/10">
                 © {year} TALVO — ระบบจัดการร้านกาแฟ
             </div>
         </footer>

@@ -56,16 +56,16 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
         <header className="sticky top-2 z-50 w-full px-2 sm:px-4">
             <div className="relative mx-auto max-w-[1120px]">
                 <div
-                    className="relative flex items-center justify-between gap-2 rounded-2xl border border-accent/10 p-2 shadow-sm backdrop-blur-md transition-colors duration-200"
+                    className="relative flex items-center justify-between gap-2 rounded-full border border-black/[0.06] p-1.5 shadow-[0_10px_35px_rgba(46,45,42,0.06)] backdrop-blur-xl transition-colors duration-200 dark:border-white/10"
                     style={{
-                        backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
+                        backgroundColor: "color-mix(in srgb, var(--surface) 88%, transparent)",
                         color: "var(--color-foreground)",
                     }}
                 >
                     <Link href={isTenantRoute ? tenantBase || "/" : "/"} className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3">
                         <div
-                            className="flex h-10 w-10 items-center justify-center rounded-2xl font-bold text-white"
-                            style={{ background: "linear-gradient(to bottom right, var(--accent), var(--accent-dark))" }}
+                            className="flex h-10 w-10 items-center justify-center rounded-full font-bold text-white"
+                            style={{ background: "var(--accent)" }}
                         >
                             ☕
                         </div>
@@ -85,9 +85,8 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                                 <li key={item.href}>
                                     <Link
                                         href={item.href}
-                                        className="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-accent/10"
-                                        style={{ color: "var(--color-foreground)" }}
-                                    >
+                                        className="rounded-full px-4 py-2 text-sm font-medium text-text-secondary transition hover:bg-black/[0.035] hover:text-text-primary dark:hover:bg-white/[0.05]"
+                                        >
                                         {item.label}
                                     </Link>
                                 </li>
@@ -97,7 +96,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
 
                     <div className="flex min-w-0 flex-shrink-0 items-center gap-2">
                         <button
-                            className="rounded-2xl p-2 transition-colors hover:bg-accent/10"
+                            className="rounded-full p-2 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                             onClick={toggleTheme}
                             aria-label="สลับธีมสี"
                         >
@@ -109,13 +108,13 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
 
                         <Link
                             href={ctaHref}
-                            className="hidden rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-dark sm:inline-flex"
+                            className="hidden rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(169,120,69,0.18)] transition hover:bg-accent-dark sm:inline-flex"
                         >
                             {ctaLabel}
                         </Link>
 
                         <button
-                            className="rounded-2xl p-2 transition-colors hover:bg-accent/10 md:hidden"
+                            className="rounded-full p-2 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06] md:hidden"
                             onClick={() => setOpen((prev) => !prev)}
                             aria-label="เปิดเมนูนำทาง"
                         >
@@ -124,7 +123,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                     </div>
 
                     <div
-                        className={`absolute left-0 right-0 top-full z-40 mt-2 origin-top rounded-2xl border border-accent/10 shadow-lg backdrop-blur-md transition-all duration-200 md:hidden ${
+                        className={`absolute left-0 right-0 top-full z-40 mt-3 origin-top rounded-3xl border border-black/[0.06] shadow-[0_18px_45px_rgba(46,45,42,0.08)] backdrop-blur-xl dark:border-white/10 transition-all duration-200 md:hidden ${
                             open ? "scale-y-100 opacity-100" : "pointer-events-none scale-y-0 opacity-0"
                         }`}
                         style={{ backgroundColor: "var(--color-surface)" }}

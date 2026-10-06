@@ -68,8 +68,15 @@ export default function ClientWrapper({ children }: { children: ReactNode }) {
         pathname.startsWith("/login") ||
         pathname.startsWith("/pos");
 
+    const isTalvoMarketingRoute =
+        pathname === "/" ||
+        pathname === "/demo-system" ||
+        pathname.startsWith("/demo-system/");
+
     return (
-        <div className="flex flex-col min-h-screen bg-background text-foreground transition-colors duration-300">
+        <div
+            className={`flex min-h-screen flex-col bg-background text-foreground transition-colors duration-300 ${isTalvoMarketingRoute ? "talvo-marketing-theme" : ""}`}
+        >
             {!hideNavAndFooter && <Navbar shopName={displayShopName} />}
             <main className="flex-1">{children}</main>
             {!hideNavAndFooter && <Footer shopName={displayShopName} />}

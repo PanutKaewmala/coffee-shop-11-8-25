@@ -4,46 +4,70 @@
 
 /* ---------- Light Mode ---------- */
 :root {
-  /* Backgrounds */
   --surface: #f7f3ef;
-  /* light coffee cream */
   --background: #fcfaf8;
-  /* soft warm white */
 
-  /* Text */
   --text-primary: #3c2f2f;
-  /* dark mocha */
   --text-secondary: #6b5b4c;
-  /* medium roast */
   --text-muted: #9a8c7a;
-  /* light roast */
 
-  /* Accent / Buttons */
   --accent: #b88953;
-  /* caramel / latte tone */
   --accent-dark: #8a6a3f;
-  /* darker roast for hover */
 }
 
 /* ---------- Dark Mode ---------- */
 .dark {
   --surface: #1b1917;
-  /* deep espresso */
   --background: #12100e;
-  /* near-black with warmth */
 
   --text-primary: #f5f3f0;
-  /* off-white with warmth */
   --text-secondary: #d6cbbf;
-  /* soft beige */
   --text-muted: #a39482;
-  /* muted light brown */
 
-  /* Accent */
   --accent: #d4a574;
-  /* warm latte highlight */
   --accent-dark: #b38455;
-  /* caramel brown */
+}
+
+/* ---------- TALVO Public Marketing ---------- */
+.talvo-marketing-theme {
+  --surface: #fbf8f2;
+  --background: #f5f1e9;
+  --text-primary: #2e2d2a;
+  --text-secondary: #66615a;
+  --text-muted: #948c82;
+  --accent: #a97845;
+  --accent-dark: #875d35;
+
+  font-family:
+    var(--font-geist-sans),
+    "Noto Sans Thai",
+    "Leelawadee UI",
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.7;
+  letter-spacing: -0.01em;
+}
+
+.talvo-marketing-theme h1,
+.talvo-marketing-theme h2,
+.talvo-marketing-theme h3 {
+  color: var(--text-primary);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.talvo-marketing-theme p {
+  line-height: 1.8;
+}
+
+.dark .talvo-marketing-theme {
+  --surface: #1b1916;
+  --background: #12110f;
+  --text-primary: #f4f1eb;
+  --text-secondary: #cbc4ba;
+  --text-muted: #918980;
+  --accent: #c69a67;
+  --accent-dark: #a77b4d;
 }
 
 /* ---------- Tailwind Variable Mapping ---------- */
