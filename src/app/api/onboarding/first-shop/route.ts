@@ -20,7 +20,23 @@ async function clearCreatedShop(
     shopId: string,
     userId: string
 ) {
-    await admin.from("branch").delete().eq("shop_id", shopId);
+    // The database protects the last branch from direct deletion. During a
+    // failed first-shop setup, detach generated branches first so cleanup can
+    // remove the incomplete shop without fighting that invariant.
+    const { data: branches } = await admin
+        .from("branch")
+        .select("id")
+        .eq("shop_id", shopId);
+
+    const branchIds = (branches ?? []).map((branch) => branch.id);
+    if (branchIds.length > 0) {
+        await admin
+            .from("branch")
+            .update({ shop_id: null, is_primary: false })
+            .eq("shop_id", shopId);
+        await admin.from("branch").delete().in("id", branchIds);
+    }
+
     await admin.from("shop_members").delete().eq("shop_id", shopId).eq("user_id", userId);
     await admin.from("shops").delete().eq("id", shopId);
 }
@@ -84,18 +100,50 @@ export async function POST(req: NextRequest) {
         return jsonError(ownerError.message, 500);
     }
 
-    const { data: branch, error: branchError } = await admin
+    // New shops already receive a primary branch from the database invariant.
+    // Configure that branch instead of inserting a second primary branch. Keep a
+    // fallback insert so onboarding also works in environments where the trigger
+    // has not been installed yet.
+    const { data: generatedBranch, error: generatedBranchError } = await admin
         .from("branch")
-        .insert({
-            shop_id: shopId,
-            name: input.branchName,
-            address: input.address,
-            phone: input.phone || null,
-            is_primary: true,
-            created_at: new Date().toISOString(),
-        })
         .select("id,name")
-        .single();
+        .eq("shop_id", shopId)
+        .eq("is_primary", true)
+        .maybeSingle();
+
+    if (generatedBranchError) {
+        await clearCreatedShop(admin, shopId, auth.user.id);
+        return jsonError(generatedBranchError.message, 500);
+    }
+
+    const branchResult = generatedBranch
+        ? await admin
+            .from("branch")
+            .update({
+                name: input.branchName,
+                address: input.address,
+                phone: input.phone || null,
+                is_primary: true,
+                created_at: new Date().toISOString(),
+            })
+            .eq("id", generatedBranch.id)
+            .eq("shop_id", shopId)
+            .select("id,name")
+            .single()
+        : await admin
+            .from("branch")
+            .insert({
+                shop_id: shopId,
+                name: input.branchName,
+                address: input.address,
+                phone: input.phone || null,
+                is_primary: true,
+                created_at: new Date().toISOString(),
+            })
+            .select("id,name")
+            .single();
+
+    const { data: branch, error: branchError } = branchResult;
 
     if (branchError || !branch) {
         await clearCreatedShop(admin, shopId, auth.user.id);

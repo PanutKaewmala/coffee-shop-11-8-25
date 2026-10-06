@@ -66,7 +66,10 @@ assert.match(route, /shop_members[\s\S]*eq\("user_id", auth\.user\.id\)[\s\S]*li
 assert.match(route, /บัญชีนี้มีร้านอยู่แล้ว/);
 assert.match(route, /from\("shops"\)[\s\S]*\.insert/);
 assert.match(route, /from\("shop_members"\)\.insert\([\s\S]*role: "owner"/);
-assert.match(route, /from\("branch"\)[\s\S]*is_primary: true/);
+assert.match(route, /from\("branch"\)[\s\S]*eq\("is_primary", true\)[\s\S]*maybeSingle/, "onboarding should reuse the database-created primary branch");
+assert.match(route, /generatedBranch[\s\S]*\.update\([\s\S]*name: input\.branchName/, "database-created branch should be configured with onboarding input");
+assert.match(route, /: await admin[\s\S]*\.from\("branch"\)[\s\S]*\.insert\(/, "onboarding keeps a branch insert fallback for environments without the trigger");
+assert.match(route, /update\(\{ shop_id: null, is_primary: false \}\)/, "failed onboarding cleanup should detach the protected last branch before deletion");
 assert.match(route, /from\("profiles"\)\.upsert/);
 assert.match(route, /current_shop_id: shopId/);
 assert.match(route, /current_branch_id: branch\.id/);
