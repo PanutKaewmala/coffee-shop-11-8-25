@@ -136,8 +136,8 @@ export default function ProductExplorer() {
       <section className="px-4 pb-20">
         <div className="mx-auto max-w-[1380px]">
           <div className="overflow-hidden rounded-[26px] border border-[#d8ccbf] bg-[#fffdf9] shadow-[0_24px_70px_rgba(103,78,55,0.12)] dark:border-white/10 dark:bg-[#181512] dark:shadow-2xl dark:shadow-black/20">
-            <div className="grid min-h-[720px] lg:grid-cols-[220px_minmax(0,1fr)_300px]">
-              <aside className="border-b border-[#d8ccbf] bg-[#f3ede6] p-3 dark:border-white/10 dark:bg-[#141210] lg:border-b-0 lg:border-r">
+            <div className="grid min-h-[720px] min-w-0 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+              <aside className="min-w-0 border-b border-[#d8ccbf] bg-[#f3ede6] p-3 dark:border-white/10 dark:bg-[#141210] lg:border-b-0 lg:border-r">
                 <div className="mb-3 hidden px-3 pt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#8d7c6b] dark:text-[#7f7367] lg:block">
                   หน้าจอ
                 </div>
