@@ -5,7 +5,14 @@ import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 
 export async function middleware(req: NextRequest) {
-    const res = NextResponse.next();
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-talvo-pathname", req.nextUrl.pathname);
+
+    const res = NextResponse.next({
+        request: {
+            headers: requestHeaders,
+        },
+    });
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,7 +40,6 @@ export async function middleware(req: NextRequest) {
 
         user = session?.user ?? null;
     } catch {
-        // refresh token เพี้ยน/หาย -> ถือว่าไม่ได้ login
         user = null;
     }
 

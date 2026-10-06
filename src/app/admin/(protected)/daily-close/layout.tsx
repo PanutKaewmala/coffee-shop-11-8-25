@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-import { requireOperationalPage } from "@/lib/adminAccess";
 
-export default async function OperationalLayout({ children }: { children: ReactNode }) {
-    await requireOperationalPage("/admin/daily-close");
+export default function RouteLayout({ children }: { children: ReactNode }) {
     return <>{children}</>;
 }

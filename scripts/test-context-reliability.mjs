@@ -43,21 +43,37 @@ const supabaseServer = fs.readFileSync("src/lib/supabaseServer.ts", "utf8");
 assert.match(supabaseServer, /import \{ cache \} from "react"/, "server identity should use request-scoped React cache");
 assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "server identity should still be reused within a render");
 
-const ownerLayouts = [
+const middleware = fs.readFileSync("middleware.ts", "utf8");
+const protectedLayout = fs.readFileSync("src/app/admin/(protected)/layout.tsx", "utf8");
+const adminShell = fs.readFileSync("src/app/admin/AdminShell.tsx", "utf8");
+const protectedRouteFiles = [
+    "src/app/admin/(protected)/page.tsx",
     "src/app/admin/(protected)/branch/layout.tsx",
     "src/app/admin/(protected)/contact/layout.tsx",
+    "src/app/admin/(protected)/daily-close/layout.tsx",
+    "src/app/admin/(protected)/ingredients/(operational)/page.tsx",
+    "src/app/admin/(protected)/ingredients/(operational)/[id]/page.tsx",
     "src/app/admin/(protected)/ingredients/archived/layout.tsx",
     "src/app/admin/(protected)/menu/layout.tsx",
     "src/app/admin/(protected)/news/layout.tsx",
+    "src/app/admin/(protected)/orders/page.tsx",
+    "src/app/admin/(protected)/orders/[id]/page.tsx",
     "src/app/admin/(protected)/recipes/layout.tsx",
     "src/app/admin/(protected)/reports/layout.tsx",
     "src/app/admin/(protected)/staff/layout.tsx",
+    "src/app/admin/(protected)/stock/layout.tsx",
 ];
-assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "nested server guards should share the cached identity within a render");
-for (const path of ownerLayouts) {
+
+assert.match(middleware, /requestHeaders\.set\("x-talvo-pathname", req\.nextUrl\.pathname\)/, "middleware should forward the requested admin pathname to the protected root");
+assert.match(protectedLayout, /headers\(\)/, "protected root should read the forwarded pathname");
+assert.match(protectedLayout, /isOwnerOnlyPath\(pathname\)/, "protected root should enforce owner-only paths before rendering children");
+assert.match(protectedLayout, /isOperationalPath\(pathname\)[\s\S]*!currentBranchId/, "protected root should require a branch for staff operational routes");
+assert.match(adminShell, /staffOnOwnerRoute[\s\S]*router\.replace\("\/pos"\)/, "client navigation should keep staff out of owner-only screens");
+assert.match(adminShell, /staffNeedsBranch[\s\S]*contextSelectorPath\("branch", pathname\)/, "client navigation should recover missing staff branch context");
+
+for (const path of protectedRouteFiles) {
     const source = fs.readFileSync(path, "utf8");
-    assert.match(source, /requireOwnerPage/, `${path} should enforce owner access on the server so direct reloads cannot depend on client hydration`);
-    assert.doesNotMatch(source, /OwnerOnlyClientGuard/, `${path} should not depend on the client role context for owner access`);
+    assert.doesNotMatch(source, /requireOwnerPage|requireOperationalPage/, `${path} should not repeat the root identity guard`);
 }
 
 console.log("context reliability behavioral tests passed");

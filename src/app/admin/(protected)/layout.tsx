@@ -1,15 +1,28 @@
 // src/app/admin/(protected)/layout.tsx
 import { ReactNode } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerIdentity } from "@/lib/supabaseServer";
 import AdminShell from "../AdminShell";
-import { decideProtectedRoot } from "@/lib/accessPolicy.mjs";
+import {
+    decideProtectedRoot,
+    isOperationalPath,
+    isOwnerOnlyPath,
+} from "@/lib/accessPolicy.mjs";
 
-// routes
 const LOGIN_NEXT = "/login?next=/admin";
 
 export default async function ProtectedAdminLayout({ children }: { children: ReactNode }) {
-    const { user, currentShopId, currentBranchId, currentShopRole, hasAnyShopMembership } = await getServerIdentity();
+    const requestHeaders = await headers();
+    const pathname = requestHeaders.get("x-talvo-pathname") || "/admin";
+
+    const {
+        user,
+        currentShopId,
+        currentBranchId,
+        currentShopRole,
+        hasAnyShopMembership,
+    } = await getServerIdentity();
 
     const decision = decideProtectedRoot({
         authenticated: Boolean(user),
@@ -17,13 +30,21 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
         hasAnyMembership: hasAnyShopMembership,
         role: currentShopRole,
     });
+
     if (decision.action === "login") redirect(LOGIN_NEXT);
-    if (decision.action === "select-shop") redirect(`/api/context/resolve?next=${encodeURIComponent("/admin")}`);
+    if (decision.action === "select-shop") {
+        redirect(`/api/context/resolve?next=${encodeURIComponent(pathname)}`);
+    }
     if (decision.action !== "allow") redirect("/no-access");
 
-    // ✅ ไม่บังคับ branch ที่นี่แล้ว
-    // - Owner: ดูภาพรวมได้ (currentBranchId ว่างได้)
-    // - Staff: จะถูกบังคับ branch เฉพาะหน้า POS / งานหน้าร้าน
+    if (currentShopRole === "staff" && isOwnerOnlyPath(pathname)) {
+        redirect("/pos");
+    }
+
+    if (currentShopRole === "staff" && isOperationalPath(pathname) && !currentBranchId) {
+        redirect(`/api/context/resolve?next=${encodeURIComponent(pathname)}`);
+    }
+
     return (
         <AdminShell
             currentShopId={currentShopId!}
