@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
@@ -25,6 +26,7 @@ type EnsureResult =
     | { action: "go"; href: string }
     | { action: "select-shop"; href: string }
     | { action: "select-branch"; href: string }
+    | { action: "onboarding"; href: "/onboarding" }
     | { action: "no-access"; href: "/no-access" };
 
 async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -73,7 +75,7 @@ async function ensureContext(nextHref: string): Promise<EnsureResult> {
         >("/api/context/shop?mode=pick");
 
         if (pickShop.mode === "none") {
-            return { action: "no-access", href: "/no-access" };
+            return { action: "onboarding", href: "/onboarding" };
         }
 
         if (pickShop.mode === "multiple") {
@@ -273,6 +275,13 @@ export default function LoginClient({
                         {demoLabel}
                     </div>
                 </form>
+
+                <p className="mt-5 text-center text-sm text-[var(--text-secondary)]">
+                    ยังไม่มีบัญชี?{" "}
+                    <Link href="/signup" className="font-medium text-[var(--accent)] hover:underline">
+                        สมัครสำหรับเจ้าของร้าน
+                    </Link>
+                </p>
             </div>
         </div>
     );
