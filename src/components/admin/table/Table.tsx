@@ -74,14 +74,13 @@ const Table: React.FC<TableProps> = ({
     return (
         <div className="w-full">
             {/* Desktop */}
-            <div className="hidden sm:block overflow-visible">
+            <div className="hidden md:block w-full overflow-x-auto overscroll-x-contain rounded-xl">
                 <table
                     className="
             min-w-full
             border border-[var(--text-muted)]/20
             divide-y divide-[var(--text-muted)]/20
             rounded-xl
-            overflow-visible
           "
                 >
                     <thead className="bg-[var(--surface)]/80 backdrop-blur-sm">
@@ -142,7 +141,7 @@ const Table: React.FC<TableProps> = ({
             </div>
 
             {/* Mobile */}
-            <div className="sm:hidden space-y-4">
+            <div className="md:hidden space-y-4">
                 {data.length === 0 ? (
                     <div className="text-center text-[var(--text-muted)]">
                         ยังไม่มีข้อมูล
@@ -161,15 +160,15 @@ const Table: React.FC<TableProps> = ({
                             {row.map((cell, colIndex) => (
                                 <div
                                     key={colIndex}
-                                    className="flex justify-between gap-3 py-1 text-sm text-[var(--text-secondary)]"
+                                    className="flex min-w-0 items-start justify-between gap-3 py-1 text-sm text-[var(--text-secondary)]"
                                 >
-                                    <span className="font-medium text-[var(--text-primary)]/80">
+                                    <span className="shrink-0 font-medium text-[var(--text-primary)]/80">
                                         {headers[colIndex]}
                                     </span>
                                     <span
-                                        className={
+                                        className={`min-w-0 break-words text-right ${
                                             cellClassName ? cellClassName(rowIndex, colIndex) : ""
-                                        }
+                                        }`}
                                     >
                                         {renderCell(cell)}
                                     </span>

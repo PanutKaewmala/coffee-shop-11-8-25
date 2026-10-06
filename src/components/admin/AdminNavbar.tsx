@@ -212,7 +212,7 @@ export default function AdminNavbar({
                         href={currentShopRole === "owner" ? "/admin" : "/admin/orders"}
                         className="shrink-0 rounded-lg px-2 py-2 text-sm font-medium hover:bg-[var(--accent)]/10"
                     >← หลังบ้าน</Link> : <button
-                        className="md:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
+                        className="lg:hidden p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
                         onClick={onToggleSidebar}
                         aria-label="เปิดเมนูด้านข้าง"
                     >
@@ -230,7 +230,7 @@ export default function AdminNavbar({
                 </div>
 
                 {/* Middle (desktop) */}
-                <div className="hidden lg:flex items-center gap-3 min-w-[520px] justify-center">
+                <div className="hidden xl:flex items-center gap-3 min-w-[520px] justify-center">
                     <div className="flex items-center gap-2">
                         <Store size={16} className="text-[var(--text-secondary)]" />
                         {shops.length > 1 ? <select
@@ -308,7 +308,7 @@ export default function AdminNavbar({
             </div>
 
             {/* Mobile switchers */}
-            <div className="lg:hidden px-4 pb-3 md:px-6">
+            <div className="xl:hidden px-4 pb-3 md:px-6">
                 {err ? <div className="mb-2 text-xs text-red-500">{err}</div> : null}
 
                 <div className="flex min-w-0 flex-col sm:flex-row gap-2">
@@ -356,7 +356,7 @@ export default function AdminNavbar({
                 ) : null}
             </div>
 
-            {err ? <div className="hidden lg:block px-6 pb-3 text-xs text-red-500">{err}</div> : null}
+            {err ? <div className="hidden xl:block px-6 pb-3 text-xs text-red-500">{err}</div> : null}
         </header>
     );
 }

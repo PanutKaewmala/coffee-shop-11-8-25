@@ -654,7 +654,7 @@ export default function MenuAdminPage() {
                                             serveCell,
                                             <div
                                                 key={item.id}
-                                                className="w-full h-full flex items-center justify-start gap-2 py-2 flex-nowrap"
+                                                className="w-full h-full flex flex-wrap items-center justify-start gap-2 py-2 md:flex-nowrap"
                                             >
                                                 {canManageMenu && !permissionLoading ? (
                                                     <>

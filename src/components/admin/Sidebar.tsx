@@ -58,7 +58,7 @@ export default function Sidebar({
             {/* Backdrop for mobile */}
             <div
                 className={`
-          fixed inset-0 bg-black/40 z-30 md:hidden transition-opacity duration-300
+          fixed inset-0 bg-black/40 z-30 lg:hidden transition-opacity duration-300
           ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
         `}
                 onClick={onClose}
@@ -72,11 +72,11 @@ export default function Sidebar({
           border-r border-[var(--text-muted)]/20
           transform transition-transform duration-300
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
-          md:translate-x-0 md:static
+          lg:translate-x-0 lg:static lg:shrink-0
         `}
             >
                 {/* Mobile header */}
-                <div className="flex items-center justify-between md:hidden px-4 py-3 border-b border-[var(--text-muted)]/20">
+                <div className="flex items-center justify-between lg:hidden px-4 py-3 border-b border-[var(--text-muted)]/20">
                     <div className="text-lg font-semibold">☕ จัดการร้าน</div>
                     <button
                         className="p-2 rounded-lg hover:bg-[var(--accent)]/10 transition"
