@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { safeInternalPath } from "../src/lib/accessPolicy.mjs";
 import { contextMutationOutcome, logoutOutcome, logoutPlan, resolveBranchContext, resolveShopContext, shopSwitchPlan } from "../src/lib/contextPolicy.mjs";
 
@@ -37,4 +38,9 @@ assert.deepEqual(contextMutationOutcome({ profileError: new Error("profile updat
 assert.deepEqual(contextMutationOutcome(), { ok: true, stage: "complete", mutateCookies: true });
 assert.deepEqual(logoutOutcome(new Error("sign out")), { ok: false, destination: null, clearCookies: false });
 assert.deepEqual(logoutOutcome(null), { ok: true, destination: "/login", clearCookies: true });
+
+const supabaseServer = fs.readFileSync("src/lib/supabaseServer.ts", "utf8");
+assert.match(supabaseServer, /import \{ cache \} from "react"/, "server identity should use request-scoped React cache");
+assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "nested guards should share one identity lookup per server render");
+
 console.log("context reliability behavioral tests passed");

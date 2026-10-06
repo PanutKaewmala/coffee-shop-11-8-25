@@ -1,6 +1,7 @@
 // src/lib/supabaseServer.ts
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -49,7 +50,7 @@ export async function getCurrentContextFromCookies(): Promise<{
  */
 export type CurrentShopRole = "owner" | "staff";
 
-export async function getServerIdentity(): Promise<{
+async function loadServerIdentity(): Promise<{
     user: { id: string; email: string | null } | null;
     currentShopId: string | null;
     currentBranchId: string | null;
@@ -117,3 +118,7 @@ export async function getServerIdentity(): Promise<{
         hasAnyShopMembership,
     };
 }
+
+// Parent + nested route guards run in the same server render. Share one identity
+// lookup per render so they do not repeat auth/membership/branch network calls.
+export const getServerIdentity = cache(loadServerIdentity);
