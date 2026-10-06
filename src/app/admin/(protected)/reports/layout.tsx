@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { requireOwnerPage } from "@/lib/adminAccess";
+import OwnerOnlyClientGuard from "@/components/admin/OwnerOnlyClientGuard";
 
-export default async function OwnerReportsLayout({ children }: { children: ReactNode }) {
-    await requireOwnerPage();
-    return <>{children}</>;
+export default function OwnerReportsLayout({ children }: { children: ReactNode }) {
+    return <OwnerOnlyClientGuard>{children}</OwnerOnlyClientGuard>;
 }

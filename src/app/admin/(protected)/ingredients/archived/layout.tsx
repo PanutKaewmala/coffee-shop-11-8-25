@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { requireOwnerPage } from "@/lib/adminAccess";
+import OwnerOnlyClientGuard from "@/components/admin/OwnerOnlyClientGuard";
 
-export default async function ArchivedIngredientsLayout({ children }: { children: ReactNode }) {
-    await requireOwnerPage("/admin/ingredients/archived");
-    return <>{children}</>;
+export default function ArchivedIngredientsLayout({ children }: { children: ReactNode }) {
+    return <OwnerOnlyClientGuard>{children}</OwnerOnlyClientGuard>;
 }

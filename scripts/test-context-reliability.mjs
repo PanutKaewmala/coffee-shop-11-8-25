@@ -41,6 +41,27 @@ assert.deepEqual(logoutOutcome(null), { ok: true, destination: "/login", clearCo
 
 const supabaseServer = fs.readFileSync("src/lib/supabaseServer.ts", "utf8");
 assert.match(supabaseServer, /import \{ cache \} from "react"/, "server identity should use request-scoped React cache");
-assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "nested guards should share one identity lookup per server render");
+assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "server identity should still be reused within a render");
+
+const adminShell = fs.readFileSync("src/app/admin/AdminShell.tsx", "utf8");
+const ownerGuard = fs.readFileSync("src/components/admin/OwnerOnlyClientGuard.tsx", "utf8");
+const ownerLayouts = [
+    "src/app/admin/(protected)/branch/layout.tsx",
+    "src/app/admin/(protected)/contact/layout.tsx",
+    "src/app/admin/(protected)/ingredients/archived/layout.tsx",
+    "src/app/admin/(protected)/menu/layout.tsx",
+    "src/app/admin/(protected)/news/layout.tsx",
+    "src/app/admin/(protected)/recipes/layout.tsx",
+    "src/app/admin/(protected)/reports/layout.tsx",
+    "src/app/admin/(protected)/staff/layout.tsx",
+];
+assert.match(adminShell, /<AdminRoleProvider role=/, "admin shell should provide the parent-resolved role to nested routes");
+assert.match(ownerGuard, /role === "staff"[\s\S]*router\.replace\("\/pos"\)/, "staff should be redirected away from owner-only routes");
+assert.match(ownerGuard, /if \(role !== "owner"\)/, "owner-only children must stay gated until the owner role is known");
+for (const path of ownerLayouts) {
+    const source = fs.readFileSync(path, "utf8");
+    assert.match(source, /OwnerOnlyClientGuard/, `${path} should reuse the parent role instead of repeating the server identity lookup`);
+    assert.doesNotMatch(source, /requireOwnerPage/, `${path} should not run a duplicate nested server guard`);
+}
 
 console.log("context reliability behavioral tests passed");

@@ -4,6 +4,7 @@
 import { ReactNode, useCallback, useState } from "react";
 import AdminNavbar from "@/components/admin/AdminNavbar";
 import Sidebar from "@/components/admin/Sidebar";
+import { AdminRoleProvider } from "@/components/admin/AdminRoleContext";
 
 export default function AdminShell({
     children,
@@ -51,7 +52,9 @@ export default function AdminShell({
                 />
 
                 <main className={`flex-1 min-w-0 ${isPos ? "md:min-h-0 md:overflow-hidden" : "overflow-auto p-4 md:p-8"}`}>
-                    <div className={isPos ? "md:h-full" : "max-w-6xl mx-auto space-y-6"}>{children}</div>
+                    <AdminRoleProvider role={currentShopRole === "owner" || currentShopRole === "staff" ? currentShopRole : null}>
+                        <div className={isPos ? "md:h-full" : "max-w-6xl mx-auto space-y-6"}>{children}</div>
+                    </AdminRoleProvider>
                 </main>
             </div>
         </div>
