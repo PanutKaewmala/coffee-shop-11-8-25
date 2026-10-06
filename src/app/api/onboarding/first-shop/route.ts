@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
     const supabase = await getSupabaseServer();
     const { data: auth, error: authError } = await supabase.auth.getUser();
 
-    if (authError) return jsonError(authError.message, 500);
     if (!auth.user) return jsonError("Unauthorized", 401);
+    if (authError) return jsonError(authError.message, 500);
 
     const admin = getSupabaseAdmin();
     const { data: existingMembership, error: membershipError } = await admin

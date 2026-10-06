@@ -62,10 +62,15 @@ export default function ClientWrapper({ children }: { children: ReactNode }) {
             ? shopNameState.name ?? "Coffee SaaS"
             : "Coffee SaaS";
 
-    // ซ่อน Navbar / Footer ในหน้า admin, login และ pos
+    // หน้าใช้งานระบบและขั้นตอนตั้งค่าไม่ควรปะปนกับ Navbar / Footer ของหน้าเว็บร้าน
     const hideNavAndFooter =
         pathname.startsWith("/admin") ||
         pathname.startsWith("/login") ||
+        pathname.startsWith("/signup") ||
+        pathname.startsWith("/onboarding") ||
+        pathname.startsWith("/no-access") ||
+        pathname.startsWith("/select-branch") ||
+        pathname.startsWith("/select-shop") ||
         pathname.startsWith("/pos");
 
     const isTalvoMarketingRoute =

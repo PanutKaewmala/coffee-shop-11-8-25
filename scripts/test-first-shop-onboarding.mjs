@@ -8,6 +8,7 @@ import {
 } from "../src/lib/firstShopOnboarding.mjs";
 
 const login = fs.readFileSync("src/app/login/LoginClient.tsx", "utf8");
+const wrapper = fs.readFileSync("src/app/ClientWrapper.tsx", "utf8");
 const noAccess = fs.readFileSync("src/app/no-access/page.tsx", "utf8");
 const page = fs.readFileSync("src/app/onboarding/page.tsx", "utf8");
 const client = fs.readFileSync("src/app/onboarding/FirstShopOnboardingClient.tsx", "utf8");
@@ -60,7 +61,7 @@ assert.match(client, /ที่อยู่ร้าน/);
 assert.match(client, /เบอร์โทรร้าน/);
 assert.match(client, /\/api\/onboarding\/first-shop/);
 
-assert.match(route, /if \(!auth\.user\) return jsonError\("Unauthorized", 401\)/);
+assert.match(route, /if \(!auth\.user\) return jsonError\("Unauthorized", 401\)[\s\S]*if \(authError\)/);
 assert.match(route, /shop_members[\s\S]*eq\("user_id", auth\.user\.id\)[\s\S]*limit\(1\)/);
 assert.match(route, /บัญชีนี้มีร้านอยู่แล้ว/);
 assert.match(route, /from\("shops"\)[\s\S]*\.insert/);
@@ -73,6 +74,9 @@ assert.match(route, /current_shop_id"[\s\S]*current_branch_id"/);
 assert.match(route, /clearCreatedShop/);
 
 assert.match(login, /href="\/signup"/);
+for (const path of ["/signup", "/onboarding", "/no-access", "/select-branch", "/select-shop"]) {
+    assert.match(wrapper, new RegExp(`pathname\\.startsWith\\("${path.replace("/", "\\/")}"\\)`));
+}
 assert.match(signupPage, /if \(auth\.user\) redirect\("\/onboarding"\)/);
 assert.match(signupPage, /SignupClient/);
 assert.match(signupClient, /supabase\.auth\.signUp/);
