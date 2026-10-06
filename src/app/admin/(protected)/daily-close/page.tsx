@@ -902,8 +902,8 @@ export default function DailyClosePage() {
             <div className="p-4 text-text-primary md:p-6">
                 <div className="mx-auto max-w-3xl space-y-4">
                     <div>
-                        <h1 className="text-2xl font-bold">นับเงินปลายวัน</h1>
-                        <p className="mt-1 text-sm text-text-secondary">กำลังเตรียมข้อมูลและตรวจสิทธิ์การใช้งาน</p>
+                        <h1 className="text-2xl font-bold">กำลังโหลดข้อมูลปลายวัน</h1>
+                        <p className="mt-1 text-sm text-text-secondary">กำลังเตรียมข้อมูลของร้านและตรวจสิทธิ์การใช้งาน</p>
                     </div>
                     <Card title="กำลังโหลด">
                         <div className="text-sm text-text-secondary">

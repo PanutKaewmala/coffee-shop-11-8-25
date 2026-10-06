@@ -46,6 +46,7 @@ assert.match(reportRoute, /cashInTotal: responseReport\.cashMovements\.cashInTot
 assert.match(reportRoute, /cashOutTotal: responseReport\.cashMovements\.cashOutTotal/);
 
 assert.match(page, /permissions === null \|\| role !== "owner"/, "staff does not request close history");
+assert.match(page, /กำลังโหลดข้อมูลปลายวัน/, "loading state stays neutral before owner/staff role resolves");
 assert.match(page, /บันทึกให้เจ้าของตรวจ/);
 assert.match(page, /นับเงินในลิ้นชักแล้วส่งยอดให้เจ้าของร้านตรวจ/);
 assert.match(page, /ขาด \/ เกิน \(คำนวณสด\)/);
