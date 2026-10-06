@@ -19,7 +19,7 @@ const workflow = [
     step: "01",
     icon: ReceiptText,
     title: "รับออเดอร์",
-    description: "เมื่อปิดบิล TALVO บันทึกยอดขาย วิธีชำระ และรายการที่ลูกค้าซื้อเป็น transaction เดียว",
+    description: "เมื่อปิดบิล TALVO บันทึกยอดขาย วิธีชำระ และรายการที่ลูกค้าซื้อไว้ในรายการเดียว",
     signal: "ยอดขายเกิดขึ้น",
     example: "Americano 60 บาท",
   },
@@ -27,32 +27,32 @@ const workflow = [
     step: "02",
     icon: Coffee,
     title: "คำนวณผลต่อวัตถุดิบ",
-    description: "สูตรของเมนูเป็นตัวบอกว่าการขายนั้นต้องใช้วัตถุดิบอะไรและเท่าไร โดยไม่ต้องตัด stock ด้วยมือ",
+    description: "สูตรของเมนูเป็นตัวบอกว่าการขายนั้นต้องใช้วัตถุดิบอะไรและเท่าไร โดยไม่ต้องตัดสต็อกด้วยมือ",
     signal: "สูตรกำหนดการใช้",
-    example: "Beans −20 g",
+    example: "เมล็ดกาแฟ −20 กรัม",
   },
   {
     step: "03",
     icon: RotateCcw,
     title: "ถ้าบิลเปลี่ยน ผลกระทบเปลี่ยนตาม",
-    description: "ถ้ายกเลิกออเดอร์ เจ้าของเลือกได้ว่าจะคืนวัตถุดิบหรือไม่ เพื่อให้ยอดขายและ stock ยังอธิบายกันได้",
-    signal: "Cancel → restock",
-    example: "Beans +20 g",
+    description: "ถ้ายกเลิกออเดอร์ เจ้าของเลือกได้ว่าจะคืนวัตถุดิบหรือไม่ เพื่อให้ยอดขายและสต็อกยังอธิบายกันได้",
+    signal: "ยกเลิก → คืนสต็อก",
+    example: "เมล็ดกาแฟ +20 กรัม",
   },
   {
     step: "04",
     icon: ClipboardCheck,
-    title: "รวมทั้งวันเป็น Daily Close",
-    description: "ปลายวัน TALVO รวมยอดขายและเงินที่ควรมี แล้วเทียบกับเงินจริงก่อนล็อก snapshot ของวัน",
+    title: "รวมยอดและปิดวัน",
+    description: "ปลายวัน TALVO รวมยอดขายและเงินที่ควรมี แล้วเทียบกับเงินจริงก่อนยืนยันปิดวัน",
     signal: "ยอดขาย ↔ เงิน",
-    example: "Expected 120 = Counted 120",
+    example: "ควรมี 120 = นับได้ 120",
   },
 ] as const;
 
 const capabilities = [
   {
     icon: ReceiptText,
-    title: "POS ที่เน้นความเร็ว",
+    title: "ขายหน้าร้านได้เร็ว",
     description: "เลือกเมนู → ใส่ตะกร้า → รับเงิน → ปิดบิล โดยไม่ต้องไล่ผ่านหน้าจอหลายชั้น",
   },
   {
@@ -67,18 +67,18 @@ const capabilities = [
   },
   {
     icon: ClipboardCheck,
-    title: "Daily Close",
-    description: "เทียบยอดขายกับเงินจริง ปิดยอด และล็อก snapshot ของวัน เพื่อให้วันถัดไปเริ่มจากฐานที่ชัดเจน",
+    title: "ปิดยอดรายวัน",
+    description: "เทียบยอดขายกับเงินจริง ปิดยอด และเก็บข้อมูลสรุปของวัน เพื่อให้วันถัดไปเริ่มจากฐานที่ชัดเจน",
   },
   {
     icon: ShieldCheck,
-    title: "แยกสิทธิ์ Owner / Staff",
+    title: "แยกสิทธิ์เจ้าของและพนักงาน",
     description: "แยกงานที่พนักงานทำได้ออกจากงานที่เจ้าของต้องเป็นคนตัดสินใจ เช่น การปิดยอดและยกเลิกบางกรณี",
   },
   {
     icon: BadgeCheck,
     title: "มองความผิดปกติก่อนต้องนั่งไล่หา",
-    description: "Overview ช่วยพาไปยัง stock ต่ำ รายการที่ต้องตรวจ และสถานะสำคัญของสาขาที่กำลังใช้งาน",
+    description: "หน้าภาพรวมช่วยพาไปยังสต็อกต่ำ รายการที่ต้องตรวจ และสถานะสำคัญของสาขาที่กำลังใช้งาน",
   },
 ] as const;
 
@@ -97,8 +97,8 @@ const plans = [
     name: "TALVO ร้านเดียว",
     setup: "2,500 บาท",
     monthly: "500 บาท / เดือน",
-    description: "สำหรับร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขาที่อยากให้ยอดขาย สต็อก และเงินปลายวันอยู่ใน flow เดียวกัน",
-    items: ["POS + ออเดอร์ + ใบเสร็จ", "สูตรเมนู + สต็อกพร้อมใช้", "ยกเลิก/คืนสต็อก + Daily Close"],
+    description: "สำหรับร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขาที่อยากให้ยอดขาย สต็อก และเงินปลายวันเชื่อมกันในขั้นตอนเดียว",
+    items: ["ขายหน้าร้าน + ออเดอร์ + ใบเสร็จ", "สูตรเมนู + สต็อกพร้อมใช้", "ยกเลิก/คืนสต็อก + ปิดยอดรายวัน"],
     cta: "ดูหน้าจอ TALVO จริง",
     href: "/demo-system",
     featured: true,
@@ -107,8 +107,8 @@ const plans = [
     name: "ปรับตามร้าน",
     setup: "เริ่มต้น 10,000 บาท",
     monthly: "ตามขอบเขต",
-    description: "สำหรับร้านที่ผ่าน flow หลักแล้วและต้องการสิทธิ์ รายงาน หรือ workflow เฉพาะของตัวเอง",
-    items: ["วิเคราะห์ workflow ร้าน", "ปรับระบบตามขอบเขต", "วางแผนสิทธิ์และการใช้งาน"],
+    description: "สำหรับร้านที่ใช้ขั้นตอนหลักได้แล้วและต้องการสิทธิ์ รายงาน หรือวิธีทำงานเฉพาะของตัวเอง",
+    items: ["วิเคราะห์วิธีทำงานของร้าน", "ปรับระบบตามขอบเขต", "วางแผนสิทธิ์และการใช้งาน"],
     cta: "คุยความต้องการ",
     href: "#contact",
     featured: false,
@@ -149,12 +149,12 @@ export default function HomePage() {
                 href="#workflow"
                 className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-surface/70 px-6 py-3.5 font-semibold text-foreground transition hover:border-accent/50"
               >
-                เข้าใจ flow ใน 30 วิ
+                ดูวิธีทำงานใน 30 วิ
               </Link>
             </div>
 
             <div className="mt-8 grid gap-3 text-sm sm:grid-cols-3">
-              {["POS ใช้งานจริง", "สต็อกตามสูตร", "ปิดยอดรายวัน"].map((item) => (
+              {["ขายหน้าร้านได้จริง", "สต็อกตามสูตร", "ปิดยอดรายวัน"].map((item) => (
                 <div key={item} className="flex items-center gap-2 text-text-secondary">
                   <CheckCircle2 size={17} className="text-accent" />
                   {item}
@@ -169,11 +169,11 @@ export default function HomePage() {
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/35" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/25" />
                 <span className="h-2.5 w-2.5 rounded-full bg-accent/15" />
-                <span className="ml-2 text-xs font-medium text-text-muted">TALVO POS</span>
+                <span className="ml-2 text-xs font-medium text-text-muted">หน้าขาย TALVO</span>
               </div>
               <Image
                 src="/talvo-product/pos.png"
-                alt="TALVO POS"
+                alt="หน้าขายของ TALVO"
                 width={1440}
                 height={900}
                 priority
@@ -184,7 +184,7 @@ export default function HomePage() {
             <div className="absolute -bottom-5 left-4 right-4 grid gap-2 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-xl backdrop-blur sm:left-auto sm:right-6 sm:w-[310px]">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">หนึ่งแก้วเกิดอะไรขึ้น</div>
               <div className="font-semibold">Americano 60 บาท → Beans −20 g</div>
-              <div className="text-sm text-text-secondary">ยอดขายและสต็อกเปลี่ยนจาก transaction เดียวกัน</div>
+              <div className="text-sm text-text-secondary">ยอดขายและสต็อกเปลี่ยนจากรายการขายเดียวกัน</div>
             </div>
           </div>
         </div>
@@ -194,8 +194,8 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
             <div className="max-w-2xl">
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Level 1 · How TALVO works</div>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจ logic ทั้งระบบก่อน โดยไม่ต้องรู้ว่าปุ่มอยู่ตรงไหน</h2>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">วิธีทำงานของ TALVO</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">ดูว่าขายหนึ่งแก้วแล้วอะไรเปลี่ยนตามบ้าง</h2>
             </div>
             <p className="max-w-2xl text-lg leading-8 text-text-secondary lg:justify-self-end">
               ส่วนนี้อธิบายเหตุและผลของข้อมูล: เมื่อขายหนึ่งแก้ว อะไรเปลี่ยนตามบ้าง
@@ -212,7 +212,7 @@ export default function HomePage() {
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent">
                         <Icon size={20} />
                       </div>
-                      <div className="text-xs font-bold tracking-[0.18em] text-text-muted">STEP {step}</div>
+                      <div className="text-xs font-bold tracking-[0.18em] text-text-muted">ขั้นที่ {step}</div>
                     </div>
                     <h3 className="mt-5 text-xl font-bold">{title}</h3>
                     <p className="mt-3 text-sm leading-6 text-text-secondary">{description}</p>
@@ -232,8 +232,8 @@ export default function HomePage() {
 
             <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-[#17130f] px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างหนึ่ง transaction</div>
-                <div className="mt-1 font-semibold">ขาย Americano 60 → ใช้ Beans 20 g → ถ้ายกเลิกคืน 20 g → ปลายวันยอดเข้า Daily Close</div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">ตัวอย่างหนึ่งรายการขาย</div>
+                <div className="mt-1 font-semibold">ขาย Americano 60 บาท → ใช้เมล็ดกาแฟ 20 กรัม → ถ้ายกเลิกคืน 20 กรัม → ปลายวันรวมเข้ายอดปิดวัน</div>
               </div>
               <Link href="/demo-system" className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-[#d4a574]">
                 ต่อไปดูหน้าจอจริง
@@ -248,7 +248,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="grid gap-8 lg:grid-cols-[0.7fr_1.3fr]">
             <div className="max-w-xl">
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">What you get</div>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">สิ่งที่ร้านจะได้</div>
               <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">สิ่งที่ร้านต้องใช้ทุกวัน โดยไม่ต้องเริ่มจากระบบใหญ่</h2>
               <p className="mt-4 leading-7 text-text-secondary">
                 เราโฟกัสงานที่เกิดทุกวันในร้านหนึ่งสาขาก่อน แล้วทำให้แต่ละงานส่งข้อมูลต่อกันได้จริง
@@ -273,10 +273,10 @@ export default function HomePage() {
       <section className="px-4 py-8 md:py-12">
         <div className="mx-auto grid max-w-6xl overflow-hidden rounded-[30px] border border-accent/15 bg-[#17130f] text-white lg:grid-cols-[0.85fr_1.15fr]">
           <div className="flex flex-col justify-center p-7 md:p-10">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">Close with confidence</div>
+            <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#d4a574]">ปิดยอดอย่างมั่นใจ</div>
             <h2 className="mt-3 text-3xl font-bold">สิ้นวันรู้ว่าเงินควรเหลือเท่าไร</h2>
             <p className="mt-4 leading-7 text-[#d6cbbf]">
-              Daily Close เก็บ snapshot ของยอดขาย วิธีชำระ เงินที่ควรอยู่ในลิ้นชัก เงินที่นับได้จริง และส่วนต่าง
+              หน้าปิดยอดรายวันเก็บยอดขาย วิธีชำระ เงินที่ควรอยู่ในลิ้นชัก เงินที่นับได้จริง และส่วนต่าง
               หลังปิดยอด TALVO จะกันการสร้างบิลใหม่ของวันนั้น
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -290,7 +290,7 @@ export default function HomePage() {
           </div>
           <Image
             src="/talvo-product/daily-close.png"
-            alt="TALVO Daily Close"
+            alt="หน้าปิดยอดรายวันของ TALVO"
             width={1440}
             height={900}
             className="h-full w-full object-cover object-top"
@@ -307,7 +307,7 @@ export default function HomePage() {
             </div>
             <ul className="mt-5 space-y-3 text-text-secondary">
               <li>• ร้านกาแฟหรือร้านเครื่องดื่ม 1 สาขา</li>
-              <li>• ร้านที่เริ่มมีพนักงานและต้องการ flow ที่ทุกคนทำตามได้</li>
+              <li>• ร้านที่เริ่มมีพนักงานและต้องการขั้นตอนที่ทุกคนทำตามได้</li>
               <li>• ร้านที่อยากให้ยอดขาย สต็อก และเงินปลายวันสัมพันธ์กัน</li>
               <li>• เจ้าของที่อยากตรวจย้อนหลังโดยไม่ต้องรวมข้อมูลจากหลายที่</li>
             </ul>
@@ -319,10 +319,10 @@ export default function HomePage() {
               สิ่งที่ยังไม่ใช่เป้าหมายหลักตอนนี้
             </div>
             <ul className="mt-5 space-y-3 text-text-secondary">
-              <li>• เครือร้านหลายสิบสาขาที่ต้องการระบบ enterprise เต็มรูปแบบ</li>
+              <li>• เครือร้านหลายสิบสาขาที่ต้องการระบบขนาดใหญ่เต็มรูปแบบ</li>
               <li>• ระบบบัญชีและภาษีครบวงจรแทนซอฟต์แวร์บัญชี</li>
-              <li>• การเชื่อม hardware เฉพาะทางที่ยังไม่ได้ประเมิน</li>
-              <li>• workflow เฉพาะร้านที่ยังไม่ได้ตกลงขอบเขต</li>
+              <li>• การเชื่อมอุปกรณ์เฉพาะทางที่ยังไม่ได้ประเมิน</li>
+              <li>• วิธีทำงานเฉพาะร้านที่ยังไม่ได้ตกลงขอบเขต</li>
             </ul>
           </div>
         </div>
@@ -331,7 +331,7 @@ export default function HomePage() {
       <section id="pricing" className="scroll-mt-28 border-y border-accent/10 bg-surface/45 px-4 py-16 md:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-3xl">
-            <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Pricing</div>
+            <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ราคา</div>
             <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เริ่มเท่าที่ร้านต้องใช้ แล้วค่อยขยายเมื่อมีเหตุผล</h2>
           </div>
 
@@ -384,31 +384,31 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-background p-6 shadow-sm md:p-9">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">Level 2 · TALVO Product Tour</div>
-              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจ flow แล้ว ค่อยลงไปดูว่าหน้าจอจริงทำงานยังไง</h2>
+              <div className="text-sm font-bold uppercase tracking-[0.18em] text-accent">ดูหน้าจอจริงของ TALVO</div>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">เข้าใจวิธีทำงานแล้ว ลองดูหน้าจอที่ใช้จริง</h2>
               <p className="mt-4 leading-7 text-text-secondary">
-                Product Tour ไม่เล่า logic ซ้ำอีกครั้ง แต่พาเข้าไปดู UI จริงทีละหน้า:
-                พนักงานกดตรงไหน เจ้าของเห็นอะไร และ state ต่าง ๆ หน้าตาเป็นอย่างไร
+                ส่วนนี้ไม่อธิบายวิธีทำงานซ้ำ แต่พาไปดูหน้าจอจริงทีละหน้า:
+                พนักงานกดตรงไหน เจ้าของเห็นอะไร และแต่ละสถานะแสดงผลอย่างไร
               </p>
               <Link
                 href="/demo-system"
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 font-semibold text-white transition hover:bg-accent-dark"
               >
-                เปิด Product Tour
+                ดูหน้าจอจริง
                 <ArrowRight size={17} />
               </Link>
             </div>
 
             <div className="rounded-[24px] bg-[#17130f] p-6 text-white md:p-8">
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าจอจริง · Detailed walkthrough</div>
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#d4a574]">6 หน้าจอจริง · ดูทีละงาน</div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {[
-                  ["01", "POS", "รับออเดอร์และชำระเงิน"],
-                  ["02", "Recipe", "กำหนดวัตถุดิบต่อเมนู"],
-                  ["03", "Usable stock", "ดูของพร้อมใช้และรับเข้า"],
-                  ["04", "Orders", "ย้อนดูรายการขาย"],
-                  ["05", "Cancellation", "ยกเลิกและคืนสต็อก"],
-                  ["06", "Daily Close", "ปิดยอดและล็อกวัน"],
+                  ["01", "ขายหน้าร้าน", "รับออเดอร์และชำระเงิน"],
+                  ["02", "สูตรเมนู", "กำหนดวัตถุดิบต่อเมนู"],
+                  ["03", "สต็อกพร้อมใช้", "ดูของพร้อมใช้และรับเข้า"],
+                  ["04", "ออเดอร์", "ย้อนดูรายการขาย"],
+                  ["05", "ยกเลิกบิล", "ยกเลิกและคืนสต็อก"],
+                  ["06", "ปิดยอดรายวัน", "ปิดยอดและล็อกวัน"],
                 ].map(([step, title, description]) => (
                   <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                     <div className="text-xs font-bold text-[#d4a574]">{step}</div>
@@ -426,9 +426,9 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl rounded-[30px] border border-accent/15 bg-gradient-to-br from-accent/15 via-surface to-background p-7 md:p-10">
           <div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
             <div className="max-w-2xl">
-              <h2 className="text-3xl font-bold">อยากลองกับ flow ร้านจริงของคุณ?</h2>
+              <h2 className="text-3xl font-bold">อยากลอง TALVO กับร้านจริงของคุณ?</h2>
               <p className="mt-4 leading-7 text-text-secondary">
-                ส่ง flow ปัจจุบันของร้านมาได้ ว่ารับออเดอร์ เก็บเงิน เช็กสต็อก และปิดยอดกันอย่างไร
+                บอกวิธีทำงานปัจจุบันของร้านมาได้ ว่ารับออเดอร์ เก็บเงิน เช็กสต็อก และปิดยอดกันอย่างไร
                 เราจะดูตรงกันก่อนว่า TALVO ร้านเดียวครอบคลุมพอหรือมีอะไรที่ต้องปรับ
               </p>
               <div className="mt-5 text-sm leading-7 text-text-secondary">

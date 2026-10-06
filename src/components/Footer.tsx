@@ -47,15 +47,15 @@ export default function Footer({ shopName }: { shopName?: string | null }) {
                 <div className="max-w-md">
                     <div className="text-xl font-bold">TALVO</div>
                     <p className={dark ? "mt-2 text-sm leading-6 text-[#d6cbbf]" : "mt-2 text-sm leading-6 text-text-secondary"}>
-                        ระบบจัดการร้านกาแฟที่เชื่อม POS สต็อก และการปิดยอดรายวันให้เป็น flow เดียวกัน
+                        ระบบจัดการร้านกาแฟที่เชื่อมการขายหน้าร้าน สต็อก และการปิดยอดรายวันไว้ในขั้นตอนเดียวกัน
                     </p>
                 </div>
 
                 <nav className={dark ? "flex flex-wrap gap-x-5 gap-y-3 text-sm text-[#d6cbbf]" : "flex flex-wrap gap-x-5 gap-y-3 text-sm text-text-secondary"}>
                     <Link href="/#workflow" className="transition hover:text-accent">วิธีทำงาน</Link>
-                    <Link href="/#features" className="transition hover:text-accent">ฟีเจอร์</Link>
+                    <Link href="/#features" className="transition hover:text-accent">ทำอะไรได้</Link>
                     <Link href="/#pricing" className="transition hover:text-accent">ราคา</Link>
-                    <Link href="/demo-system" className="transition hover:text-accent">Product tour</Link>
+                    <Link href="/demo-system" className="transition hover:text-accent">ดูหน้าจอจริง</Link>
                     <Link href="/#contact" className="transition hover:text-accent">ติดต่อ</Link>
                 </nav>
             </div>

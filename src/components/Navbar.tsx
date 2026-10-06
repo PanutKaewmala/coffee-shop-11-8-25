@@ -35,9 +35,9 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
         ]
         : [
             { label: "วิธีทำงาน", href: "/#workflow" },
-            { label: "ฟีเจอร์", href: "/#features" },
+            { label: "ทำอะไรได้", href: "/#features" },
             { label: "ราคา", href: "/#pricing" },
-            { label: "Product tour", href: "/demo-system" },
+            { label: "ดูหน้าจอจริง", href: "/demo-system" },
         ];
 
     const ctaHref = isTenantRoute
@@ -49,7 +49,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
     const ctaLabel = isTenantRoute
         ? "ดูเมนู"
         : isDemoSystemRoute
-        ? "คุย flow ร้าน"
+        ? "คุยเรื่องร้าน"
         : "ดูหน้าจอจริง";
 
     return (
@@ -99,7 +99,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                         <button
                             className="rounded-2xl p-2 transition-colors hover:bg-accent/10"
                             onClick={toggleTheme}
-                            aria-label="Toggle theme"
+                            aria-label="สลับธีมสี"
                         >
                             <span className="relative inline-flex h-[18px] w-[18px] items-center justify-center" aria-hidden="true">
                                 <Sun size={18} className="hidden dark:block" />
@@ -117,7 +117,7 @@ export default function Navbar({ shopName }: { shopName?: string | null }) {
                         <button
                             className="rounded-2xl p-2 transition-colors hover:bg-accent/10 md:hidden"
                             onClick={() => setOpen((prev) => !prev)}
-                            aria-label="Menu"
+                            aria-label="เปิดเมนูนำทาง"
                         >
                             {open ? <X size={20} /> : <Menu size={20} />}
                         </button>

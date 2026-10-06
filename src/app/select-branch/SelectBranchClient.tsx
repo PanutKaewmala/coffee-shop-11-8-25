@@ -30,11 +30,11 @@ async function postJSON<T extends Record<string, unknown>>(
 
         if (!res.ok) {
             const text = await res.text().catch(() => "");
-            return { ok: false, error: text || `Request failed: ${res.status}` };
+            return { ok: false, error: text || `ทำรายการไม่สำเร็จ (${res.status})` };
         }
         return { ok: true };
     } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : "Unknown error" };
+        return { ok: false, error: e instanceof Error ? e.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ" };
     }
 }
 
@@ -80,7 +80,7 @@ export default function SelectBranchClient({
         const r = await postJSON("/api/context/branch", { branch_id: branchId });
 
         if (!r.ok) {
-            setErr(r.error ?? "Failed to select branch");
+            setErr(r.error ?? "เลือกสาขาไม่สำเร็จ");
             setBusy(null);
             return;
         }
@@ -113,7 +113,7 @@ export default function SelectBranchClient({
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] flex items-center justify-center p-6">
             <div className="w-full max-w-xl">
                 <div className="bg-[var(--surface)] border border-[var(--text-muted)]/20 rounded-2xl shadow-sm p-6">
-                    <div className="text-xl font-semibold">Select your branch</div>
+                    <div className="text-xl font-semibold">เลือกสาขา</div>
                     <div className="text-sm text-[var(--text-secondary)] mt-1">
                         เลือกสาขาที่กำลังทำงานอยู่
                     </div>
@@ -128,7 +128,7 @@ export default function SelectBranchClient({
                                 <input
                                     value={q}
                                     onChange={(e) => setQ(e.target.value)}
-                                    placeholder="Search branch..."
+                                    placeholder="ค้นหาสาขา…"
                                     className="w-full bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
                                     disabled={picking}
                                 />
@@ -137,7 +137,7 @@ export default function SelectBranchClient({
                             <div className="mt-4 space-y-2">
                                 {filtered.length === 0 ? (
                                     <div className="text-sm text-[var(--text-secondary)] py-6 text-center">
-                                        No branches found
+                                        ไม่พบสาขา
                                     </div>
                                 ) : (
                                     filtered.map((b) => (
@@ -158,7 +158,7 @@ export default function SelectBranchClient({
                                                         {b.name}
                                                         {b.is_primary ? (
                                                             <span className="ml-2 text-xs text-[var(--accent)] align-middle">
-                                                                • Primary
+                                                                • สาขาหลัก
                                                             </span>
                                                         ) : null}
                                                     </div>
@@ -167,7 +167,7 @@ export default function SelectBranchClient({
                                                     </div>
                                                 </div>
                                                 <div className="text-sm text-[var(--text-secondary)]">
-                                                    {busy === b.id ? "Selecting..." : "Enter ->"}
+                                                    {busy === b.id ? "กำลังเลือก…" : "เลือก →"}
                                                 </div>
                                             </div>
                                         </button>
@@ -179,7 +179,7 @@ export default function SelectBranchClient({
                         <div className="mt-5 rounded-xl border border-[var(--text-muted)]/20 bg-[var(--background)] p-4">
                             <div className="text-sm font-medium">{role === "owner" ? "ร้านนี้ยังไม่มีสาขา" : "ไม่มีสาขาที่พร้อมให้ใช้งาน"}</div>
                             <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                                {role === "owner" ? "สร้างสาขาแรกก่อน แล้วค่อยกลับมาเลือกสาขา" : "กรุณาติดต่อ Owner เพื่อเพิ่มสาขาให้ร้านนี้"}
+                                {role === "owner" ? "สร้างสาขาแรกก่อน แล้วค่อยกลับมาเลือกสาขา" : "กรุณาติดต่อเจ้าของร้านเพื่อเพิ่มสาขาให้ร้านนี้"}
                             </div>
                             <div className="mt-4 flex flex-wrap gap-2">
                                 {role === "owner" ? <button
@@ -195,7 +195,7 @@ export default function SelectBranchClient({
                     )}
 
                     <div className="mt-6 text-xs text-[var(--text-muted)]">
-                        ถ้ามีสาขาเดียวหรือมี Primary ระบบจะเลือกให้อัตโนมัติ
+                        ถ้ามีสาขาเดียวหรือกำหนดสาขาหลักไว้ ระบบจะเลือกให้อัตโนมัติ
                     </div>
                 </div>
             </div>

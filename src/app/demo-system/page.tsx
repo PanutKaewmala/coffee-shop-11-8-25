@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import ProductExplorer from "./ProductExplorer";
 
 export const metadata: Metadata = {
-  title: "TALVO Product Explorer",
-  description: "สำรวจหน้าจอจริงของ TALVO ทีละงาน ตั้งแต่ POS สูตรเมนู สต็อก ออเดอร์ การยกเลิก จนถึง Daily Close",
+  title: "ดูหน้าจอจริงของ TALVO",
+  description: "สำรวจหน้าจอจริงของ TALVO ทีละงาน ตั้งแต่ขายหน้าร้าน สูตรเมนู สต็อก ออเดอร์ การยกเลิก จนถึงปิดยอดรายวัน",
 };
 
 export default function DemoSystemPage() {

@@ -19,7 +19,7 @@ import {
 const screens = [
   {
     id: "pos",
-    label: "POS",
+    label: "ขายหน้าร้าน",
     eyebrow: "01",
     icon: ReceiptText,
     title: "รับออเดอร์และชำระเงิน",
@@ -27,23 +27,23 @@ const screens = [
     job: "เลือกเมนู ปรับตัวเลือก ใส่ตะกร้า เลือกวิธีจ่าย และปิดบิล",
     lookFor: ["เมนูและตัวเลือกอยู่ฝั่งซ้าย", "ตะกร้าและยอดรวมอยู่ฝั่งขวา", "ปุ่มชำระเงินอยู่ในบริบทของบิลเดียวกัน"],
     image: "/talvo-product/pos.png",
-    alt: "หน้า POS ของ TALVO",
+    alt: "หน้าขายของ TALVO",
   },
   {
     id: "recipe",
-    label: "Recipe",
+    label: "สูตรเมนู",
     eyebrow: "02",
     icon: Coffee,
     title: "กำหนดวัตถุดิบต่อหนึ่งเมนู",
     role: "เจ้าของร้าน / ผู้ดูแล",
-    job: "บอก TALVO ว่าเมนูหนึ่งแก้วใช้วัตถุดิบอะไรและเท่าไร เพื่อให้การขายกระทบ stock ถูกต้อง",
-    lookFor: ["เลือก variant ของเมนู", "ผูกวัตถุดิบกับสูตร", "กำหนดจำนวนที่ใช้ต่อแก้ว"],
+    job: "บอก TALVO ว่าเมนูหนึ่งแก้วใช้วัตถุดิบอะไรและเท่าไร เพื่อให้การขายกระทบสต็อกถูกต้อง",
+    lookFor: ["เลือกรูปแบบขายของเมนู", "ผูกวัตถุดิบกับสูตร", "กำหนดจำนวนที่ใช้ต่อแก้ว"],
     image: "/talvo-product/recipes.png",
     alt: "หน้าสูตรเมนูของ TALVO",
   },
   {
     id: "stock",
-    label: "Usable stock",
+    label: "สต็อกพร้อมใช้",
     eyebrow: "03",
     icon: Boxes,
     title: "ดูสต็อกที่พร้อมใช้จริง",
@@ -55,39 +55,39 @@ const screens = [
   },
   {
     id: "orders",
-    label: "Orders",
+    label: "ออเดอร์",
     eyebrow: "04",
     icon: ListOrdered,
     title: "ย้อนดูออเดอร์ที่เกิดขึ้น",
     role: "พนักงาน / เจ้าของร้าน",
     job: "ค้นและตรวจสถานะของบิลที่ผ่านมา พร้อมดูเวลา วิธีชำระ และยอด",
-    lookFor: ["สถานะ paid / cancelled", "ยอดและวิธีชำระ", "กดเข้าไปดูรายละเอียดบิลได้"],
+    lookFor: ["สถานะชำระแล้ว / ยกเลิกแล้ว", "ยอดและวิธีชำระ", "กดเข้าไปดูรายละเอียดบิลได้"],
     image: "/talvo-product/orders.png",
     alt: "หน้ารายการออเดอร์ของ TALVO",
   },
   {
     id: "cancel",
-    label: "Cancellation",
+    label: "ยกเลิกบิล",
     eyebrow: "05",
     icon: RotateCcw,
     title: "ยกเลิกบิลและตัดสินใจเรื่องสต็อก",
     role: "เจ้าของร้าน",
     job: "ยกเลิกออเดอร์ บันทึกเหตุผล และเลือกว่าจะคืนวัตถุดิบกลับเข้าสต็อกหรือไม่",
-    lookFor: ["เหตุผลการยกเลิกถูกเก็บไว้", "เลือกคืน / ไม่คืน stock", "สถานะบิลเปลี่ยนอย่างตรวจย้อนหลังได้"],
+    lookFor: ["เหตุผลการยกเลิกถูกเก็บไว้", "เลือกคืน / ไม่คืนสต็อก", "สถานะบิลเปลี่ยนอย่างตรวจย้อนหลังได้"],
     image: "/talvo-product/cancel-order.png",
     alt: "หน้ารายละเอียดออเดอร์ที่ถูกยกเลิกใน TALVO",
   },
   {
     id: "close",
-    label: "Daily Close",
+    label: "ปิดยอดรายวัน",
     eyebrow: "06",
     icon: ClipboardCheck,
     title: "ปิดวันและเทียบเงินจริง",
     role: "เจ้าของร้าน",
     job: "ดูยอดขาย เงินที่ควรมี เงินที่นับได้จริง และส่วนต่าง ก่อนล็อกวันขาย",
-    lookFor: ["ยอดขายและจำนวนออเดอร์", "Expected cash เทียบ Counted cash", "สถานะ closed หลังยืนยันปิดวัน"],
+    lookFor: ["ยอดขายและจำนวนออเดอร์", "เงินที่ควรมี เทียบ เงินที่นับได้จริง", "สถานะปิดยอดแล้วหลังยืนยันปิดวัน"],
     image: "/talvo-product/daily-close.png",
-    alt: "หน้า Daily Close ของ TALVO",
+    alt: "หน้าปิดยอดรายวันของ TALVO",
   },
 ] as const;
 
@@ -111,13 +111,13 @@ export default function ProductExplorer() {
           <div className="flex flex-col gap-5 border-b border-[#d8ccbf] pb-8 dark:border-white/10 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <div className="text-sm font-bold uppercase tracking-[0.18em] text-[#a76f36] dark:text-[#d4a574]">
-                Level 2 · Product Explorer
+                ดูหน้าจอจริงของ TALVO
               </div>
               <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#30261f] dark:text-[#f5f3f0] sm:text-4xl lg:text-5xl">
                 เลือกหน้าจอ แล้วดู TALVO ตัวจริง
               </h1>
               <p className="mt-4 max-w-2xl leading-7 text-[#6b5b4c] dark:text-[#b8aa9b]">
-                ตรงนี้ไม่อธิบาย flow ซ้ำแล้ว แต่ให้สำรวจ interface จริงของแต่ละงาน:
+                ตรงนี้ไม่อธิบายวิธีทำงานซ้ำ แต่ให้สำรวจหน้าจอจริงของแต่ละงาน:
                 ใครใช้ หน้านี้ทำอะไร และควรมองตรงไหน
               </p>
             </div>
@@ -127,7 +127,7 @@ export default function ProductExplorer() {
               className="inline-flex w-fit items-center gap-2 rounded-full border border-[#cdbba9] bg-white/70 px-4 py-2.5 text-sm font-semibold text-[#5c4b3d] transition hover:bg-[#f1e8df] dark:border-white/15 dark:bg-transparent dark:text-[#d6cbbf] dark:hover:bg-white/[0.05]"
             >
               <ArrowLeft size={16} />
-              กลับไปดู Level 1 · How TALVO works
+              กลับไปดูวิธีทำงานของ TALVO
             </Link>
           </div>
         </div>
@@ -271,10 +271,10 @@ export default function ProductExplorer() {
 
           <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[#d8ccbf] bg-white/65 px-5 py-4 text-sm text-[#6b5b4c] dark:border-white/10 dark:bg-white/[0.025] dark:text-[#a99b8d] sm:flex-row sm:items-center sm:justify-between">
             <span>
-              ถ้ายังไม่เข้าใจว่าแต่ละหน้าต่อกันอย่างไร ให้ดู Level 1 ก่อน — Product Explorer ตั้งใจแสดงเฉพาะระดับการใช้งาน
+              ถ้ายังไม่เข้าใจว่าแต่ละหน้าต่อกันอย่างไร ให้ดูวิธีทำงานของ TALVO ก่อน — หน้านี้เน้นให้ดูการใช้งานจริง
             </span>
             <Link href="/#workflow" className="inline-flex shrink-0 items-center gap-2 font-semibold text-[#9a6331] dark:text-[#d4a574]">
-              ดู system logic
+              ดูวิธีทำงาน
               <ArrowRight size={14} />
             </Link>
           </div>

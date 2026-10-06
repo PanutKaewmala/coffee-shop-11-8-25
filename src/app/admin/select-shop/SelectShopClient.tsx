@@ -22,7 +22,7 @@ async function jsonFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 
     if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(text || `Request failed: ${res.status}`);
+        throw new Error(text || `ทำรายการไม่สำเร็จ (${res.status})`);
     }
     return (await res.json()) as T;
 }
@@ -67,7 +67,7 @@ export default function SelectShopClient({
             router.replace(href);
             router.refresh();
         } catch (e) {
-            const msg = e instanceof Error ? e.message : "Failed to select shop";
+            const msg = e instanceof Error ? e.message : "เลือกร้านไม่สำเร็จ";
             setErr(msg);
             setBusy(null);
         }
@@ -84,7 +84,7 @@ export default function SelectShopClient({
         <div className="min-h-screen bg-[var(--background)] text-[var(--text-primary)] flex items-center justify-center p-6">
             <div className="w-full max-w-xl">
                 <div className="bg-[var(--surface)] border border-[var(--text-muted)]/20 rounded-2xl shadow-sm p-6">
-                    <div className="text-xl font-semibold">Select your shop</div>
+                    <div className="text-xl font-semibold">เลือกร้าน</div>
                     <div className="text-sm text-[var(--text-secondary)] mt-1">
                         เลือกร้านก่อน แล้วระบบจะพาไปเลือกสาขาแบบอัตโนมัติ
                     </div>
@@ -97,7 +97,7 @@ export default function SelectShopClient({
                         <input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
-                            placeholder="Search shop…"
+                            placeholder="ค้นหาร้าน…"
                             className="w-full bg-[var(--background)] border border-[var(--text-muted)]/20 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
                             disabled={busy !== null}
                         />
@@ -106,7 +106,7 @@ export default function SelectShopClient({
                     <div className="mt-4 space-y-2">
                         {filtered.length === 0 ? (
                             <div className="text-sm text-[var(--text-secondary)] py-6 text-center">
-                                No shops found
+                                ไม่พบร้าน
                             </div>
                         ) : (
                             filtered.map((s) => (
@@ -126,7 +126,7 @@ export default function SelectShopClient({
                                             <div className="font-semibold truncate">{s.name}</div>
                                         </div>
                                         <div className="text-sm text-[var(--text-secondary)]">
-                                            {busy === s.id ? "Selecting…" : "Enter →"}
+                                            {busy === s.id ? "กำลังเลือก…" : "เลือก →"}
                                         </div>
                                     </div>
                                 </button>
@@ -135,7 +135,7 @@ export default function SelectShopClient({
                     </div>
 
                     <div className="mt-6 text-xs text-[var(--text-muted)]">
-                        ระบบจะ auto เลือกสาขาให้ถ้ามีแค่สาขาเดียว/มี primary
+                        ระบบจะเลือกสาขาให้อัตโนมัติถ้ามีสาขาเดียวหรือกำหนดสาขาหลักไว้
                     </div>
                 </div>
             </div>

@@ -134,7 +134,7 @@ type LoginClientProps = {
 export default function LoginClient({
     initialEmail = "owner@demo.com",
     initialPassword = "123456",
-    demoLabel = "Demo: owner@demo.com / 123456 • staff@demo.com / 123456",
+    demoLabel = "บัญชีทดลอง: เจ้าของ owner@demo.com / 123456 • พนักงาน staff@demo.com / 123456",
 }: LoginClientProps) {
     const router = useRouter();
     const sp = useSearchParams();
@@ -164,7 +164,7 @@ export default function LoginClient({
                 router.replace(result.href);
                 router.refresh();
             } catch (e) {
-                const msg = e instanceof Error ? e.message : "Auto context failed";
+                const msg = e instanceof Error ? e.message : "เตรียมข้อมูลร้านไม่สำเร็จ";
                 setError(msg);
             } finally {
                 if (alive) setLoading(false);
@@ -186,7 +186,7 @@ export default function LoginClient({
         try {
             const { error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) {
-                setError(error.message);
+                setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
                 return;
             }
 
@@ -200,7 +200,7 @@ export default function LoginClient({
             router.replace(result.href);
             router.refresh();
         } catch (err) {
-            const msg = err instanceof Error ? err.message : "Login failed";
+            const msg = err instanceof Error ? err.message : "เข้าสู่ระบบไม่สำเร็จ";
             setError(msg);
         } finally {
             setLoading(false);
@@ -211,14 +211,14 @@ export default function LoginClient({
         <div className="min-h-screen flex items-center justify-center bg-[var(--background)] px-4">
             <div className="bg-[var(--surface)] shadow-xl rounded-2xl w-full max-w-sm p-8 border border-[var(--text-muted)]/10">
                 <div className="text-center mb-6">
-                    <h1 className="text-2xl font-bold text-[var(--text-primary)]">☕ Coffee Admin</h1>
-                    <p className="text-sm text-[var(--text-secondary)] mt-1">Sign in to manage your café</p>
+                    <h1 className="text-2xl font-bold text-[var(--text-primary)]">☕ เข้าสู่ระบบ TALVO</h1>
+                    <p className="text-sm text-[var(--text-secondary)] mt-1">เข้าสู่ระบบเพื่อจัดการร้านของคุณ</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                            Email
+                            อีเมล
                         </label>
                         <input
                             type="email"
@@ -234,7 +234,7 @@ export default function LoginClient({
 
                     <div>
                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                            Password
+                            รหัสผ่าน
                         </label>
                         <input
                             type="password"
@@ -262,10 +262,10 @@ export default function LoginClient({
                         {loading ? (
                             <>
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                {error ? "Retrying..." : "Signing in..."}
+                                {error ? "กำลังลองใหม่…" : "กำลังเข้าสู่ระบบ…"}
                             </>
                         ) : (
-                            "Sign In"
+                            "เข้าสู่ระบบ"
                         )}
                     </button>
 
