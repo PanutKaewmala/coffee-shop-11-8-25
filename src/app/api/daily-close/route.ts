@@ -137,6 +137,10 @@ export async function GET(req: NextRequest) {
         if (!role) return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
 
         if (historyParam === "1") {
+            if (role !== "owner") {
+                return NextResponse.json({ error: "Owner only" }, { status: 403 });
+            }
+
             const parsedLimit = limitParam ? parseInt(limitParam, 10) : 14;
             const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 30) : 14;
 

@@ -54,7 +54,8 @@ export async function GET(req: NextRequest) {
         if (!membership) {
             return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
         }
-        if (!parseDailyCloseRole(membership.role)) {
+        const role = parseDailyCloseRole(membership.role);
+        if (!role) {
             return NextResponse.json({ error: "Owner or staff role required", code: "DAILY_CLOSE_ROLE_REQUIRED" }, { status: 403 });
         }
 
@@ -69,15 +70,37 @@ export async function GET(req: NextRequest) {
             .maybeSingle();
         if (finalizedError) return unexpectedServerError("finalized_snapshot_failed", finalizedError);
 
+        let responseReport = report;
         if (finalized) {
             const row = finalized as unknown as {
                 net_sales: number; cash_sales: number; promptpay_sales: number;
                 unknown_payment_sales: number; paid_order_count: number;
             };
-            return NextResponse.json(applyFinalizedDailyCloseSnapshot(report, row));
+            responseReport = applyFinalizedDailyCloseSnapshot(report, row);
         }
 
-        return NextResponse.json(report);
+        if (role === "staff") {
+            return NextResponse.json({
+                context: responseReport.context,
+                generatedAt: responseReport.generatedAt,
+                summary: {
+                    paidTotal: responseReport.summary.paidTotal,
+                    paidOrderCount: responseReport.summary.paidOrderCount,
+                },
+                payments: {
+                    cash: {
+                        sales: responseReport.payments.cash.sales,
+                        orderCount: responseReport.payments.cash.orderCount,
+                    },
+                },
+                cashMovements: {
+                    cashInTotal: responseReport.cashMovements.cashInTotal,
+                    cashOutTotal: responseReport.cashMovements.cashOutTotal,
+                },
+            });
+        }
+
+        return NextResponse.json(responseReport);
     } catch (error: unknown) {
         return unexpectedServerError("unexpected", error);
     }

@@ -40,7 +40,14 @@ assert.match(prep, /countedCash = validateCountedCash\(body\.counted_cash\)/, "s
 assert.match(prep, /existingRecord\.status !== "draft"/, "staff cannot edit a finalized row");
 assert.doesNotMatch(prep, /body\.(opening_cash_float|expected_cash|cash_difference|status|closed_by|closed_at|gross_sales)/, "staff system fields are ignored");
 assert.match(prep, /updatePayload\.counted_cash = countedCash/);
+assert.match(route, /if \(historyParam === "1"\)[\s\S]*if \(role !== "owner"\)/, "daily-close history is owner-only");
+assert.match(reportRoute, /if \(role === "staff"\)/, "staff receives a reduced daily-close report");
+assert.match(reportRoute, /cashInTotal: responseReport\.cashMovements\.cashInTotal/);
+assert.match(reportRoute, /cashOutTotal: responseReport\.cashMovements\.cashOutTotal/);
 
+assert.match(page, /permissions === null \|\| role !== "owner"/, "staff does not request close history");
+assert.match(page, /บันทึกให้เจ้าของตรวจ/);
+assert.match(page, /นับเงินในลิ้นชักแล้วส่งยอดให้เจ้าของร้านตรวจ/);
 assert.match(page, /ขาด \/ เกิน \(คำนวณสด\)/);
 assert.match(page, /หมายเหตุ \/ สาเหตุ \{cashDifferenceNeedsReason \? "\(จำเป็น\)"/);
 assert.match(page, /!countedCashIsValid \|\| !closeReasonIsValid/, "owner submit is disabled until required inputs are complete");

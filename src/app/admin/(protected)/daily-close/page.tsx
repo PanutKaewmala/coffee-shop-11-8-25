@@ -404,6 +404,15 @@ export default function DailyClosePage() {
     useEffect(() => {
         let alive = true;
 
+        if (permissions === null || role !== "owner") {
+            setHistory([]);
+            setHistoryError(null);
+            setHistoryLoading(false);
+            return () => {
+                alive = false;
+            };
+        }
+
         async function loadHistory() {
             setHistoryLoading(true);
             setHistoryError(null);
@@ -422,8 +431,6 @@ export default function DailyClosePage() {
                 if (!alive) return;
                 const parsed = data as DailyCloseResponse;
                 setHistory(parsed.history ?? []);
-                if (parsed.permissions) setPermissions(parsed.permissions);
-                if (parsed.role === "owner" || parsed.role === "staff") setRole(parsed.role);
             } catch (loadError: unknown) {
                 if (!alive) return;
                 setHistory([]);
@@ -437,7 +444,7 @@ export default function DailyClosePage() {
         return () => {
             alive = false;
         };
-    }, [reloadKey]);
+    }, [reloadKey, role, permissions]);
 
     const cmReasonOptions = useMemo(() => cashMovementReasonsFor(cmType, role), [cmType, role]);
     const selectedCmReasonPolicy = useMemo(() => findCashMovementReason(cmType, cmReason), [cmType, cmReason]);
@@ -452,13 +459,10 @@ export default function DailyClosePage() {
         }
     }, [cmType, role, cmReason, cmReasonOptions]);
 
-    const isEmpty = useMemo(
-        () =>
-            Boolean(report) &&
-            report!.paidTransactions.length === 0 &&
-            report!.cancelledTransactions.length === 0,
-        [report]
-    );
+    const isEmpty = useMemo(() => {
+        if (!report || role !== "owner") return false;
+        return report.paidTransactions.length === 0 && report.cancelledTransactions.length === 0;
+    }, [report, role]);
 
     const handleCreateDraft = async () => {
         setCloseLoading(true);
@@ -892,6 +896,191 @@ export default function DailyClosePage() {
     };
 
     const staffDailyClose = role === "staff" && permissions?.canFinalize === false;
+
+    if (permissions === null) {
+        return (
+            <div className="p-4 text-text-primary md:p-6">
+                <div className="mx-auto max-w-3xl space-y-4">
+                    <div>
+                        <h1 className="text-2xl font-bold">นับเงินปลายวัน</h1>
+                        <p className="mt-1 text-sm text-text-secondary">กำลังเตรียมข้อมูลและตรวจสิทธิ์การใช้งาน</p>
+                    </div>
+                    <Card title="กำลังโหลด">
+                        <div className="text-sm text-text-secondary">
+                            {closeError ?? "รอสักครู่..."}
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
+    if (staffDailyClose) {
+        return (
+            <div className="p-4 text-text-primary md:p-6">
+                <div className="mx-auto max-w-3xl space-y-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold">นับเงินปลายวัน</h1>
+                            <p className="mt-1 text-sm text-text-secondary">
+                                นับเงินในลิ้นชักแล้วส่งยอดให้เจ้าของร้านตรวจ
+                            </p>
+                            <p className="mt-1 text-xs text-text-muted">วันที่ขาย {date}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setReloadKey((value) => value + 1)}
+                            disabled={loading || closeLoading}
+                            className="self-start rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-text-secondary transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+                        >
+                            อัปเดตข้อมูล
+                        </button>
+                    </div>
+
+                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-text-primary">
+                        เจ้าของร้านจะเป็นคนตรวจและกดปิดยอดอีกครั้งหลังจากคุณบันทึก
+                    </div>
+
+                    {error || closeError ? (
+                        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+                            {error ?? closeError}
+                        </div>
+                    ) : null}
+
+                    {!close ? (
+                        <Card title="เริ่มวันขาย">
+                            <div className="space-y-4">
+                                <p className="text-sm text-text-secondary">
+                                    ใส่เงินสดที่มีอยู่ในลิ้นชักตอนเริ่มวัน เพื่อให้ระบบคำนวณเงินสดปลายวันได้ถูกต้อง
+                                </p>
+                                <div>
+                                    <label className="mb-1 block text-xs text-text-secondary">เงินสดตั้งต้น</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={openingCashFloat}
+                                        onChange={(event) => setOpeningCashFloat(event.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full max-w-sm rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-base text-text-primary outline-none focus:border-white/25"
+                                        disabled={closeLoading}
+                                    />
+                                </div>
+                                <Button
+                                    onClick={handleCreateDraft}
+                                    disabled={closeLoading || loading || !openingCashIsValid}
+                                >
+                                    {closeLoading ? "กำลังเริ่มวันขาย..." : "เริ่มวันขาย"}
+                                </Button>
+                            </div>
+                        </Card>
+                    ) : close.status === "draft" ? (
+                        <>
+                            <Card title="ยอดวันนี้">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                    <MetricCard
+                                        label="ยอดขายวันนี้"
+                                        value={report ? formatMoney(report.summary.paidTotal) : "-"}
+                                    />
+                                    <MetricCard
+                                        label="บิลที่ชำระแล้ว"
+                                        value={report ? `${report.summary.paidOrderCount} รายการ` : "-"}
+                                    />
+                                    <MetricCard
+                                        label="เงินสดที่ควรมี"
+                                        value={formatMoney(expectedDrawerCashDisplay)}
+                                        detail="รวมเงินสดตั้งต้นและรายการเงินสดของวันนี้"
+                                    />
+                                </div>
+                            </Card>
+
+                            <Card title="นับเงินในลิ้นชัก">
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium">เงินสดที่นับได้จริง</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={countedCash}
+                                            onChange={(event) => setCountedCash(event.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full max-w-sm rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-lg text-text-primary outline-none focus:border-white/25"
+                                            disabled={closeLoading}
+                                        />
+                                    </div>
+
+                                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                                        <div className="text-xs text-text-secondary">ส่วนต่าง</div>
+                                        <div className="mt-1 text-xl font-semibold tabular-nums">
+                                            {liveCashDifference !== null ? formatMoney(liveCashDifference) : "-"}
+                                        </div>
+                                        <div className="mt-1 text-xs text-text-secondary">
+                                            เงินที่นับได้ − เงินสดที่ควรมี
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium">
+                                            หมายเหตุ {cashDifferenceNeedsReason ? "(จำเป็นเมื่อยอดไม่ตรง)" : "(ไม่บังคับ)"}
+                                        </label>
+                                        <textarea
+                                            value={notes}
+                                            onChange={(event) => setNotes(event.target.value)}
+                                            placeholder="เช่น เงินขาด 20 บาท เพราะทอนลูกค้าผิด"
+                                            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-text-primary outline-none focus:border-white/25"
+                                            rows={3}
+                                            disabled={closeLoading}
+                                        />
+                                        {cashDifferenceNeedsReason && !closeReasonIsValid ? (
+                                            <div className="mt-1 text-xs text-amber-300">
+                                                ยอดเงินไม่ตรง กรุณาระบุสาเหตุก่อนบันทึก
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <Button
+                                        onClick={handlePrepareDraft}
+                                        disabled={closeLoading || loading || !countedCashIsValid || !closeReasonIsValid}
+                                    >
+                                        {closeLoading ? "กำลังบันทึก..." : "บันทึกให้เจ้าของตรวจ"}
+                                    </Button>
+
+                                    <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-text-secondary">
+                                        {close.counted_cash != null
+                                            ? "บันทึกยอดแล้ว เจ้าของร้านสามารถตรวจและปิดยอดต่อได้"
+                                            : "หลังบันทึกแล้ว เจ้าของร้านจะเข้ามาตรวจและปิดยอดต่อ"}
+                                    </div>
+                                </div>
+                            </Card>
+                        </>
+                    ) : (
+                        <Card title="วันนี้ปิดยอดแล้ว">
+                            <div className="space-y-4">
+                                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-text-primary">
+                                    เจ้าของร้านปิดยอดวันนี้เรียบร้อยแล้ว
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                    <MetricCard
+                                        label="เงินสดที่นับได้"
+                                        value={close.counted_cash != null ? formatMoney(close.counted_cash) : "-"}
+                                    />
+                                    <MetricCard
+                                        label="เงินสดที่ควรมี"
+                                        value={formatMoney(expectedDrawerCashDisplay)}
+                                    />
+                                    <MetricCard
+                                        label="ส่วนต่าง"
+                                        value={close.cash_difference != null ? formatMoney(close.cash_difference) : "-"}
+                                    />
+                                </div>
+                            </div>
+                        </Card>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 text-text-primary">
