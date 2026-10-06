@@ -43,8 +43,6 @@ const supabaseServer = fs.readFileSync("src/lib/supabaseServer.ts", "utf8");
 assert.match(supabaseServer, /import \{ cache \} from "react"/, "server identity should use request-scoped React cache");
 assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "server identity should still be reused within a render");
 
-const adminShell = fs.readFileSync("src/app/admin/AdminShell.tsx", "utf8");
-const ownerGuard = fs.readFileSync("src/components/admin/OwnerOnlyClientGuard.tsx", "utf8");
 const ownerLayouts = [
     "src/app/admin/(protected)/branch/layout.tsx",
     "src/app/admin/(protected)/contact/layout.tsx",
@@ -55,14 +53,11 @@ const ownerLayouts = [
     "src/app/admin/(protected)/reports/layout.tsx",
     "src/app/admin/(protected)/staff/layout.tsx",
 ];
-assert.match(adminShell, /<AdminRoleProvider role=/, "admin shell should provide the parent-resolved role to nested routes");
-assert.match(ownerGuard, /parentRole === "staff"[\s\S]*router\.replace\("\/pos"\)/, "staff should be redirected away from owner-only routes");
-assert.match(ownerGuard, /fetch\("\/api\/context\/access"[\s\S]*cache: "no-store"/, "owner guard should recover by resolving access when inherited role is unavailable");
-assert.match(ownerGuard, /!checked \|\| resolvedRole !== "owner"/, "owner-only children must stay gated until the owner role is known");
+assert.match(supabaseServer, /export const getServerIdentity = cache\(loadServerIdentity\)/, "nested server guards should share the cached identity within a render");
 for (const path of ownerLayouts) {
     const source = fs.readFileSync(path, "utf8");
-    assert.match(source, /OwnerOnlyClientGuard/, `${path} should reuse the parent role instead of repeating the server identity lookup`);
-    assert.doesNotMatch(source, /requireOwnerPage/, `${path} should not run a duplicate nested server guard`);
+    assert.match(source, /requireOwnerPage/, `${path} should enforce owner access on the server so direct reloads cannot depend on client hydration`);
+    assert.doesNotMatch(source, /OwnerOnlyClientGuard/, `${path} should not depend on the client role context for owner access`);
 }
 
 console.log("context reliability behavioral tests passed");
