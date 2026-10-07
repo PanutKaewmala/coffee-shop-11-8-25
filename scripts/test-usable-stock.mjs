@@ -60,7 +60,7 @@ assert.equal((await post(receivePayload, "bad")).status, 400);
 for (const minimum_stock of [null, false, "", "-1", "1e3"]) assert.equal((await patch({ ...payload, minimum_stock })).status, 400);
 assert.equal((await patch({ ...payload, branch_id: "other" })).status, 409);
 identity.currentShopRole = "staff";
-assert.equal((await route.GET()).status, 200);
+assert.equal((await route.GET()).status, 403);
 assert.equal((await patch()).status, 403);
 assert.equal((await post()).status, 403);
 identity.currentShopRole = "owner";

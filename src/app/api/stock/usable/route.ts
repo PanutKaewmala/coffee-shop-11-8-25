@@ -39,7 +39,7 @@ async function context(ownerOnly = false) {
 }
 
 export async function GET() {
-    const ctx = await context();
+    const ctx = await context(true);
     if (ctx.response) return ctx.response;
     try {
         return NextResponse.json(await loadUsableStock(ctx.shopId!, ctx.branchId!), { headers: { "Cache-Control": "no-store" } });

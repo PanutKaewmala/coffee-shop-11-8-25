@@ -477,8 +477,8 @@ export async function GET(req: NextRequest) {
             .maybeSingle();
 
         if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 });
-        if (!member) {
-            return NextResponse.json({ error: "Not a member of current shop" }, { status: 403 });
+        if (!member || member.role !== "owner") {
+            return NextResponse.json({ error: "Owner only" }, { status: 403 });
         }
 
         const mode = (toStringOrNull(url.searchParams.get("mode")) ?? "events").toLowerCase();

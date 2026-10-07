@@ -25,7 +25,7 @@ export function roleHome(role) {
 
 const OWNER_ONLY_PATHS = [
     "/admin", "/admin/reports", "/admin/menu", "/admin/recipes",
-    "/admin/ingredients/archived", "/admin/news", "/admin/branch", "/admin/staff", "/admin/contact",
+    "/admin/ingredients", "/admin/stock", "/admin/news", "/admin/branch", "/admin/staff", "/admin/contact",
 ];
 
 export function isOwnerOnlyPath(pathname) {
@@ -33,7 +33,7 @@ export function isOwnerOnlyPath(pathname) {
 }
 
 const OPERATIONAL_PATHS = [
-    "/pos", "/admin/orders", "/admin/ingredients", "/admin/stock", "/admin/daily-close",
+    "/pos", "/admin/orders", "/admin/daily-close",
 ];
 
 export function isOperationalPath(pathname) {
@@ -74,7 +74,7 @@ export function decidePosPage(input) {
 
 export function ingredientActionVisibility(role) {
     return {
-        canAdjust: role === "owner" || role === "staff",
+        canAdjust: role === "owner",
         canCreate: role === "owner",
         canRename: role === "owner",
         canArchive: role === "owner",

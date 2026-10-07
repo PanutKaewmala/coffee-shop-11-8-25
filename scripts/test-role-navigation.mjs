@@ -29,12 +29,12 @@ assert.equal(roleHome("manager"), "/no-access");
 assert.deepEqual(decideProtectedRoot({ ...base, role: "manager" }), { action: "no-access" });
 assert.deepEqual(decideProtectedRoot({ ...base, hasCurrentShop: false, hasAnyMembership: false, role: null }), { action: "no-access" });
 
-const ownerOnlyRoutes = ["/admin", "/admin/reports", "/admin/menu", "/admin/recipes", "/admin/branch", "/admin/staff", "/admin/news", "/admin/contact", "/admin/ingredients/archived"];
+const ownerOnlyRoutes = ["/admin", "/admin/reports", "/admin/menu", "/admin/recipes", "/admin/branch", "/admin/staff", "/admin/news", "/admin/contact", "/admin/ingredients", "/admin/stock"];
 for (const route of ownerOnlyRoutes) {
     assert.equal(isOwnerOnlyPath(route), true, `owner policy includes ${route}`);
     assert.deepEqual(decideOwnerPage(staff), { action: "staff-home" }, `staff denied ${route}`);
 }
-const sharedRoutes = ["/admin/orders", "/admin/orders/id", "/admin/ingredients", "/admin/ingredients/id", "/admin/stock", "/admin/daily-close"];
+const sharedRoutes = ["/admin/orders", "/admin/orders/id", "/admin/daily-close"];
 for (const route of sharedRoutes) {
     assert.equal(isOperationalPath(route), true, `operational policy includes ${route}`);
     assert.deepEqual(decideOperationalPage(staff), { action: "allow" }, `staff allowed ${route}`);
@@ -43,7 +43,8 @@ for (const route of sharedRoutes) {
 assert.deepEqual(decideOwnerPage({ ...staff, hasBranch: false }), { action: "staff-home" }, "archived denial wins before branch selection");
 assert.equal(isOwnerOnlyPath("/admin/ingredients/archived"), true);
 assert.equal(isOperationalPath("/admin/ingredients/archived"), false);
-assert.equal(isOwnerOnlyPath("/admin/ingredients/123"), false);
+assert.equal(isOwnerOnlyPath("/admin/ingredients/123"), true);
+assert.equal(isOwnerOnlyPath("/admin/stock"), true);
 assert.deepEqual(decidePosPage({ ...owner, hasBranch: false }), { action: "select-branch" });
 assert.deepEqual(decidePosPage({ ...staff, hasBranch: false }), { action: "select-branch" });
 assert.deepEqual(decidePosPage({ ...base, authenticated: false, role: null }), { action: "login" });
@@ -62,7 +63,7 @@ assert.equal(isNavigationPathActive("/admin/ingredients/archived", "/admin/ingre
 assert.equal(isNavigationPathActive("/admin/ingredients/archived", "/admin/ingredients/archived"), true);
 
 assert.deepEqual(ingredientActionVisibility("staff"), {
-    canAdjust: true,
+    canAdjust: false,
     canCreate: false,
     canRename: false,
     canArchive: false,
