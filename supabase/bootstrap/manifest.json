@@ -68,6 +68,11 @@
       "version": "20261012130311",
       "path": "supabase/migrations/20261012130311_pin_public_function_search_paths.sql",
       "sha256": "31b54f94273dcc91c850337afa661baf350bdecfddcdbff49923d0571859b71c"
+    },
+    {
+      "version": "20261012131640",
+      "path": "supabase/migrations/20261012131640_harden_shop_helper_rpc_acl.sql",
+      "sha256": "5d0215d22206b9b4ed2d212c16387cc13dde97bcd69678ed63a0af8c09893e80"
     }
   ]
 }
