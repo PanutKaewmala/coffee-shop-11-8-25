@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 
 // A reviewed contract fingerprint, not a second execution-order list. Changing
 // order, adaptation or sources requires an explicit contract/test review.
-const reviewedManifestHash = "85200d2385dfd27020d10c5f916cff5d22bb536c696c491e04aec04930841abe";
+const reviewedManifestHash = "1f7dd697d031b0914fe64a214d3e3fdbf43d5e191f65535827e0a0db23a88f59";
 export const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const git = (root, args) => execFileSync("git", args, { cwd: root, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
@@ -237,6 +237,37 @@ begin
     or has_function_privilege('authenticated',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
     or not has_function_privilege('service_role',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
   then raise exception 'BOOTSTRAP_TRIAL_RPC_HARDENING_MISMATCH'; end if;
+  if exists (
+    select 1
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public'
+      and p.proname in (
+        'adjust_stock','apply_shop_rls','block_system_menu_serve_types_mutation',
+        'current_branch_id','current_shop_id','discard_ingredient_lot','ensure_default_serve_type',
+        'get_expiry_alert_summary','increment_stock','ingredients_set_name_key',
+        'is_admin','is_owner_in_current_shop','is_staff_in_current_shop',
+        'log_stock_add','mark_ingredient_lot_opened','revenue_summary_range',
+        'set_updated_at','tg_menu_variants_prevent_default_loss',
+        'tg_menu_variants_single_default','is_shop_member','is_shop_owner'
+      )
+      and not (
+        regexp_replace(coalesce(array_to_string(p.proconfig, ','), ''), '[[:space:]]', '', 'g')
+        like '%search_path=pg_catalog,public,extensions%'
+      )
+  ) then raise exception 'BOOTSTRAP_FUNCTION_SEARCH_PATH_MISMATCH'; end if;
+  if to_regprocedure('public.current_shop_id()') is null
+    or to_regprocedure('public.is_shop_member(uuid)') is null
+    or to_regprocedure('public.is_shop_owner(uuid)') is null
+    or has_function_privilege('anon',to_regprocedure('public.current_shop_id()'),'execute')
+    or has_function_privilege('anon',to_regprocedure('public.is_shop_member(uuid)'),'execute')
+    or has_function_privilege('anon',to_regprocedure('public.is_shop_owner(uuid)'),'execute')
+    or not has_function_privilege('authenticated',to_regprocedure('public.current_shop_id()'),'execute')
+    or not has_function_privilege('authenticated',to_regprocedure('public.is_shop_member(uuid)'),'execute')
+    or not has_function_privilege('authenticated',to_regprocedure('public.is_shop_owner(uuid)'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.current_shop_id()'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.is_shop_member(uuid)'),'execute')
+    or not has_function_privilege('service_role',to_regprocedure('public.is_shop_owner(uuid)'),'execute')
+  then raise exception 'BOOTSTRAP_SHOP_HELPER_RPC_ACL_MISMATCH'; end if;
   for t in select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('public','talvo') and c.relkind in ('r','p')
     and not (n.nspname='talvo' and c.relname in ('units','role_capabilities','schema_revisions'))

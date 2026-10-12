@@ -7,9 +7,13 @@ import { loadBootstrap, validateManifest, buildBootstrap, adaptBaseline, validat
 import { localSql, assertLocalEndpoint } from "./lib/talvo-bootstrap-local.mjs";
 
 const root = process.cwd();
+const resetRuntimeSource = fs.readFileSync(path.join(root, "scripts/reset-talvo-local-runtime.mjs"), "utf8");
+for (const [sourcePort, isolatedPort] of [[54321,55321],[54322,55322],[54320,55320],[54329,55329],[54323,55323],[54324,55324],[54327,55327]]) {
+  assert.match(resetRuntimeSource, new RegExp("source: " + sourcePort + ", target: " + isolatedPort), "Disposable runtime isolates host ports from the ordinary local stack");
+}
 const plan = loadBootstrap(root);
 const paths = plan.manifest.migrations.map((e) => e.path);
-const versions = ["20260807090000", "20260817100000", "20260922193511", "20260819180000", "20260819180100", "20260910042652", "20260921142010", "20261004050634", "20261004052000", "20261004052509", "20261005153421"];
+const versions = ["20260807090000", "20260817100000", "20260922193511", "20260819180000", "20260819180100", "20260910042652", "20260921142010", "20261004050634", "20261004052000", "20261004052509", "20261005153421", "20261012130311", "20261012131640"];
 assert.deepEqual(plan.manifest.migrations.map((e) => e.version), versions);
 assert.equal(plan.manifest.baseline.sha256, "f02f683252c165e7508a640d5d6e01f17f3f73c28b76a33e8e5c3e341a2e520c");
 assert.equal(plan.manifest.baseline.version, "20260805083001");
@@ -59,10 +63,13 @@ for (const source of plan.sources.slice(1)) {
   assert.ok(built.payload.indexOf(`values ('${source.version}','${source.sha256}')`) > index + source.bytes.length - 1, "Record after source executes");
 }
 assert.ok(payload.indexOf("create table talvo.schema_revisions") < payload.indexOf("insert into talvo.schema_revisions"));
-assert.equal((payload.match(/insert into talvo.schema_revisions\(/g) ?? []).length, 12);
-assert.equal(ledgerRows(plan).length, 12);
+assert.equal((payload.match(/insert into talvo.schema_revisions\(/g) ?? []).length, 14);
+assert.equal(ledgerRows(plan).length, 14);
 assert.match(payload, /set transaction isolation level read committed, read write;/);
 assert.match(payload, /BOOTSTRAP_LEDGER_MISMATCH/);
+assert.match(payload, /BOOTSTRAP_FUNCTION_SEARCH_PATH_MISMATCH/);
+assert.match(payload, /BOOTSTRAP_SHOP_HELPER_RPC_ACL_MISMATCH/);
+assert.match(payload, /search_path=pg_catalog,public,extensions/);
 assert.match(payload, /TALVO_BRANCH_BOOTSTRAP_REQUIRES_READ_COMMITTED/);
 assert.match(payload, /BOOTSTRAP_UNEXPLAINED_CLI_HISTORY/);
 assert.ok(payload.indexOf("BOOTSTRAP_TARGET_NOT_FRESH") < payload.indexOf("CREATE TYPE public.contact_category"));
