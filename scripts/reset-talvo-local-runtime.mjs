@@ -111,6 +111,28 @@ fs.mkdirSync(runtimeMigrationsDir, { recursive: true });
 let config = fs.readFileSync(sourceConfigPath, "utf8");
 config = config.replace(/^project_id\s*=\s*"[^"]+"/m, `project_id = "${localProjectId}"`);
 config = config.replace(/(\[db\.seed\][\s\S]*?^enabled\s*=\s*)true/m, "$1false");
+const isolatedPortOverrides = [
+  { section: "api", key: "port", source: 54321, target: 55321 },
+  { section: "db", key: "port", source: 54322, target: 55322 },
+  { section: "db", key: "shadow_port", source: 54320, target: 55320 },
+  { section: "db.pooler", key: "port", source: 54329, target: 55329 },
+  { section: "studio", key: "port", source: 54323, target: 55323 },
+  { section: "inbucket", key: "port", source: 54324, target: 55324 },
+  { section: "analytics", key: "port", source: 54327, target: 55327 },
+];
+for (const override of isolatedPortOverrides) {
+  const header = "[" + override.section + "]";
+  const sectionStart = config.indexOf(header);
+  if (sectionStart < 0) fail("Missing isolated runtime config section: " + override.section);
+  const contentStart = sectionStart + header.length;
+  const nextSection = config.slice(contentStart).search(/^\[[^\]]+\]/m);
+  const sectionEnd = nextSection < 0 ? config.length : contentStart + nextSection;
+  let section = config.slice(sectionStart, sectionEnd);
+  const portPattern = new RegExp("(^\\s*" + override.key + "\\s*=\\s*)" + override.source + "(\\s*(?:#.*)?$)", "m");
+  if (!portPattern.test(section)) fail("Refusing unexpected port in " + override.section + "." + override.key);
+  section = section.replace(portPattern, "$1" + override.target + "$2");
+  config = config.slice(0, sectionStart) + section + config.slice(sectionEnd);
+}
 fs.writeFileSync(path.join(runtimeSupabaseDir, "config.toml"), config);
 fs.writeFileSync(path.join(runtimeSupabaseDir, "seed.sql"), "-- Intentionally empty. Local test fixtures are added separately.\n");
 
@@ -136,4 +158,4 @@ fs.writeFileSync(path.join(runtimeRoot, "bootstrap-receipt.json"), JSON.stringif
   adaptation: plan.manifest.adaptation, adaptedBaselineSha256: built.adaptedBaselineSha256,
   payloadSha256: built.payloadSha256, ledger: [plan.manifest.baseline, ...plan.manifest.migrations],
 }, null, 2) + "\n");
-console.log("TALVO_LOCAL_RUNTIME_READY: exact eight-row ledger, empty application tables, current schema verified");
+console.log("TALVO_LOCAL_RUNTIME_READY: exact fourteen-row ledger, empty application tables, current schema verified");

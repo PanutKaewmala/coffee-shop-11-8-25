@@ -66,14 +66,14 @@ No remote rollout is authorized or performed by this proposal.
 The shared contract is `supabase/bootstrap/manifest.json`: public baseline, atomic
 POS, supply slice, **branch bootstrap**, receive, receive hardening, sale/recipe,
 then usable stock. See `supabase/local-runtime/README.md` for exact paths, reviewed
-baseline adaptation, Git-blob provenance and the eight-row source ledger.
+baseline adaptation, Git-blob provenance and the fourteen-row source ledger.
 
 The real branch DO block executes even with zero shops/branches. Its READ COMMITTED
 check and locks run before returning without rows. The focused test proves this
 with its three actual relation locks. The full local bootstrap test also detects
 removal of this block and checks rollback, partial targets and exact source hashes.
 
-The shared runner records seven migrations plus synthetic baseline artifact
+The shared runner records thirteen migrations plus synthetic baseline artifact
 `20260805083001`, never historical cutoff migration `20260805083000`. Committed
 Git blobs supply hashed AND executed migration bytes, independent of checkout
 line endings. No production ledger or database is a provenance source.

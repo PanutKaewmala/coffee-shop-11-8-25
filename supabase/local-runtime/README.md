@@ -2,7 +2,7 @@
 
 Phase 1 is local/repository only. No remote bootstrap runner or workflow exists.
 Reset/integration commands destroy only the disposable `coffee-saas-v1-local-runtime`
-platform database. Never substitute a remote URL.
+platform database on isolated host ports 55320-55329. Never substitute a remote URL or stop/reset the ordinary coffee-saas-v1 local stack.
 
 ## Canonical sources and order
 
@@ -20,6 +20,12 @@ of the manifest, fingerprint and exact-order tests together.
 5. `20260819180100_talvo_receive_history_hardening.sql`
 6. `20260910042652_sale_recipe_inventory.sql`
 7. `20260921142010_current_usable_stock.sql`
+8. `20261004050634_trial_01_staging_security_hardening.sql`
+9. `20261004052000_trial_01_anon_rpc_hardening.sql`
+10. `20261004052509_trial_01_authenticated_legacy_rpc_hardening.sql`
+11. `20261005153421_trial_01_public_rpc_hardening.sql`
+12. `20261012130311_pin_public_function_search_paths.sql`
+13. `20261012131640_harden_shop_helper_rpc_acl.sql`
 
 Migration paths are relative to `supabase/migrations`. The late-dated branch
 bootstrap follows supply and precedes receive. It actually executes on zero
@@ -65,7 +71,7 @@ option exists; remote Docker engines are rejected. One psql session uses `-X`,
 
 The gate rejects TALVO schemas, non-extension public objects and unexplained
 `supabase_migrations.schema_migrations` entries. Required platform roles, auth and
-crypto functions must exist. Baseline, all seven migrations, ledger writes,
+crypto functions must exist. Baseline, all thirteen migrations, ledger writes,
 deferred constraints and assertions share one transaction. Any SQL failure rolls
 back application bootstrap. Existing/partial state is rejected, never repaired.
 A lost connection during commit is an unknown outcome requiring inspection.
@@ -77,12 +83,12 @@ DDL is invented. After that table exists, pending baseline/atomic/supply entries
 are inserted; subsequent rows follow actual migration execution. Conflicts fail;
 there are no ledger upserts.
 
-Exactly eight source rows are required:
+Exactly fourteen source rows are required:
 
 - `20260805083001`: synthetic **baseline artifact**, hash of the RAW baseline.
   It is NOT historical migration `20260805083000` and claims no individual
   pre-cutoff migration execution.
-- Seven original migration versions with exact committed Git-blob SHA-256 values.
+- Thirteen migration versions with exact committed Git-blob SHA-256 values, including the four TRIAL-01 hardening migrations and the two follow-up security migrations.
 
 Production ledger values and CLI history are never fabricated. The manifest
 records order; sorting versions or timestamps is not proof of execution order.
@@ -93,7 +99,7 @@ baseline hashes deliberately describe different things.
 ## Local validation
 
 - `node scripts/reset-talvo-local-runtime.mjs`: reset/reconstruct and verify schema,
-  zero business rows and all eight ledger entries after commit.
+  zero business rows and all fourteen ledger entries after commit.
 - `node scripts/reset-talvo-local-runtime.mjs --prepare-only`: destructive local
   platform preparation without application SQL, used by the integration harness.
 - `npm run test:talvo-bootstrap`: source/order/adaptation tests, CRLF/LF independence
