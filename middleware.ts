@@ -3,8 +3,23 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
+import { isPreviewBackendAllowed, isPublicMarketingPreviewPath } from "@/lib/previewBackendPolicy.mjs";
 
 export async function middleware(req: NextRequest) {
+    const pathname = req.nextUrl.pathname;
+    if (!isPreviewBackendAllowed(process.env) && !isPublicMarketingPreviewPath(pathname)) {
+        return new NextResponse(
+            "This preview is not configured for a safe staging backend.",
+            {
+                status: 503,
+                headers: {
+                    "Cache-Control": "no-store",
+                    "Content-Type": "text/plain; charset=utf-8",
+                },
+            }
+        );
+    }
+
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set("x-talvo-pathname", req.nextUrl.pathname);
 
@@ -13,6 +28,8 @@ export async function middleware(req: NextRequest) {
             headers: requestHeaders,
         },
     });
+
+    if (!pathname.startsWith("/admin")) return res;
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,5 +71,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/admin/:path*"],
+    matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
