@@ -14,6 +14,7 @@ const localDevelopment = {
     NEXT_PUBLIC_SUPABASE_URL: "https://udgxrvtbhytqncmyhmiv.supabase.co",
 };
 const trialPreview = {
+    VERCEL: "1",
     VERCEL_ENV: "preview",
     VERCEL_GIT_COMMIT_REF: "chore/trial-01-staging-readiness",
     NEXT_PUBLIC_SUPABASE_URL: "https://qyospaplvrfpdoyiwpoy.supabase.co",
@@ -53,6 +54,20 @@ assert.equal(
     false,
     "A Preview with missing backend identity must fail closed",
 );
+assert.equal(
+    isPreviewBackendAllowed({ VERCEL: "1" }),
+    false,
+    "An unknown Vercel runtime must fail closed when VERCEL_ENV is unavailable",
+);
+assert.equal(
+    isPreviewBackendAllowed({
+        VERCEL: "1",
+        VERCEL_GIT_COMMIT_REF: "chore/trial-01-staging-readiness",
+        NEXT_PUBLIC_SUPABASE_URL: trialPreview.NEXT_PUBLIC_SUPABASE_URL,
+    }),
+    true,
+    "The exact staging trial may still run if VERCEL_ENV is unavailable at runtime",
+);
 
 for (const pathname of ["/", "/demo-system", "/demo-system/recipes"]) {
     assert.equal(isPublicMarketingPreviewPath(pathname), true, `${pathname} should remain public in a backendless preview`);
@@ -63,10 +78,20 @@ for (const pathname of ["/login", "/admin", "/api/stock/usable", "/signup", "/on
 
 const middleware = readFileSync(new URL("../middleware.ts", import.meta.url), "utf8");
 assert.ok(
-    middleware.indexOf("isPreviewBackendAllowed(process.env)")
-        < middleware.indexOf("const supabase = createServerClient("),
-    "The environment guard must run before the middleware creates a Supabase client",
+    middleware.indexOf("isPreviewBackendAllowed({")
+        >= 0
+        && middleware.indexOf("isPreviewBackendAllowed({")
+            < middleware.indexOf("const supabase = createServerClient("),
+    "The explicit environment guard must run before the middleware creates a Supabase client",
 );
+for (const marker of [
+    "VERCEL: process.env.VERCEL",
+    "VERCEL_ENV: process.env.VERCEL_ENV",
+    "VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF",
+    "NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL",
+]) {
+    assert.ok(middleware.includes(marker), `Middleware must explicitly pass ${marker}`);
+}
 assert.match(middleware, /status:\s*503/, "Unsafe previews must fail closed with HTTP 503");
 assert.ok(
     middleware.includes(String.raw`matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"]`),

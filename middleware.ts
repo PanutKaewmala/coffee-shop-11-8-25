@@ -7,7 +7,13 @@ import { isPreviewBackendAllowed, isPublicMarketingPreviewPath } from "@/lib/pre
 
 export async function middleware(req: NextRequest) {
     const pathname = req.nextUrl.pathname;
-    if (!isPreviewBackendAllowed(process.env) && !isPublicMarketingPreviewPath(pathname)) {
+    const previewBackendAllowed = isPreviewBackendAllowed({
+        VERCEL: process.env.VERCEL,
+        VERCEL_ENV: process.env.VERCEL_ENV,
+        VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF,
+        NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    });
+    if (!previewBackendAllowed && !isPublicMarketingPreviewPath(pathname)) {
         return new NextResponse(
             "This preview is not configured for a safe staging backend.",
             {
