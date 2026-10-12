@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 
 // A reviewed contract fingerprint, not a second execution-order list. Changing
 // order, adaptation or sources requires an explicit contract/test review.
-const reviewedManifestHash = "85200d2385dfd27020d10c5f916cff5d22bb536c696c491e04aec04930841abe";
+const reviewedManifestHash = "7ffaeba7eefec407b196572a436cd27a8f55149060abe6ba158f807b20504498";
 export const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
 const git = (root, args) => execFileSync("git", args, { cwd: root, maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
@@ -237,6 +237,24 @@ begin
     or has_function_privilege('authenticated',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
     or not has_function_privilege('service_role',to_regprocedure('public.sync_order_items_shop_id()'),'execute')
   then raise exception 'BOOTSTRAP_TRIAL_RPC_HARDENING_MISMATCH'; end if;
+  if exists (
+    select 1
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public'
+      and p.proname in (
+        'adjust_stock','apply_shop_rls','block_system_menu_serve_types_mutation',
+        'current_branch_id','discard_ingredient_lot','ensure_default_serve_type',
+        'get_expiry_alert_summary','increment_stock','ingredients_set_name_key',
+        'is_admin','is_owner_in_current_shop','is_staff_in_current_shop',
+        'log_stock_add','mark_ingredient_lot_opened','revenue_summary_range',
+        'set_updated_at','tg_menu_variants_prevent_default_loss',
+        'tg_menu_variants_single_default'
+      )
+      and not (
+        regexp_replace(coalesce(array_to_string(p.proconfig, ','), ''), '[[:space:]]', '', 'g')
+        like '%search_path=pg_catalog,public,extensions%'
+      )
+  ) then raise exception 'BOOTSTRAP_FUNCTION_SEARCH_PATH_MISMATCH'; end if;
   for t in select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in ('public','talvo') and c.relkind in ('r','p')
     and not (n.nspname='talvo' and c.relname in ('units','role_capabilities','schema_revisions'))
