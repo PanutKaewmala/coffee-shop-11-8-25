@@ -134,9 +134,9 @@ type LoginClientProps = {
 };
 
 export default function LoginClient({
-    initialEmail = "owner@demo.com",
-    initialPassword = "123456",
-    demoLabel = "บัญชีทดลอง: เจ้าของ owner@demo.com / 123456 • พนักงาน staff@demo.com / 123456",
+    initialEmail = "",
+    initialPassword = "",
+    demoLabel = "",
 }: LoginClientProps) {
     const router = useRouter();
     const sp = useSearchParams();
@@ -225,7 +225,7 @@ export default function LoginClient({
                         <input
                             type="email"
                             className="w-full rounded-lg border border-[var(--text-muted)]/30 px-3 py-2 bg-[var(--background)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)] focus:outline-none transition"
-                            placeholder="owner@demo.com"
+                            placeholder="you@cafe.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             disabled={loading}
@@ -241,7 +241,7 @@ export default function LoginClient({
                         <input
                             type="password"
                             className="w-full rounded-lg border border-[var(--text-muted)]/30 px-3 py-2 bg-[var(--background)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)] focus:outline-none transition"
-                            placeholder="123456"
+                            placeholder="รหัสผ่าน"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             disabled={loading}
@@ -271,9 +271,11 @@ export default function LoginClient({
                         )}
                     </button>
 
-                    <div className="text-xs text-[var(--text-secondary)] opacity-80">
-                        {demoLabel}
-                    </div>
+                    {demoLabel && (
+                        <div className="text-xs text-[var(--text-secondary)] opacity-80">
+                            {demoLabel}
+                        </div>
+                    )}
                 </form>
 
                 <p className="mt-5 text-center text-sm text-[var(--text-secondary)]">
