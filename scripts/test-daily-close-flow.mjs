@@ -5,7 +5,10 @@ import { cashDifferenceRequiresReason, parseDailyCloseRole } from "../src/lib/da
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const route = read("../src/app/api/daily-close/route.ts");
 const prep = read("../src/app/api/daily-close/prep/route.ts");
-const page = read("../src/app/admin/(protected)/daily-close/page.tsx");
+const pageShell = read("../src/app/admin/(protected)/daily-close/page.tsx");
+const page = read("../src/app/admin/(protected)/daily-close/DailyCloseClient.tsx");
+assert.match(pageShell, /dynamic\(\(\) => import\("\.\/DailyCloseClient"\)/);
+assert.match(pageShell, /ssr:\s*false/, "Daily Close cold load defers its client-only workspace until hydration");
 const reportRoute = read("../src/app/api/reports/daily-close/route.ts");
 const report = read("../src/lib/dailyCloseReport.ts");
 const money = read("../src/lib/dailyCloseMoney.ts");
