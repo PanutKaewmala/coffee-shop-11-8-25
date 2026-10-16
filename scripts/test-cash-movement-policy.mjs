@@ -25,7 +25,7 @@ assert.equal(cashMovementNavigationIntent({ id: "x", type: "cash_out", reason: "
 assert.equal(validateCashMovementReason({ type: "cash_out", reason: "ซื้อของเข้าร้าน", role: "owner", note: null }).status, 400);
 assert.equal(validateCashMovementReason({ type: "cash_out", reason: "เบิกเงินสด", role: "owner", note: null }).status, 400);
 
-const dailyClosePage = readFileSync(new URL("../src/app/admin/(protected)/daily-close/page.tsx", import.meta.url), "utf8");
+const dailyClosePage = readFileSync(new URL("../src/app/admin/(protected)/daily-close/DailyCloseClient.tsx", import.meta.url), "utf8");
 const ingredientsClient = readFileSync(new URL("../src/app/admin/(protected)/ingredients/(operational)/IngredientsClient.tsx", import.meta.url), "utf8");
 const reportCode = readFileSync(new URL("../src/lib/dailyCloseReport.ts", import.meta.url), "utf8");
 const cashMovementRoute = readFileSync(new URL("../src/app/api/cash-movements/route.ts", import.meta.url), "utf8");

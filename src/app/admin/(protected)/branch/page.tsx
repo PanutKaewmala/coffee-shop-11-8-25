@@ -1,11 +1,18 @@
-// src/app/admin/branch/page.tsx
-import React, { Suspense } from "react";
-import BranchPageClient from "./BranchPageClient";
+"use client";
+
+import dynamic from "next/dynamic";
+
+// Owner workspace data loads via authenticated client-side APIs.
+// Keep initial server navigation independent of heavy workspace rendering.
+const Workspace = dynamic(() => import("./BranchPageClient"), {
+    ssr: false,
+    loading: () => (
+        <div className="p-4 text-text-primary md:p-6" role="status" aria-live="polite">
+            กำลังเปิดหน้าสาขา…
+        </div>
+    ),
+});
 
 export default function Page() {
-    return (
-        <Suspense fallback={<div className="p-6 text-sm opacity-70">กำลังโหลดสาขา...</div>}>
-            <BranchPageClient />
-        </Suspense>
-    );
+    return <Workspace />;
 }
