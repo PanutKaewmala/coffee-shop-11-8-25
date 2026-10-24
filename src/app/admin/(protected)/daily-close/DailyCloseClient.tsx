@@ -186,7 +186,8 @@ function formatBangkokDateTime(value: string) {
 }
 
 function shortId(id: string) {
-    return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+    // Keep order references consistent with POS receipts.
+    return id ? `#${id.slice(-8)}` : "-";
 }
 
 function paymentLabel(method: string | null) {

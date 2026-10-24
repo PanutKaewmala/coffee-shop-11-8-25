@@ -115,7 +115,8 @@ function formatExactDateTH(dateKey: string) {
 }
 
 function shortId(id: string) {
-    return id?.length > 10 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+    // Match the short order number printed on POS receipts.
+    return id ? `#${id.slice(-8)}` : "-";
 }
 
 function paymentLabelTH(method: string | null | undefined) {

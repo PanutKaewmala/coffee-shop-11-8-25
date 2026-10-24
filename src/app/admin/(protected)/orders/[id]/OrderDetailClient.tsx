@@ -1033,7 +1033,7 @@ export default function OrderDetailClient() {
                         title="คัดลอกเลขรายการ"
                     >
                         {copied ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
-                        <span className="min-w-0 truncate font-mono">{shortId(order.id)}</span>
+                        <span className="min-w-0 truncate font-mono">{`#${order.id.slice(-8)}`}</span>
                     </button>
 
                     <button
