@@ -76,4 +76,27 @@ for (const path of protectedRouteFiles) {
     assert.doesNotMatch(source, /requireOwnerPage|requireOperationalPage/, `${path} should not repeat the root identity guard`);
 }
 
+// Owner-critical interactive pages must not block on cold server-side streaming.
+// This is a route-level workaround; authorization still runs in ProtectedAdminLayout and each API.
+const clientOnlyOwnerRoutes = [
+    ["staff/page.tsx", "./StaffClient"],
+    ["orders/page.tsx", "./OrdersClient"],
+    ["reports/page.tsx", "@/components/admin/reports/ReportsSalesDashboard"],
+    ["menu/page.tsx", "./MenuClient"],
+    ["daily-close/page.tsx", "./DailyCloseClient"],
+    ["ingredients/(operational)/page.tsx", "./IngredientsClient"],
+    ["recipes/page.tsx", "@/components/admin/recipes/RecipesShell"],
+    ["stock/page.tsx", "./StockClient"],
+    ["stock/usable/page.tsx", "@/components/admin/UsableStockPanel"],
+    ["branch/page.tsx", "./BranchPageClient"],
+];
+for (const [route, modulePath] of clientOnlyOwnerRoutes) {
+    const path = `src/app/admin/(protected)/${route}`;
+    const source = fs.readFileSync(path, "utf8");
+    assert.match(source, /"use client"/, `${route} must be a client route entry`);
+    assert.ok(source.includes(`import("${modulePath}")`), `${route} must load its original workspace`);
+    assert.match(source, /ssr:\s*false/, `${route} must defer the interactive workspace on a cold load`);
+    assert.match(source, /role="status"/, `${route} should expose an accessible loading state`);
+}
+
 console.log("context reliability behavioral tests passed");

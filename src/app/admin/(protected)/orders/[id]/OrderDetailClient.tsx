@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Copy, Check, X, AlertTriangle, Printer } from "lucide-react";
@@ -516,10 +517,10 @@ function buildReceiptDocument({
     const receiptWidth = isA4 ? "160mm" : "80mm";
     const receiptMargin = isA4 ? "16mm auto 0 auto" : "0 auto";
     const receiptPadding = isA4 ? "12mm" : "4mm";
-    const baseFontSize = isA4 ? "14px" : "12px";
-    const shopFontSize = isA4 ? "20px" : "14px";
-    const headingFontSize = isA4 ? "16px" : "12px";
-    const smallFontSize = isA4 ? "12px" : "10px";
+    const baseFontSize = isA4 ? "16px" : "12px";
+    const shopFontSize = isA4 ? "24px" : "14px";
+    const headingFontSize = isA4 ? "19px" : "12px";
+    const smallFontSize = isA4 ? "14px" : "10px";
     const dividerMargin = isA4 ? "12px 0" : "8px 0";
     const itemSpacing = isA4 ? "8px" : "5px";
     const summarySpacing = isA4 ? "6px" : "3px";
@@ -594,8 +595,7 @@ function buildReceiptDocument({
                 ${branchPhoneHtml}
                 ${taxIdHtml}
                 <div class="heading">ใบเสร็จรับเงิน</div>
-                <div class="meta">เลขที่ ${escapeReceiptHtml(receiptNumber)}</div>
-                <div class="meta">${escapeReceiptHtml(order.id)}</div>
+                <div class="meta">เลขที่ #${escapeReceiptHtml(receiptNumber)}</div>
                 <div class="meta">${escapeReceiptHtml(fmtDateTH(order.created_at))}</div>
             </header>
             <div class="divider"></div>
@@ -669,10 +669,12 @@ function ReceiptModal({
         iframe.contentWindow.print();
     };
 
-    if (!open) return null;
+    if (!open || typeof document === "undefined") return null;
 
-    return (
-        <div className="fixed inset-0 z-50">
+    // Render outside the Admin layout so its sidebar and stacking contexts
+    // cannot cover or clip the receipt preview after the browser print dialog.
+    return createPortal(
+        <div className="fixed inset-0 z-[1000]" role="dialog" aria-modal="true" aria-label="ตัวอย่างใบเสร็จ">
             <div className="absolute inset-0 bg-black/60" />
 
             <div className="absolute inset-0 flex items-center justify-center p-2 sm:p-4">
@@ -756,7 +758,8 @@ function ReceiptModal({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -1033,7 +1036,7 @@ export default function OrderDetailClient() {
                         title="คัดลอกเลขรายการ"
                     >
                         {copied ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
-                        <span className="min-w-0 truncate font-mono">{shortId(order.id)}</span>
+                        <span className="min-w-0 truncate font-mono">{`#${order.id.slice(-8)}`}</span>
                     </button>
 
                     <button

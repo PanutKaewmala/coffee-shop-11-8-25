@@ -19,10 +19,15 @@ const trialPreview = {
     VERCEL_GIT_COMMIT_REF: "chore/trial-01-staging-readiness",
     NEXT_PUBLIC_SUPABASE_URL: "https://qyospaplvrfpdoyiwpoy.supabase.co",
 };
+const employeePreview = {
+    ...trialPreview,
+    VERCEL_GIT_COMMIT_REF: "chore/trial-02-employee-preview",
+};
 
 assert.equal(isPreviewBackendAllowed(production), true, "Production must remain enabled");
 assert.equal(isPreviewBackendAllowed(localDevelopment), true, "Local development must remain enabled");
 assert.equal(isPreviewBackendAllowed(trialPreview), true, "The exact TRIAL-01 staging preview must remain enabled");
+assert.equal(isPreviewBackendAllowed(employeePreview), true, "Employee Preview must be enabled only against staging");
 
 assert.equal(
     isPreviewBackendAllowed({
@@ -40,6 +45,14 @@ assert.equal(
     }),
     false,
     "TRIAL-01 must fail closed when its backend is not staging",
+);
+assert.equal(
+    isPreviewBackendAllowed({
+        ...employeePreview,
+        NEXT_PUBLIC_SUPABASE_URL: production.NEXT_PUBLIC_SUPABASE_URL,
+    }),
+    false,
+    "Employee Preview must fail closed when its backend is not staging",
 );
 assert.equal(
     isPreviewBackendAllowed({
@@ -98,4 +111,10 @@ assert.ok(
     "The middleware must guard application routes while excluding static files",
 );
 
-console.log("PASS preview backend isolation: production/local remain enabled; only exact staging trial preview is enabled; unsafe preview routes fail closed");
+const loginPage = readFileSync(new URL("../src/app/login/page.tsx", import.meta.url), "utf8");
+const loginClient = readFileSync(new URL("../src/app/login/LoginClient.tsx", import.meta.url), "utf8");
+assert.ok(!loginPage.includes("initialPassword="), "Preview login must not embed trial passwords in rendered props");
+assert.match(loginClient, /initialPassword\s*=\s*""/, "Login must not prefill a password");
+assert.match(loginClient, /demoLabel\s*=\s*""/, "Login must not display default trial credentials");
+
+console.log("PASS preview backend isolation: production/local remain enabled; only approved staging trial branches are enabled; unsafe preview routes fail closed");
